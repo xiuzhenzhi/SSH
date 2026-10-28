@@ -30,6 +30,7 @@ jobs:
       - if: runner.os == 'Linux'
         run: |
           go test -race ./cmd/agent ./internal/api
+          go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
           sh -n scripts/install-agent.sh
           sh -n scripts/uninstall-agent.sh
           sh -n scripts/deploy.sh

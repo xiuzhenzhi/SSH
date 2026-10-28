@@ -41,7 +41,7 @@ func main() {
 	stop, done := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer done()
 	go func() {
-		ticker := time.NewTicker(time.Hour)
+		ticker := time.NewTicker(10 * time.Minute)
 		defer ticker.Stop()
 		for {
 			ctx, cancel := context.WithTimeout(stop, 30*time.Second)

@@ -130,6 +130,10 @@ func TestCheckPreservesCredentialsAndRejectsOtherOrigin(t *testing.T) {
 		if r.URL.Path != "/api/v1/agent/heartbeat" || r.Header.Get("Authorization") != "Bearer "+strings.Repeat("a", 64) {
 			t.Error("unexpected request")
 		}
+		var body map[string]string
+		if e := json.NewDecoder(r.Body).Decode(&body); e != nil || body["version"] != "" {
+			t.Error("probe advertised a version that is not running")
+		}
 		w.Write([]byte(`{"data":{"received":true}}`))
 	}))
 	defer server.Close()

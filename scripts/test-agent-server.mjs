@@ -19,4 +19,4 @@ const server=https.createServer({pfx:readFileSync(process.env.SSHGUARD_TEST_PFX)
    res.writeHead(401).end('{}');
  });
 });
-server.listen(9443,'127.0.0.1');
+server.listen(9443,'::');

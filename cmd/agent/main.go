@@ -160,7 +160,9 @@ func checkAgent(ctx context.Context, cfg Config, endpoint string) error {
 	if endpoint != "" && endpoint != cfg.Endpoint {
 		return fmt.Errorf("endpoint differs from installed configuration; refusing update")
 	}
-	return request(ctx, cfg.Endpoint, "/api/v1/agent/heartbeat", cfg.Token, map[string]string{"version": version}, nil)
+	// An installer probe must not advertise the downloaded version as running
+	// before the replacement service has actually started.
+	return request(ctx, cfg.Endpoint, "/api/v1/agent/heartbeat", cfg.Token, map[string]string{}, nil)
 }
 func main() {
 	path := flag.String("config", defaultConfigPath(), "configuration path")

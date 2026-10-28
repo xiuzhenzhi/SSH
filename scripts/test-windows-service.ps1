@@ -2,6 +2,7 @@
 #Requires -RunAsAdministrator
 # Real SCM/LocalService test: disposable GitHub Windows runner ONLY.
 $ErrorActionPreference = 'Stop'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 if ($env:GITHUB_ACTIONS -ne 'true') { throw 'Disposable GitHub Actions VM only.' }
 if (Get-Service SSHGuardAgent -ErrorAction SilentlyContinue) { throw 'Refusing to replace an existing service.' }
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -21,7 +22,7 @@ try {
     Copy-Item $download (Join-Path $temp 'good.exe')
     $cert = New-SelfSignedCertificate -DnsName localhost -CertStoreLocation Cert:\LocalMachine\My -KeyExportPolicy Exportable -NotAfter (Get-Date).AddDays(2)
     $pfxPassword = [Guid]::NewGuid().ToString('N')
-    Export-PfxCertificate -Cert $cert -FilePath (Join-Path $temp 'server.pfx') -Password (ConvertTo-SecureString $pfxPassword -AsPlainText -Force) | Out-Null
+    Export-PfxCertificate -Cert $cert -FilePath (Join-Path $temp 'server.pfx') -CryptoAlgorithmOption AES256_SHA256 -Password (ConvertTo-SecureString $pfxPassword -AsPlainText -Force) | Out-Null
     Export-Certificate -Cert $cert -FilePath (Join-Path $temp 'server.cer') | Out-Null
     Import-Certificate -FilePath (Join-Path $temp 'server.cer') -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
     $env:SSHGUARD_TEST_PFX = Join-Path $temp 'server.pfx'
@@ -31,9 +32,9 @@ try {
     $server = Start-Process -FilePath (Get-Command node).Source -ArgumentList @(('"{0}"' -f $fixture)) -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $temp 'server.log') -RedirectStandardError (Join-Path $temp 'server-error.log')
     $ready = $false
     for ($i=0; $i -lt 20; $i++) {
-        try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 https://localhost:9443/ready | Out-Null; $ready=$true; break } catch { Start-Sleep -Seconds 1 }
+        try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 https://localhost:9443/ready | Out-Null; $ready=$true; break } catch { $lastError=$_.Exception.Message; Start-Sleep -Seconds 1 }
     }
-    if (-not $ready) { throw 'HTTPS fixture failed' }
+    if (-not $ready) { Get-Content (Join-Path $temp 'server-error.log'); throw "HTTPS fixture failed: $lastError" }
     & "$PSScriptRoot/install-agent.ps1" -Endpoint https://localhost:9443 -EnrollmentToken ('a'*64)
     if ((Get-Service SSHGuardAgent).Status -ne 'Running') { throw 'Service not running' }
     $service = Get-CimInstance Win32_Service -Filter "Name='SSHGuardAgent'"

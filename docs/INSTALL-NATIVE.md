@@ -43,7 +43,7 @@ MySQL 用户 host 须匹配实际 API 来源。请使用 UTC 数据库时区，�
 以下在 Linux 发布目录中执行。先确保已安装 nginx、curl、ca-certificates；Debian/Ubuntu 可用 apt，Rocky/AlmaLinux 可用 dnf。不要覆盖正在使用的其他 Nginx 虚拟主机配置。
 
 ```bash
-id sshguard >/dev/null 2>&1 || sudo useradd --system --no-create-home --shell /usr/sbin/nologin sshguard
+id sshguard-api >/dev/null 2>&1 || sudo useradd --system --user-group --no-create-home --shell /usr/sbin/nologin sshguard-api
 sudo install -d -m 755 /opt/sshguard /etc/sshguard
 sudo install -m 755 sshguard-api /opt/sshguard/sshguard-api
 sudo cp -a web /opt/sshguard/
@@ -70,7 +70,7 @@ sudo systemctl reload nginx
 curl -fsS https://guard.example.com/api/v1/health
 ```
 
-需将域名 DNS 指向中央服务器，开放 80/443。证书续期后执行 `nginx -t && systemctl reload nginx`；证书签发和自动续期由部署方已有 ACME/证书流程负责，本项目不自动申请证书。启用 SELinux 的 RHEL 系系统需由管理员为 `/opt/sshguard/web` 配置合适的 Web 内容标签并允许 Nginx 连接本机 API；不要关闭 SELinux。
+需将域名 DNS 指向中央服务器，开放 80/443。手工部署的证书由自己的 ACME/证书流程续期，之后执行 `nginx -t && systemctl reload nginx`；[一键向导](QUICKSTART.md) 则可选 Certbot 自动申请及续期。API 使用独立 `sshguard-api` 账号，与 Agent 的 `sshguard` 账号隔离。启用 SELinux 的系统需由管理员为 Web 目录配置合适标签并允许 Nginx 连接本机 API，不要关闭 SELinux。
 
 查看运行情况：
 

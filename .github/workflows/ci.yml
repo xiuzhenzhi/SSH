@@ -37,6 +37,9 @@ jobs:
       - if: runner.os == 'Windows'
         shell: powershell
         run: ./scripts/test-windows-installer.ps1
+      - if: runner.os == 'Windows'
+        shell: powershell
+        run: ./scripts/test-windows-service.ps1
   postgres:
     name: PostgreSQL integration
     runs-on: ubuntu-latest

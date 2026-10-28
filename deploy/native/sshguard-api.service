@@ -4,8 +4,8 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-User=sshguard
-Group=sshguard
+User=sshguard-api
+Group=sshguard-api
 WorkingDirectory=/opt/sshguard
 EnvironmentFile=/etc/sshguard/api.env
 ExecStart=/opt/sshguard/sshguard-api

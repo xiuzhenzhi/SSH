@@ -45,17 +45,31 @@ mkdir /run/sshguard-deploy.lock 2>/dev/null || die 'Another deployment is active
 switched=false
 old=''
 stage=''
+hidden=false
+nginx_changed=false
+nginx_backup=''
+nginx_existed=false
 cleanup() {
     status=$?
     trap - EXIT HUP INT TERM
+    if "$hidden"; then stty echo 2>/dev/null || true; fi
     if "$switched" && [ "$status" -ne 0 ]; then
         if [ -n "$old" ]; then
             ln -s "$old" /opt/sshguard.next
             mv -Tf /opt/sshguard.next /opt/sshguard
             systemctl restart sshguard-api || true
             echo 'Deployment failed; previous application restored. Database migrations are not reversed.' >&2
-        else systemctl stop sshguard-api || true; fi
+        else
+            systemctl stop sshguard-api || true
+            if [ "$(readlink /opt/sshguard)" = "$stage" ]; then rm /opt/sshguard; fi
+        fi
     fi
+    if "$nginx_changed" && [ "$status" -ne 0 ]; then
+        if "$nginx_existed"; then cp "$nginx_backup" /etc/nginx/conf.d/sshguard.conf
+        else rm -f /etc/nginx/conf.d/sshguard.conf; fi
+        nginx -t && systemctl reload nginx || true
+    fi
+    [ -z "$nginx_backup" ] || rm -f "$nginx_backup"
     rmdir /run/sshguard-deploy.lock
     exit "$status"
 }
@@ -92,7 +106,7 @@ else
         postgres|mysql)
             if [ -z "$dsn" ] && [ -z "$config_file" ]; then
                 printf 'Database DSN (hidden; create database/user first): ' >&2
-                stty -echo; IFS= read -r dsn; stty echo; printf '\n' >&2
+                hidden=true; stty -echo; IFS= read -r dsn; stty echo; hidden=false; printf '\n' >&2
             fi
             [ -n "$dsn" ] || die 'Set DATABASE_URL for your existing database.' ;;
         *) die 'DB_DRIVER must be local-postgres, postgres or mysql.' ;;
@@ -112,7 +126,7 @@ else
     unset dsn admin_password
 fi
 printf '%s' "$domain" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z0-9-]+$' || die 'Invalid managed PUBLIC_URL.'
-if ! id sshguard >/dev/null 2>&1; then useradd --system --user-group --no-create-home --shell /usr/sbin/nologin sshguard; fi
+if ! id sshguard-api >/dev/null 2>&1; then useradd --system --user-group --no-create-home --shell /usr/sbin/nologin sshguard-api; fi
 mkdir -p /opt/sshguard-releases
 chmod 0755 /opt/sshguard-releases
 stage=$(mktemp -d "/opt/sshguard-releases/$version.XXXXXX")
@@ -122,9 +136,12 @@ find "$stage" -type d -exec chmod 0755 {} +
 find "$stage" -type f -exec chmod 0644 {} +
 chmod 0755 "$stage/sshguard-api"
 # Validate database/migrations before switching or stopping the current API.
-systemd-run --quiet --wait --pipe --collect --unit="sshguard-check-$$" -p User=sshguard -p EnvironmentFile=/etc/sshguard/api.env "$stage/sshguard-api" -check
+systemd-run --quiet --wait --pipe --collect --unit="sshguard-check-$$" -p User=sshguard-api -p EnvironmentFile=/etc/sshguard/api.env "$stage/sshguard-api" -check
 if [ "$mode" = install ]; then
     [ ! -e /etc/nginx/conf.d/sshguard.conf ] || [ -f /etc/sshguard/nginx-managed ] || die 'Existing nginx sshguard.conf is not wizard-managed.'
+    nginx_backup=$(mktemp /etc/sshguard/.nginx-backup.XXXXXX)
+    if [ -f /etc/nginx/conf.d/sshguard.conf ]; then nginx_existed=true; cp /etc/nginx/conf.d/sshguard.conf "$nginx_backup"; fi
+    nginx_changed=true
     mkdir -p /etc/sshguard/certs
     if [ -z "$certificate" ] && [ -z "$config_file" ]; then
         prompt "TLS certificate fullchain path (empty = automatic Let's Encrypt): "; certificate=$answer
@@ -157,10 +174,10 @@ if [ "$mode" = install ]; then
     sed "s/guard.example.com/$domain/g" "$bundle/deploy/nginx.conf" > /etc/nginx/conf.d/sshguard.conf
     touch /etc/sshguard/nginx-managed
     nginx -t
-    cp "$bundle/deploy/sshguard-api.service" /etc/systemd/system/sshguard-api.service
-    chmod 0644 /etc/systemd/system/sshguard-api.service
-    systemctl daemon-reload
 fi
+cp "$bundle/deploy/sshguard-api.service" /etc/systemd/system/sshguard-api.service
+chmod 0644 /etc/systemd/system/sshguard-api.service
+systemctl daemon-reload
 [ ! -e /opt/sshguard.next ] && [ ! -L /opt/sshguard.next ] || die 'Unexpected /opt/sshguard.next; inspect it first.'
 if [ -L /opt/sshguard ]; then old=$(readlink /opt/sshguard); fi
 ln -s "$stage" /opt/sshguard.next

@@ -13,7 +13,7 @@ async function api(path,method='GET',body){
 }
 await api('/auth/login','POST',{username:'admin',password});
 if(process.argv[2]==='enroll'){
- const {id}=await api('/servers','POST',{name:'CI-native-systemd'});
+ const {id}=await api('/servers','POST',{name:process.env.SSHGUARD_TEST_SERVER_NAME || 'CI-native-systemd'});
  const result=await api(`/servers/${id}/enrollment`,'POST',{});
  const token=result.commands.ubuntu.match(/'([a-f0-9]{64})'/)?.[1];
  if(!token) throw Error('Generated installation command missing token');
@@ -25,6 +25,6 @@ if(process.argv[2]==='enroll'){
  const update=await api('/agent/update-commands');
  if(!update.commands.windows.includes('-Update')) throw Error('Update command missing');
  const result=await api('/dashboard/summary');
- if(result.servers!==1) throw Error('Upgrade lost or duplicated server');
+ if(result.servers!==(process.argv[2]==='verify-alpine'?2:1)) throw Error('Upgrade lost or duplicated server');
 }
 await api('/auth/logout','POST',{});

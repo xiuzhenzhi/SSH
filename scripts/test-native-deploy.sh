@@ -59,3 +59,13 @@ if sh "$tmp/broken/deploy.sh" --update; then echo 'Invalid API accepted' >&2; ex
 [ "$old" = "$(readlink /opt/sshguard)" ]
 curl -fsS https://guard.sshguard.test/api/v1/health >/dev/null
 echo 'Native deploy, HTTPS, real systemd Agent install/update/idempotence/rollback, and platform update passed.'
+SSHGUARD_TEST_SERVER_NAME=CI-Alpine-OpenRC node scripts/test-native-api.mjs enroll
+SSHGUARD_ENROLLMENT_TOKEN=$(cat "$tmp/enrollment")
+export SSHGUARD_ENROLLMENT_TOKEN
+docker run --rm --network host --add-host guard.sshguard.test:127.0.0.1 \
+    -e SSHGUARD_ENROLLMENT_TOKEN \
+    -v "$(pwd)/scripts:/ci:ro" \
+    -v "$tmp/cert.pem:/usr/local/share/ca-certificates/sshguard-ci.crt:ro" \
+    alpine:3.22 sh /ci/test-alpine-agent.sh
+unset SSHGUARD_ENROLLMENT_TOKEN
+node scripts/test-native-api.mjs verify-alpine

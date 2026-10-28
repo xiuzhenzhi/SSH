@@ -99,7 +99,13 @@ try {
     }
     # Token travels over stdin; only the short-lived install command contains it.
     if (-not $Update) {
-        $EnrollmentToken | & $download -enroll -endpoint $Endpoint -config $config
+        # PowerShell 5.1 hosts can send a UTF-8 BOM (or UTF-16) to native stdin.
+        # The token alphabet is ASCII; use a deterministic BOM-free encoding.
+        $previousEncoding = $OutputEncoding
+        try {
+            $OutputEncoding = New-Object Text.ASCIIEncoding
+            $EnrollmentToken | & $download -enroll -endpoint $Endpoint -config $config
+        } finally { $OutputEncoding = $previousEncoding }
         if ($LASTEXITCODE -ne 0) { throw 'Enrollment failed. Generate a new installation command and retry.' }
         $enrolled = $true
         $EnrollmentToken = $null

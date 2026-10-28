@@ -34,6 +34,9 @@ func validEndpoint(endpoint string) bool {
 	return e == nil && u.Scheme == "https" && u.Host != "" && u.User == nil && u.Path == "" && u.RawQuery == "" && u.Fragment == ""
 }
 func validToken(t string) bool { b, e := hex.DecodeString(t); return e == nil && len(b) == 32 }
+func enrollmentInput(input []byte) string {
+	return strings.TrimSpace(strings.TrimPrefix(string(input), "\ufeff"))
+}
 func request(ctx context.Context, endpoint, path, token string, data any, out any) error {
 	b, e := json.Marshal(data)
 	if e != nil {
@@ -187,7 +190,7 @@ func main() {
 		if e != nil {
 			log.Fatal(e)
 		}
-		if e = enrollAgent(context.Background(), *path, *endpoint, strings.TrimSpace(string(input))); e != nil {
+		if e = enrollAgent(context.Background(), *path, *endpoint, enrollmentInput(input)); e != nil {
 			log.Fatal(e)
 		}
 		log.Print("enrolled; phase 1 heartbeat only")

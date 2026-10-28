@@ -19,6 +19,9 @@ func TestInstallCommandsPlatforms(t *testing.T) {
 	if !strings.Contains(commands["windows"], "powershell.exe") || !strings.Contains(commands["windows"], "install-agent.ps1") {
 		t.Fatal("Windows installer unavailable")
 	}
+	if !strings.Contains(commands["windows"], "::Tls12") || !strings.Contains(commands["windows"], "$LASTEXITCODE -ne 0") {
+		t.Fatal("Windows bootstrap must enable TLS and propagate failure")
+	}
 	if powershellQuote("a'b") != "'a''b'" {
 		t.Fatal("PowerShell quote escaping")
 	}

@@ -121,6 +121,17 @@ func TestPlatformsAndValidation(t *testing.T) {
 		t.Fatal("invalid origin/token validation")
 	}
 }
+func TestEnrollmentInputEncoding(t *testing.T) {
+	token := strings.Repeat("a", 64)
+	for _, input := range []string{token, token + "\r\n", "\ufeff" + token + "\r\n"} {
+		if got := enrollmentInput([]byte(input)); got != token || !validToken(got) {
+			t.Fatal("stdin token encoding rejected")
+		}
+	}
+	if validToken(enrollmentInput([]byte("\ufeffbad"))) {
+		t.Fatal("invalid token accepted")
+	}
+}
 func TestCheckPreservesCredentialsAndRejectsOtherOrigin(t *testing.T) {
 	oldClient := client
 	defer func() { client = oldClient }()

@@ -70,9 +70,9 @@ func shellQuote(s string) string      { return "'" + strings.ReplaceAll(s, "'", 
 func powershellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
 func installCommands(origin, t string) map[string]string {
 	linux := func(privilege string) string {
-		return fmt.Sprintf(`(f=$(mktemp) && trap 'rm -f "$f"' EXIT && curl --proto '=https' -fsS %s -o "$f" && %ssh "$f" %s %s)`, shellQuote(origin+"/downloads/install-agent.sh"), privilege, shellQuote(origin), shellQuote(t))
+		return fmt.Sprintf(`(f=$(mktemp) && trap 'rm -f "$f"' EXIT && curl --proto '=https' --tlsv1.2 --connect-timeout 15 --max-time 60 -fsS %s -o "$f" && %ssh "$f" %s %s)`, shellQuote(origin+"/downloads/install-agent.sh"), privilege, shellQuote(origin), shellQuote(t))
 	}
-	windows := fmt.Sprintf(`$f=Join-Path $env:TEMP ([guid]::NewGuid().ToString()+'.ps1'); try { Invoke-WebRequest -UseBasicParsing -MaximumRedirection 0 -Uri %s -OutFile $f; if (-not $?) { throw 'Installer download failed' }; & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $f -Endpoint %s -EnrollmentToken %s } finally { if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f } }`, powershellQuote(origin+"/downloads/install-agent.ps1"), powershellQuote(origin), powershellQuote(t))
+	windows := fmt.Sprintf(`[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $f=Join-Path $env:TEMP ([guid]::NewGuid().ToString()+'.ps1'); try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 60 -MaximumRedirection 0 -Uri %s -OutFile $f; if (-not $?) { throw 'Installer download failed' }; & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $f -Endpoint %s -EnrollmentToken %s; if ($LASTEXITCODE -ne 0) { throw 'Agent installation/update failed' } } finally { if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f } }`, powershellQuote(origin+"/downloads/install-agent.ps1"), powershellQuote(origin), powershellQuote(t))
 	return map[string]string{"ubuntu": linux("sudo "), "debian": linux("sudo "), "alpine": linux(""), "windows": windows}
 }
 func (a *App) enrollment(c *gin.Context) {

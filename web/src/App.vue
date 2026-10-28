@@ -41,15 +41,24 @@ const time = (s: any) => s ? new Date(s).toLocaleString('zh-CN', {hour12: false}
 let generation = 0;
 let controller: AbortController | undefined;
 let loading = false;
+function clearSession() {
+  controller?.abort(); generation++; loading = false;
+  user.value = null; rows.value = []; summary.value = {}; error.value = '';
+  active.value = 'dashboard'; page.value = 1; more.value = false;
+  commands.value = {}; commandDialog.value = false; detail.value = null;
+  serverDialog.value = false; userDialog.value = false; passwordDialog.value = false;
+  passwords.current_password = ''; passwords.new_password = ''; newUser.password = ''; login.password = '';
+  search.value = ''; outcome.value = ''; username.value = ''; ip.value = ''; serverID.value = '';
+}
 async function api(path: string, method = 'GET', body?: any, signal?: AbortSignal) {
   const response = await fetch('/api/v1' + path, {method, signal, credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: body === undefined ? undefined : JSON.stringify(body)});
   const data = await response.json().catch(() => ({error: `HTTP ${response.status}`}));
-  if (!response.ok) { if (response.status === 401) {user.value = null; commands.value = {}; commandDialog.value = false;} throw Error(data.error || '请求失败'); }
+  if (!response.ok) { if (response.status === 401) clearSession(); throw Error(data.error || '请求失败'); }
   return data.data;
 }
 async function perform(fn: () => Promise<void>) {busy.value = true; try {await fn();} catch(e) {ElMessage.error((e as Error).message);} finally {busy.value = false;}}
 async function signIn() {await perform(async () => {user.value = await api('/auth/login', 'POST', login); login.password = ''; await load();});}
-async function signOut() {controller?.abort(); generation++; await perform(async () => {await api('/auth/logout','POST');user.value = null;rows.value = [];commands.value = {};commandDialog.value = false;});}
+async function signOut() {controller?.abort(); generation++; await perform(async () => {await api('/auth/logout','POST');clearSession();});}
 async function load() {
   controller?.abort(); controller = new AbortController(); const signal = controller.signal;
   const request = ++generation; error.value = ''; loading = true;
@@ -70,7 +79,7 @@ function editServer(row?: Row) {Object.assign(server, {id: row?.id || '',name: r
 async function saveServer() {await perform(async () => {await api('/servers' + (server.id ? '/' + server.id : ''),server.id ? 'PATCH' : 'POST',server);serverDialog.value = false;ElMessage.success('服务器已保存');await load();});}
 async function enrollment(row: Row) {updating.value = false; await perform(async () => {const result = await api(`/servers/${row.id}/enrollment`,'POST',{});commands.value = result.commands;platform.value = /windows/i.test(row.distribution) ? 'windows' : /alpine/i.test(row.distribution) ? 'alpine' : /debian/i.test(row.distribution) ? 'debian' : 'ubuntu';expires.value = result.expires_at;commandDialog.value = true;});}
 async function updateAgent(row: Row) {updating.value = true; await perform(async () => {const result = await api('/agent/update-commands'); commands.value = result.commands; platform.value = /windows/i.test(row.distribution) ? 'windows' : /alpine/i.test(row.distribution) ? 'alpine' : 'ubuntu'; commandDialog.value = true;});}
-async function changePassword() {await perform(async () => {await api('/auth/password','POST',passwords); passwords.current_password = ''; passwords.new_password = ''; passwordDialog.value = false; commands.value = {}; commandDialog.value = false; user.value = null; ElMessage.success('密码已修改，所有旧会话已失效，请重新登录');});}
+async function changePassword() {await perform(async () => {await api('/auth/password','POST',passwords); clearSession(); ElMessage.success('密码已修改，所有旧会话已失效，请重新登录');});}
 async function revoke(row: Row) {try {await ElMessageBox.confirm(`撤销 ${row.name} 的 Agent 凭证后将拒绝其后续上报。`, '撤销凭证', {type:'warning',confirmButtonText:'撤销',cancelButtonText:'取消'});}catch{return;}await perform(async () => {await api(`/servers/${row.id}/revoke`,'POST',{});await load();});}
 async function saveUser() {await perform(async () => {await api('/users','POST',newUser);userDialog.value = false;newUser.password = '';await load();});}
 async function copyCommand() {try {await navigator.clipboard.writeText(command.value);ElMessage.success('命令已复制');}catch{ElMessage.warning('请选中下方命令手动复制');}}

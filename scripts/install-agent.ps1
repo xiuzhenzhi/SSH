@@ -67,6 +67,7 @@ $wasRunning = $service -and $service.Status -eq 'Running'
 $enrolled = $false
 $replaced = $false
 $backup = Join-Path $staging 'previous.exe'
+$replaceBackup = Join-Path $staging 'replaced.exe'
 $keepBackup = $false
 try {
     if ($Update -and (-not $service -or -not (Test-Path -LiteralPath $config) -or -not (Test-Path -LiteralPath $exe))) { throw 'Agent not installed; generate an installation command.' }
@@ -115,7 +116,8 @@ try {
     # Replace the file ACL too; do not retain explicit permissions from an older config.
     Protect-File $config
     if ($Update) { $replaced = $true }
-    if (Test-Path -LiteralPath $exe) { [IO.File]::Replace($download,$exe,$null) }
+    # PS 5.1 coerces $null string arguments to an empty path; use a real backup.
+    if (Test-Path -LiteralPath $exe) { [IO.File]::Replace($download,$exe,$replaceBackup) }
     else { Move-Item -LiteralPath $download -Destination $exe }
     Protect-File $exe
     & $exe -service install -config $config
@@ -143,7 +145,7 @@ try {
     throw
 } finally {
     # Only delete the exact temporary files created by this invocation.
-    $files = @($download,$checksum)
+    $files = @($download,$checksum,$replaceBackup)
     if (-not $keepBackup) { $files += $backup }
     foreach ($file in $files) { if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file -Force } }
     if (-not $keepBackup -and (Test-Path -LiteralPath $staging)) { Remove-Item -LiteralPath $staging }

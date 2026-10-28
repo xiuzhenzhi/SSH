@@ -59,7 +59,7 @@ systemctl status sshguard-agent
 journalctl -u sshguard-agent -n 50 --no-pager
 # Alpine
 rc-service sshguard-agent status
-logread | grep sshguard-agent
+grep sshguard-agent /var/log/messages
 ```
 
 新安装的 Alpine Agent 交给 syslog 管理日志与轮转，需启用本机 syslog 服务；从 v0.2 更新保留原服务定义，原 `/var/log/sshguard/agent.log` 仍需 logrotate。Windows 交由事件日志保留策略管理。卸载脚本：`scripts/uninstall-agent.sh`（root）或 `scripts/uninstall-agent.ps1`（管理员 PowerShell）。卸载保留凭证文件和历史日志，须在后台撤销凭证；系统用户/事件源不自动删除。

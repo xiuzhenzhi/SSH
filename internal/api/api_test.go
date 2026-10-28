@@ -260,4 +260,5 @@ func TestIntegration(t *testing.T) {
 	if os.Getenv("SSHGUARD_LOAD_TEST") == "1" {
 		testConcurrentAgents(t, db)
 	}
+	testRetentionPreservesUnsent(t, db, id)
 }

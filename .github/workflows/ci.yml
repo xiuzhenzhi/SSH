@@ -14,6 +14,7 @@ jobs:
   go:
     name: Go / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -25,6 +26,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      - if: runner.os == 'Windows'
+        shell: powershell
+        run: ./scripts/test-windows-service.ps1
       - run: go test ./...
       - run: go vet ./...
       - if: runner.os == 'Linux'
@@ -38,9 +42,6 @@ jobs:
       - if: runner.os == 'Windows'
         shell: powershell
         run: ./scripts/test-windows-installer.ps1
-      - if: runner.os == 'Windows'
-        shell: powershell
-        run: ./scripts/test-windows-service.ps1
   postgres:
     name: PostgreSQL integration
     runs-on: ubuntu-latest

@@ -108,7 +108,9 @@ try {
         } finally { $OutputEncoding = $previousEncoding }
         if ($LASTEXITCODE -ne 0) { throw 'Enrollment failed. Generate a new installation command and retry.' }
         $enrolled = $true
-        $EnrollmentToken = $null
+        # Assigning null to a ValidatePattern parameter raises in PowerShell 5.1.
+        [void]$PSBoundParameters.Remove('EnrollmentToken')
+        Remove-Variable -Name EnrollmentToken
     }
     # Replace the file ACL too; do not retain explicit permissions from an older config.
     Protect-File $config

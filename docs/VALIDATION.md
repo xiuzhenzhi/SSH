@@ -11,7 +11,7 @@
 - Vue 类型检查和生产构建通过；JS 约 454 kB（gzip 158 kB），CSS 约 124 kB（gzip 19 kB）；未引入大型图表库。
 - npm audit 0 漏洞。govulncheck：0 可达代码漏洞、0 导入包漏洞；仍有 1 个未调用依赖模块提示，持续跟进。
 
-新增功能的最终云端 CI 结果在发布前补充。此前安装升级基线完整 CI 已通过：[40668911927](https://github.com/xiuzhenzhi/SSH/actions/runs/40668911927)，包含 Windows SCM、Ubuntu systemd/Nginx、Alpine OpenRC、MySQL 5.6.51/8.4 与 PostgreSQL。不能将基线结果冒充新增采集版本的验收。
+新增功能完整云端 CI 已通过：[40679874231](https://github.com/xiuzhenzhi/SSH/actions/runs/40679874231)（代码 e9a970e）。覆盖 Windows SCM 实际服务采集/升级、Ubuntu systemd/Nginx HTTPS 采集与更新回滚、Alpine OpenRC 实际 syslog 采集与升级、PostgreSQL、MySQL 5.6.51/8.4 的全新库及旧 utf8mb4_bin 库迁移、70 连接重放去重、队列身份绑定和历史清理保留未送达证据。两个平台包与四个 Agent 的构建及校验均通过。MySQL 5.6 初始化规则的 FROM DUAL 兼容性问题已修复。
 
 未提供真实通知账号、公网域名、70 台目标机器及 ARM64 实机；未验证这些环境的实际投递、ACME、长期容量或全部 OS 版本。生产分批检查见 [生产验收](PRODUCTION.md)。
 

@@ -8,5 +8,5 @@ if (existsSync('.env')) throw Error('.env already exists; edit it explicitly ins
 const secret = () => randomBytes(24).toString('hex');
 const password = secret();
 const dsn = driver === 'postgres' ? `postgres://sshguard:${password}@db:5432/sshguard?sslmode=disable` : `sshguard:${password}@tcp(db:3306)/sshguard?parseTime=true&loc=UTC&charset=utf8mb4`;
-writeFileSync('.env', `DB_DRIVER=${driver}\nCOMPOSE_FILE=compose.yaml:compose.${driver}.yaml${url.protocol === 'http:' ? ':compose.local.yaml' : ''}\nCOMPOSE_PATH_SEPARATOR=:\nDATABASE_URL=${dsn}\nDB_PASSWORD=${password}\nMYSQL_ROOT_PASSWORD=${secret()}\nPUBLIC_URL=${origin}\nADMIN_USERNAME=admin\nADMIN_PASSWORD=${secret()}\n`, { mode: 0o600, flag: 'wx' });
+writeFileSync('.env', `DB_DRIVER=${driver}\nCOMPOSE_FILE=compose.yaml:compose.${driver}.yaml${url.protocol === 'http:' ? ':compose.local.yaml' : ''}\nCOMPOSE_PATH_SEPARATOR=:\nDATABASE_URL=${dsn}\nDB_PASSWORD=${password}\nMYSQL_ROOT_PASSWORD=${secret()}\nPUBLIC_URL=${origin}\nADMIN_USERNAME=admin\nADMIN_PASSWORD=${secret()}\nENCRYPTION_KEY=${randomBytes(32).toString('hex')}\n`, { mode: 0o600, flag: 'wx' });
 console.log(`Created .env for ${driver}. Initial admin password is in .env. Run docker compose up -d --build.`);

@@ -22,6 +22,13 @@ if(process.argv[2]==='enroll'){
 }else{
  const server=await api('/servers/'+readFileSync(`${state}/server`,'utf8'));
  if(server.status!=='online' || server.agent_version!==readFileSync('VERSION','utf8').trim()) throw Error('Agent status/version incorrect');
+ let collected=false;
+ for(let i=0;i<15;i++){
+   const result=await api('/events?server_id='+server.id+'&username=ci-fixture');
+   if(result.items.some(x=>x.outcome==='success') && result.items.some(x=>x.outcome==='failure')){collected=true;break;}
+   await new Promise(resolve=>setTimeout(resolve,1000));
+ }
+ if(!collected)throw Error('Installed Agent failed to collect and upload real syslog/journal fixture events');
  const update=await api('/agent/update-commands');
  if(!update.commands.windows.includes('-Update')) throw Error('Update command missing');
  const result=await api('/dashboard/summary');

@@ -6,7 +6,7 @@
 
 凭证已撤销时更新会拒绝，必须由管理员重新生成安装命令。首次安装或重新注册会更换凭证，不能当作更新使用。Linux 凭证文件为 root 所有、服务组只读；Windows 凭证仅 Administrators/SYSTEM 可写，LocalService 只读。更新需本机管理员权限，平台不提供远程命令执行。SHA256 是完整性检查，信任来源仍是平台 HTTPS。
 
-> 当前仅注册与心跳，尚不采集 SSH 日志。
+> 安装后分别检查连接状态与采集状态；在线心跳不代表日志源可读。
 
 ### 4. 登录与接入服务器
 
@@ -62,7 +62,7 @@ rc-service sshguard-agent status
 grep sshguard-agent /var/log/messages
 ```
 
-新安装的 Alpine Agent 交给 syslog 管理日志与轮转，需启用本机 syslog 服务；从 v0.2 更新保留原服务定义，原 `/var/log/sshguard/agent.log` 仍需 logrotate。Windows 交由事件日志保留策略管理。卸载脚本：`scripts/uninstall-agent.sh`（root）或 `scripts/uninstall-agent.ps1`（管理员 PowerShell）。卸载保留凭证文件和历史日志，须在后台撤销凭证；系统用户/事件源不自动删除。
+新安装的 Alpine Agent 交给 syslog 管理日志与轮转，需启用本机 syslog 服务；更新会刷新服务定义并保留配置及队列；旧日志文件仍需按本机策略清理。Windows 交由事件日志保留策略管理。卸载脚本：`scripts/uninstall-agent.sh`（root）或 `scripts/uninstall-agent.ps1`（管理员 PowerShell）。卸载保留凭证文件和历史日志，须在后台撤销凭证；系统用户/事件源不自动删除。
 
 
 ## 单台验收
@@ -73,4 +73,22 @@ grep sshguard-agent /var/log/messages
 4. 撤销凭证后心跳返回 401，不能继续上传事件。
 5. 新命令重新注册后旧凭证失效，新凭证恢复心跳。
 
-在线不代表采集与告警已经启用。不要克隆已注册的配置到其他机器。
+6. 执行一次成功及失败 SSH 登录，核对事件，再验证通知实际到达。
+7. 断开平台网络后生成事件，恢复网络，确认队列清空且事件未重复。
+
+不要克隆已注册的配置或 state.db 到其他机器。
+
+## 采集源与持久化
+
+Linux 优先使用正在运行的 systemd journal（sshd / sshd-session），否则选择 auth.log、secure、messages。Windows 使用 OpenSSH/Operational，需先安装并运行 Windows OpenSSH Server。仅监控 OpenSSH 登录，不采集 Windows RDP、图形登录或通用安全日志。
+
+首次启动从当前日志尾部开始；后续按 journal cursor、Windows EventRecordID 或文件身份+字节偏移恢复。文件改名轮转会先读取旧文件；旧文件已删除、压缩或日志清空时报告采集缺口，不能恢复操作系统已删除的日志。复制截断与写入同时发生仍可能丢失源日志，应优先使用 journal 或改名轮转。
+
+可在 agent.json 增加 log_file 指定可读的 syslog 格式 SSH 日志文件。文件时间支持 RFC3339 / 常见 syslog 时间。不要指定无关日志或可由普通用户写入的文件。
+
+- Linux 状态：/var/lib/sshguard-agent/state.db，0700 专用目录，服务用户可写；安装器加入存在的 adm / systemd-journal 组用于读日志。
+- Windows 状态：%ProgramData%\SSHGuard\state\state.db，只给 SSHGuardAgent 服务 SID 修改权限；OpenSSH 通道仅追加该服务的读取权限，不授予通用 Event Log Readers。
+- 队列最多 10,000 个事件，满时暂停采集，不推进读取位置。服务端明确拒绝的记录单独隔离（上限 1,000），隔离满时保留剩余队列。磁盘满或状态文件不可写时会报告异常。
+- 更新保留队列和读取位置；卸载保留状态，重新注册为另一台服务器前须人工归档旧状态，不能让未确认事件归属错误服务器。
+
+默认每 2 秒检查日志和待传事件，30 秒心跳。WebSocket 重连采用退避与随机延迟；不可用时走 HTTPS。停机超过操作系统日志保留时间或积压超过 30 天可能产生不可恢复缺口，请监控队列深度与日志空间。

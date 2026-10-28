@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"sshguard/internal/storage"
+	"sshguard/migrations"
 	"strings"
 	"testing"
 	"time"
@@ -30,6 +31,7 @@ func TestValidEvent(t *testing.T) {
 	}
 }
 func TestConfigRequiresHTTPS(t *testing.T) {
+	t.Setenv("ENCRYPTION_KEY", strings.Repeat("ab", 32))
 	t.Setenv("DATABASE_URL", "test")
 	for _, origin := range []string{"http://guard.example.com", "https://guard.example.com/path", "https://user:pass@guard.example.com"} {
 		t.Setenv("PUBLIC_URL", origin)
@@ -59,6 +61,23 @@ func TestIntegration(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer db.Close()
+	if driver == "mysql" && os.Getenv("SSHGUARD_TEST_SCHEMA") == "legacy" {
+		// Reproduce old deployments whose foreign-key UUID columns use utf8mb4_bin.
+		for _, name := range []string{"001_init.sql", "002_events.sql"} {
+			data, e := migrations.Files.ReadFile("mysql/" + name)
+			if e != nil {
+				t.Fatal(e)
+			}
+			for _, query := range strings.Split(strings.ReplaceAll(string(data), "utf8mb4_unicode_ci", "utf8mb4_bin"), ";") {
+				if strings.TrimSpace(query) == "" {
+					continue
+				}
+				if _, e = db.Exec(ctx, query); e != nil {
+					t.Fatal("legacy schema fixture", e)
+				}
+			}
+		}
+	}
 	if e = storage.Migrate(ctx, db); e != nil {
 		t.Fatal(e)
 	}
@@ -77,8 +96,14 @@ func TestIntegration(t *testing.T) {
 			t.Fatal("MySQL session settings", zone, charset, e)
 		}
 		t.Log("MySQL tested:", version)
+		if os.Getenv("SSHGUARD_TEST_SCHEMA") == "legacy" {
+			var collation string
+			if e = db.Row(ctx, `SELECT COLLATION_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='servers' AND COLUMN_NAME='id'`).Scan(&collation); e != nil || collation != "utf8mb4_bin" {
+				t.Fatal("legacy fixture collation not preserved", collation, e)
+			}
+		}
 	}
-	cfg := Config{Driver: driver, PublicURL: "https://guard.example.com", AdminUsername: "admin", AdminPassword: "integration-password-2026", SecureCookie: true}
+	cfg := Config{Driver: driver, PublicURL: "https://guard.example.com", AdminUsername: "admin", AdminPassword: "integration-password-2026", SecureCookie: true, EncryptionKey: strings.Repeat("ab", 32)}
 	if e = Bootstrap(ctx, db, cfg); e != nil {
 		t.Fatal(e)
 	}
@@ -150,10 +175,31 @@ func TestIntegration(t *testing.T) {
 	if result["data"].(map[string]any)["duplicates"] != float64(1) {
 		t.Fatal("dedup failed")
 	}
+	testAgentStream(t, handler, db, id, agent, event)
+	testDeliveryLeases(t, db)
+	testHealthRecovery(t, db, id, agent)
+	channelBody := map[string]any{"name": "disabled local fixture", "kind": "webhook", "enabled": false, "config": map[string]string{"url": "https://127.0.0.1:1/fixture", "secret": "must-never-be-returned"}}
+	channelResult, _ := call("POST", "/channels", channelBody, session, "", true, 200)
+	channelID := channelResult["data"].(map[string]any)["id"].(string)
+	channelResult, _ = call("GET", "/channels/"+channelID, nil, session, "", false, 200)
+	encoded, _ := json.Marshal(channelResult)
+	if bytes.Contains(encoded, []byte("must-never-be-returned")) || bytes.Contains(encoded, []byte("https://127.0.0.1")) {
+		t.Fatal("channel secrets leaked")
+	}
+	masked := channelResult["data"].(map[string]any)
+	if masked["configured"].(map[string]any)["secret"] != true {
+		t.Fatal("missing masked-secret indicator")
+	}
+	channelBody["config"] = map[string]string{}
+	call("PATCH", "/channels/"+channelID, channelBody, session, "", true, 200)
+	call("POST", "/channels/"+channelID+"/test", map[string]any{}, session, "", true, 409)
+	call("GET", "/rules", nil, session, "", false, 200)
+	call("GET", "/notifications", nil, session, "", false, 200)
 	event["outcome"] = "failure"
 	call("POST", "/agent/events/batch", batch, "", agent, false, 400)
 	call("GET", "/events?source_ip=2001:db8::1", nil, session, "", false, 200)
 	call("GET", "/dashboard/summary", nil, session, "", false, 200)
+	call("GET", "/dashboard/overview", nil, session, "", false, 200)
 	for _, role := range []string{"viewer", "operator"} {
 		name := role + uuid.NewString()[:8]
 		call("POST", "/users", map[string]string{"username": name, "password": "viewer-test-password", "role": role}, session, "", true, 200)
@@ -164,6 +210,8 @@ func TestIntegration(t *testing.T) {
 		call("POST", "/servers/"+id+"/enrollment", map[string]string{}, s, "", true, 403)
 		call("GET", "/audit-logs", nil, s, "", false, 403)
 		call("GET", "/agent/update-commands", nil, s, "", false, 403)
+		call("GET", "/channels", nil, s, "", false, 403)
+		call("GET", "/rules", nil, s, "", false, 403)
 		want := 403
 		if role == "operator" {
 			want = 200
@@ -209,4 +257,7 @@ func TestIntegration(t *testing.T) {
 		call("POST", "/auth/login", map[string]string{"username": name, "password": "wrong-password"}, "", "", true, want)
 	}
 	fmt.Println("integration passed:", driver, "migration, auth, CSRF, RBAC, enrollment, replay, heartbeat, events, dedup, revocation, audit, rate limiting")
+	if os.Getenv("SSHGUARD_LOAD_TEST") == "1" {
+		testConcurrentAgents(t, db)
+	}
 }

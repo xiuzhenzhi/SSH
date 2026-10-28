@@ -17,7 +17,7 @@
 | Alpine 没有 curl/证书 | 精简系统缺少前置依赖 | root 执行 apk add --no-cache curl ca-certificates |
 | Windows 服务安装拒绝 | 未提权，或已存在同名不同路径服务 | 管理员 PowerShell 执行；确认旧安装归属，不覆盖不相关服务 |
 | Windows 下载/脚本被组织策略阻止 | 企业签名、执行或代理策略 | 走组织批准的分发流程；不关闭终端防护或持久修改执行策略 |
-| 页面没有 SSH 事件 | 当前 Agent 尚不采集日志 | 这是阶段边界；用事件 API 联调，等待采集版本 |
+| 页面没有 SSH 事件 | 日志源不可读、未启用 SSH 日志或队列未送达 | 查看采集状态与队列；实际发起一次 SSH 登录；检查 journal / auth.log / OpenSSH 通道权限 |
 | 重复事件计数大于 0 | Agent 重试同一事件 UUID | 正常幂等行为，不要为重试生成新 UUID |
 
 日志位置：

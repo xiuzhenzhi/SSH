@@ -166,7 +166,9 @@ func (a *App) session(c *gin.Context) {
 		return
 	}
 	var u User
-	e = a.db.Row(c, `SELECT u.id,u.username,u.role FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?`, hash(t), time.Now().UTC()).Scan(&u.ID, &u.Username, &u.Role)
+	authCtx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	e = a.db.Row(authCtx, `SELECT u.id,u.username,u.role FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?`, hash(t), time.Now().UTC()).Scan(&u.ID, &u.Username, &u.Role)
+	cancel()
 	if e == sql.ErrNoRows {
 		bad(c, 401, "会话已失效")
 		return

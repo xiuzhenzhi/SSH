@@ -91,7 +91,9 @@ func TestHeartbeatStopsWithContext(t *testing.T) {
 	defer cancel()
 	done := make(chan struct{})
 	go func() {
-		heartbeatLoop(ctx, Config{Endpoint: server.URL, Token: strings.Repeat("a", 64)}, time.Hour)
+		transport := &transport{cfg: Config{Endpoint: server.URL, Token: strings.Repeat("a", 64)}, nextDial: time.Now().Add(time.Hour)}
+		defer transport.close()
+		_ = transport.send(ctx, "heartbeat", map[string]string{"version": version}, nil)
 		close(done)
 	}()
 	select {

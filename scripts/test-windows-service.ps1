@@ -28,6 +28,9 @@ try {
     $env:SSHGUARD_TEST_PFX = Join-Path $temp 'server.pfx'
     $env:SSHGUARD_TEST_PFX_PASSWORD = $pfxPassword
     $env:SSHGUARD_TEST_DOWNLOAD_ROOT = $temp
+    New-Item -ItemType Directory -Force -Path (Split-Path $config) | Out-Null
+    $env:SSHGUARD_TEST_LOG = Join-Path (Split-Path $config) 'fixture-auth.log'
+    [IO.File]::WriteAllText($env:SSHGUARD_TEST_LOG,'')
     $fixture = Join-Path $PSScriptRoot 'test-agent-server.mjs'
     $server = Start-Process -FilePath (Get-Command node).Source -ArgumentList @(('"{0}"' -f $fixture)) -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $temp 'server.log') -RedirectStandardError (Join-Path $temp 'server-error.log')
     $ready = $false
@@ -39,6 +42,17 @@ try {
     if ((Get-Service SSHGuardAgent).Status -ne 'Running') { throw 'Service not running' }
     $service = Get-CimInstance Win32_Service -Filter "Name='SSHGuardAgent'"
     if ($service.StartName -ne 'NT AUTHORITY\LocalService') { throw 'Unexpected service identity' }
+    Start-Sleep -Seconds 3
+    $line=(Get-Date).ToUniversalTime().ToString('o')+' host sshd[1]: Accepted publickey for ci-fixture from 192.0.2.10 port 2222 ssh2'+"`n"
+    [IO.File]::AppendAllText($env:SSHGUARD_TEST_LOG,$line,(New-Object Text.UTF8Encoding($false)))
+    $collected=$false
+    for($i=0;$i -lt 15;$i++) {
+        $result=Invoke-RestMethod -Uri https://localhost:9443/collected
+        if($result.count -eq 1){$collected=$true;break}
+        Start-Sleep -Seconds 1
+    }
+    if(-not $collected){throw 'LocalService did not collect and upload the fixture event over HTTPS fallback'}
+    if(-not (Test-Path (Join-Path (Split-Path $config) 'state\state.db'))){throw 'Durable state missing'}
     $configHash = (Get-FileHash $config -Algorithm SHA256).Hash
     Stop-Service SSHGuardAgent
     (Get-Service SSHGuardAgent).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30))

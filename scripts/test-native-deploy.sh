@@ -21,6 +21,9 @@ token=$(cat "$tmp/enrollment")
 sh "$bundle/web/downloads/install-agent.sh" https://guard.sshguard.test "$token"
 unset token
 systemctl is-active --quiet sshguard-agent
+sleep 3
+logger -t sshd 'Accepted publickey for ci-fixture from 192.0.2.10 port 2222 ssh2'
+logger -t sshd 'Failed password for invalid user ci-fixture from 192.0.2.10 port 2223 ssh2'
 before_config=$(sha256sum /etc/sshguard/agent.json)
 before_env=$(sha256sum /etc/sshguard/api.env)
 # Give the installed ELF a harmless trailing byte so update exercises replacement.

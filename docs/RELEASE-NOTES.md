@@ -1,15 +1,13 @@
-# SSHGuard v0.3.0-alpha.1
+# SSHGuard v0.3.0
 
-本版重点：让中央平台和 Agent 更容易安装、更新和维护。
+本版接通 SSH 采集、可靠上报、规则与通知的完整路径，重构控制台为浅色概览与告警工作台。
 
-- 原生一键部署，无需 Docker/Go/Node：本机 PostgreSQL 或已有 MySQL/PostgreSQL、systemd、Nginx、可选自动 HTTPS。
-- Agent 支持 Windows / Ubuntu / Debian / Alpine，amd64 / arm64；保留凭证更新、SHA256 校验和失败回退。
-- MySQL 5.6.51 / 8.4 兼容与测试，中文/emoji、UTC、索引迁移重试。
-- 改密后统一失效旧会话、请求取消/超时、认证限流、只读 Agent 凭证、认证元数据清理。
-- Web 按需加载、动态页面 30 秒刷新、版本展示、更新命令入口。
+- Windows OpenSSH 事件、Linux journal / 文件采集，读取位置与本地队列原子持久化。
+- HTTPS + WebSocket，匹配确认后出队、断线回退、事务去重；浏览器实时提示与轮询兜底。
+- 登录 / 特权用户 / 失败阈值 / 离线 / 采集异常规则，可信 CIDR、分组、冷却、确认与恢复状态。
+- 企业微信、钉钉、飞书、Telegram、SMTP、Webhook，AES-GCM 配置加密、持久化投递任务、限速、租约与重试。
+- 保留原生一键部署、MySQL 5.6 兼容和四系统 Agent 安装更新；新增状态目录权限与服务读日志权限。
 
-升级前备份数据库与配置，新增索引会执行 DDL；自动回退仅恢复程序，不逆向迁移数据库。从 v0.2 手工部署迁入步骤见 [一键部署文档](QUICKSTART.md)。先更新平台，再更新 Agent。
+升级前备份数据库和配置。新增 004_alerting.sql；手工/Compose 部署必须生成并保存 ENCRYPTION_KEY（64 位十六进制）。原生向导仅在缺失时自动生成，后续更新保留。丢失密钥将无法恢复通知渠道配置。先平台后 Agent；程序回退不撤销数据库迁移。
 
-下载中央平台包 sshguard-linux-amd64.tar.gz / sshguard-linux-arm64.tar.gz，校验后解压，运行 sudo sh deploy.sh。Windows/Linux 独立 Agent 和安装器同时提供。安装说明见仓库 README。
-
-这仍是基础预览版：Agent 只有注册和心跳，真实 SSH 日志采集、规则、通知尚未实现。MySQL 5.6 已停止官方维护，兼容性不代表数据库安全维护。无需把 GitHub 凭证分发到 Agent。
+下载中央平台包 sshguard-linux-amd64.tar.gz / sshguard-linux-arm64.tar.gz，校验后解压执行 sudo sh deploy.sh。完整安装见 [README](../README.md)，生产分批验收与明确限制见 [生产验收](PRODUCTION.md)。

@@ -17,7 +17,7 @@ else die 'A running systemd or OpenRC installation is required.'; fi
 command -v curl >/dev/null 2>&1 || die 'Install curl and ca-certificates first (apt or apk).'
 command -v sha256sum >/dev/null 2>&1
 case "$(uname -m)" in x86_64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; *) die 'Only amd64 / arm64 supported.' ;; esac
-for path in /etc/sshguard /etc/sshguard/agent.json /usr/local/bin/sshguard-agent /etc/systemd/system/sshguard-agent.service /etc/init.d/sshguard-agent; do
+for path in /var/lib/sshguard-agent /etc/sshguard /etc/sshguard/agent.json /usr/local/bin/sshguard-agent /etc/systemd/system/sshguard-agent.service /etc/init.d/sshguard-agent; do
     [ ! -L "$path" ] || die "Refusing symlink: $path"
 done
 config=/etc/sshguard/agent.json
@@ -32,12 +32,70 @@ was_active=false
 service_stop() { if [ "$init" = systemd ]; then systemctl stop sshguard-agent; else rc-service sshguard-agent stop; fi; }
 service_start() { if [ "$init" = systemd ]; then systemctl start sshguard-agent; else rc-service sshguard-agent start; fi; }
 service_active() { if [ "$init" = systemd ]; then systemctl is-active --quiet sshguard-agent; else rc-service sshguard-agent status >/dev/null 2>&1; fi; }
+write_service() {
+if [ "$init" = systemd ]; then
+    cat > /etc/systemd/system/sshguard-agent.service <<'UNIT'
+[Unit]
+Description=SSHGuard Agent
+After=network-online.target
+Wants=network-online.target
+[Service]
+User=sshguard
+Group=sshguard
+ExecStart=/usr/local/bin/sshguard-agent -config /etc/sshguard/agent.json
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/sshguard-agent
+UMask=0077
+[Install]
+WantedBy=multi-user.target
+UNIT
+    systemctl daemon-reload
+    systemctl enable sshguard-agent
+else
+    cat > /etc/init.d/sshguard-agent <<'OPENRC'
+#!/sbin/openrc-run
+description="SSHGuard Agent"
+supervisor="supervise-daemon"
+command="/usr/local/bin/sshguard-agent"
+command_args="-config /etc/sshguard/agent.json"
+command_user="sshguard:sshguard"
+respawn_delay=10
+respawn_max=0
+output_logger="logger -t sshguard-agent"
+error_logger="logger -t sshguard-agent"
+depend() { need net; after firewall; }
+OPENRC
+    chmod 0755 /etc/init.d/sshguard-agent
+    rc-update add sshguard-agent default
+
+fi
+}
+prepare_collection() {
+    mkdir -p /var/lib/sshguard-agent
+    chown sshguard:sshguard /var/lib/sshguard-agent
+    chmod 0700 /var/lib/sshguard-agent
+    for group in adm systemd-journal; do
+        if grep -q "^$group:" /etc/group; then
+            if command -v usermod >/dev/null 2>&1; then usermod -a -G "$group" sshguard
+            else addgroup sshguard "$group"; fi
+        fi
+    done
+}
 cleanup() {
     status=$?
     trap - EXIT HUP INT TERM
     if "$rollback"; then
         service_stop || true
         if [ -f "$tmp/previous" ]; then mv -f "$tmp/previous" "$exe"; fi
+        if [ -f "$tmp/previous-service" ]; then
+            cp -p "$tmp/previous-service" "$service_file"
+            if [ "$init" = systemd ]; then systemctl daemon-reload; fi
+        fi
         if "$was_active"; then service_start || true; fi
         echo 'Update failed; previous binary restored. Configuration preserved.' >&2
     fi
@@ -64,11 +122,15 @@ if [ "$mode" = update ]; then
         if ! service_active; then service_start; sleep 2; service_active; fi
         echo 'Already up to date; credentials verified and service running.'; exit 0
     fi
+    prepare_collection
+    if [ "$init" = systemd ]; then service_file=/etc/systemd/system/sshguard-agent.service; else service_file=/etc/init.d/sshguard-agent; fi
+    cp -p "$service_file" "$tmp/previous-service"
     cp -p "$exe" "$tmp/previous"
     if service_active; then was_active=true; fi
     rollback=true
     service_stop
     mv -f "$tmp/agent" "$exe"
+    write_service
     service_start
     sleep 2
     service_active
@@ -81,6 +143,7 @@ if ! id sshguard >/dev/null 2>&1; then
     if command -v useradd >/dev/null 2>&1; then useradd --system --user-group --no-create-home --shell /usr/sbin/nologin sshguard
     else addgroup -S sshguard; adduser -S -D -H -h /nonexistent -s /sbin/nologin -G sshguard sshguard; fi
 fi
+prepare_collection
 mkdir -p /etc/sshguard
 chown root:sshguard /etc/sshguard
 chmod 0750 /etc/sshguard
@@ -90,47 +153,9 @@ chown root:sshguard "$config"
 chmod 0640 "$config"
 if service_active; then service_stop; fi
 mv -f "$tmp/agent" "$exe"
-if [ "$init" = systemd ]; then
-    cat > /etc/systemd/system/sshguard-agent.service <<'UNIT'
-[Unit]
-Description=SSHGuard Agent
-After=network-online.target
-Wants=network-online.target
-[Service]
-User=sshguard
-Group=sshguard
-ExecStart=/usr/local/bin/sshguard-agent -config /etc/sshguard/agent.json
-Restart=on-failure
-RestartSec=10
-NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=true
-PrivateTmp=true
-UMask=0077
-[Install]
-WantedBy=multi-user.target
-UNIT
-    systemctl daemon-reload
-    systemctl enable --now sshguard-agent
-else
-    cat > /etc/init.d/sshguard-agent <<'OPENRC'
-#!/sbin/openrc-run
-description="SSHGuard Agent"
-supervisor="supervise-daemon"
-command="/usr/local/bin/sshguard-agent"
-command_args="-config /etc/sshguard/agent.json"
-command_user="sshguard:sshguard"
-respawn_delay=10
-respawn_max=0
-output_logger="logger -t sshguard-agent"
-error_logger="logger -t sshguard-agent"
-depend() { need net; after firewall; }
-OPENRC
-    chmod 0755 /etc/init.d/sshguard-agent
-    rc-update add sshguard-agent default
-    rc-service sshguard-agent start
-fi
+write_service
+service_start
 sleep 2
 service_active
 "$exe" -check -endpoint "$endpoint" -config "$config"
-echo "Installed for $init. Registration + heartbeat; SSH collection is not implemented."
+echo "Installed for $init. Durable SSH collection enabled; check collector health in the console."

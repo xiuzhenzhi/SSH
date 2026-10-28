@@ -18,21 +18,30 @@ type App struct {
 	db        *storage.DB
 	cfg       Config
 	dummyHash string
+	hub       *liveHub
 }
 
-var Version = "0.3.0-alpha.1"
+var Version = "0.3.0"
 
 func New(db *storage.DB, cfg Config) *gin.Engine {
+	return NewApp(db, cfg).Router()
+}
+func NewApp(db *storage.DB, cfg Config) *App {
 	h, _ := bcrypt.GenerateFromPassword([]byte(token()), 12)
-	a := &App{db, cfg, string(h)}
+	return &App{db: db, cfg: cfg, dummyHash: string(h), hub: newLiveHub()}
+}
+func (a *App) Router() *gin.Engine {
+	db, cfg := a.db, a.cfg
 	r := gin.New()
 	r.ContextWithFallback = true
 	r.Use(gin.Recovery())
 	_ = r.SetTrustedProxies(nil)
 	r.Use(func(c *gin.Context) {
-		ctx, cancel := context.WithTimeout(c.Request.Context(), 20*time.Second)
-		defer cancel()
-		c.Request = c.Request.WithContext(ctx)
+		if c.Request.URL.Path != "/api/v1/live" && c.Request.URL.Path != "/api/v1/agent/stream" {
+			ctx, cancel := context.WithTimeout(c.Request.Context(), 20*time.Second)
+			defer cancel()
+			c.Request = c.Request.WithContext(ctx)
+		}
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.Header("Cache-Control", "no-store")
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20)
@@ -43,7 +52,7 @@ func New(db *storage.DB, cfg Config) *gin.Engine {
 			bad(c, 503, "数据库不可用")
 			return
 		}
-		ok(c, gin.H{"status": "ok", "database": db.Driver, "phase": 1, "version": Version})
+		ok(c, gin.H{"status": "ok", "database": db.Driver, "version": Version})
 	})
 	// Cookie mutations require exact Origin; CLI clients must send Origin too.
 	origin := func(c *gin.Context) {
@@ -61,6 +70,20 @@ func New(db *storage.DB, cfg Config) *gin.Engine {
 	web.POST("/auth/password", authLimit, a.changePassword)
 	web.GET("/agent/update-commands", role("admin"), func(c *gin.Context) { ok(c, gin.H{"commands": updateCommands(cfg.PublicURL), "version": Version}) })
 	web.GET("/dashboard/summary", a.summary)
+	web.GET("/dashboard/overview", a.overview)
+	web.GET("/live", a.live)
+	web.GET("/rules", role("admin"), a.rules)
+	web.POST("/rules", role("admin"), a.saveRule)
+	web.PATCH("/rules/:id", role("admin"), a.saveRule)
+	web.GET("/alerts", a.alerts)
+	web.POST("/alerts/:id/acknowledge", role("admin", "operator"), a.acknowledgeAlert)
+	web.GET("/channels", role("admin"), a.channels)
+	web.GET("/channels/:id", role("admin"), a.channel)
+	web.POST("/channels", role("admin"), a.saveChannel)
+	web.PATCH("/channels/:id", role("admin"), a.saveChannel)
+	web.POST("/channels/:id/test", role("admin"), a.testChannel)
+	web.GET("/notifications", role("admin"), a.deliveries)
+	web.POST("/notifications/:id/retry", role("admin"), a.retryDelivery)
 	web.GET("/servers", a.servers)
 	web.GET("/servers/:id", a.server)
 	web.POST("/servers", role("admin", "operator"), a.saveServer)
@@ -78,6 +101,7 @@ func New(db *storage.DB, cfg Config) *gin.Engine {
 	web.POST("/users", role("admin"), a.createUser)
 	r.POST("/api/v1/agent/enroll", a.enroll)
 	agent := r.Group("/api/v1/agent", a.agentAuth)
+	agent.GET("/stream", a.agentStream)
 	agent.POST("/heartbeat", a.heartbeat)
 	agent.POST("/events/batch", a.batch)
 	r.NoRoute(func(c *gin.Context) { bad(c, 404, "接口不存在") })

@@ -26,19 +26,19 @@ Dependabot 按周分组提交 Go/npm 的 minor/patch 更新，不自动合并；
 
 Actions Artifact 是一次构建快照，保存 14 天；Release 是命名版本供部署使用。仓库私有时两者都需要访问权限。自动构建成功不代表已经在每个目标系统实机安装验证；ARM64 默认交叉编译。
 
-## 创建预览版
+## 创建版本
 
-1. 修改 `VERSION`、`scripts/quick-start.sh` 默认标签及版本文档，例如 `0.3.0-alpha.1`，版本长度不超过 32。
+1. 修改 `VERSION`、`scripts/quick-start.sh` 默认标签及版本文档，例如 `0.3.0`，版本长度不超过 32。
 2. 更新 CHANGELOG、docs/RELEASE-NOTES.md 和验收记录。
 3. 提交到 main，等待 CI 全部通过。
 4. 在对应提交创建并推送标签：
 
 ```bash
-git tag -a v0.3.0-alpha.1 -m "SSHGuard 0.3.0 alpha 1"
-git push origin v0.3.0-alpha.1
+git tag -a v0.3.0 -m "SSHGuard 0.3.0"
+git push origin v0.3.0
 ```
 
-Release 工作流检查标签与 VERSION 完全一致，再复用 CI、下载并校验产物，最后通过 GitHub 自带 Token 创建 Prerelease。所有当前版本都标为预览版；正式稳定版需在采集/通知闭环和生产验收完成后单独修改发布策略。
+Release 工作流检查标签与 VERSION 完全一致，再复用 CI、下载并校验产物，最后创建 Release。含连字符（例如 -rc.1）的标签标为 Prerelease，无连字符的标签发布普通版本。发布前须完成对应版本验收；目标生产环境仍需按生产清单分批上线。
 
 **不要移动已发布标签或覆盖同名二进制。** 修复使用新版本。发布任务因网络错误中断时先检查 Release 是否已经创建、附件是否完整；不要直接覆盖已有资产。不同源代码不得复用已发布的版本名。
 

@@ -44,3 +44,7 @@ docker compose up -d --build
 已有数据库卷不会因编辑环境变量重新初始化。修改数据库密码时，先修改实际数据库账号，再同步 DSN。
 
 参阅 [Agent 安装](AGENTS.md)、[运维手册](OPERATIONS.md)。
+
+## 旧版本升级
+
+保留原 .env、数据库卷和登录密码。若缺少 ENCRYPTION_KEY，执行 openssl rand -hex 32 生成一次并追加到 .env；不要重新运行初始化器覆盖配置。备份数据库与该密钥后再更新。公网反代须支持 WebSocket Upgrade，随包 Nginx 模板已配置。通知配置及内网目的地例外见 [告警手册](ALERTING.md)。

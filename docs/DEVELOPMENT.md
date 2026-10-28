@@ -19,6 +19,8 @@ $env:DATABASE_URL='postgres://sshguard:YOUR_PASSWORD@127.0.0.1:5432/sshguard?ssl
 $env:PUBLIC_URL='http://localhost:5173'
 $env:LISTEN_ADDR='127.0.0.1:8080'
 $env:ADMIN_PASSWORD='REPLACE_WITH_RANDOM_12_TO_72_BYTE_PASSWORD'
+# Generate once and preserve it alongside your local database.
+$env:ENCRYPTION_KEY=(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))")
 go run ./cmd/api
 ```
 

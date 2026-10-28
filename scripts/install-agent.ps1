@@ -50,6 +50,39 @@ function Protect-File([string]$Path) {
     }
     Set-Acl -LiteralPath $Path -AclObject $acl
 }
+function Initialize-CollectorAccess {
+    $state = Join-Path $configDir 'state'
+    Assert-NoReparsePoint $state
+    New-Item -ItemType Directory -Force -Path $state | Out-Null
+    $serviceIdentity = (New-Object Security.Principal.NTAccount('NT SERVICE\SSHGuardAgent')).Translate([Security.Principal.SecurityIdentifier])
+    $acl = New-Object Security.AccessControl.DirectorySecurity
+    $acl.SetAccessRuleProtection($true,$false)
+    $acl.SetOwner((New-Object Security.Principal.SecurityIdentifier('S-1-5-32-544')))
+    foreach ($sid in @('S-1-5-32-544','S-1-5-18')) {
+        $identity = New-Object Security.Principal.SecurityIdentifier($sid)
+        $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($identity,'FullControl','ContainerInherit,ObjectInherit','None','Allow')))
+    }
+    $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($serviceIdentity,'Modify','ContainerInherit,ObjectInherit','None','Allow')))
+    Set-Acl -LiteralPath $state -AclObject $acl
+    # Grant only this service read access to OpenSSH, rather than all LocalService processes access to all event logs.
+    $channel = $null
+    try {
+        $channel = New-Object System.Diagnostics.Eventing.Reader.EventLogConfiguration('OpenSSH/Operational')
+        $descriptor = New-Object Security.AccessControl.RawSecurityDescriptor($channel.SecurityDescriptor)
+        $found = $false
+        foreach ($ace in $descriptor.DiscretionaryAcl) {
+            if ($ace.SecurityIdentifier -eq $serviceIdentity -and ($ace.AccessMask -band 1)) { $found = $true }
+        }
+        if (-not $found) {
+            $ace = New-Object Security.AccessControl.CommonAce([Security.AccessControl.AceFlags]::None,[Security.AccessControl.AceQualifier]::AccessAllowed,1,$serviceIdentity,$false,$null)
+            $descriptor.DiscretionaryAcl.InsertAce($descriptor.DiscretionaryAcl.Count,$ace)
+            $channel.SecurityDescriptor = $descriptor.GetSddlForm([Security.AccessControl.AccessControlSections]::All)
+            $channel.SaveChanges()
+        }
+    } catch [System.Diagnostics.Eventing.Reader.EventLogNotFoundException] {
+        Write-Warning 'OpenSSH/Operational is not installed. Install Windows OpenSSH Server; collector health will show the missing source.'
+    } finally { if ($channel) { $channel.Dispose() } }
+}
 Protect-Directory $installDir
 Protect-Directory $configDir
 Assert-NoReparsePoint $exe
@@ -122,6 +155,7 @@ try {
     Protect-File $exe
     & $exe -service install -config $config
     if ($LASTEXITCODE -ne 0) { throw 'Windows service registration failed; see the preceding error.' }
+    Initialize-CollectorAccess
     Start-Service -Name SSHGuardAgent
     (Get-Service SSHGuardAgent).WaitForStatus('Running',[TimeSpan]::FromSeconds(30))
     Start-Sleep -Seconds 2
@@ -129,7 +163,7 @@ try {
     & $exe -check -endpoint $Endpoint -config $config
     if ($LASTEXITCODE -ne 0) { throw 'Post-install heartbeat check failed.' }
     $replaced = $false
-    Write-Output 'Installed/updated as LocalService. Registration + heartbeat only. Update preserves credentials.'
+    Write-Output 'Installed/updated as LocalService. Durable SSH collection enabled; check collector health in the console.'
     Write-Output 'Logs: Windows Event Viewer / Application / SSHGuardAgent.'
 } catch {
     if ($replaced -and (Test-Path -LiteralPath $backup)) {

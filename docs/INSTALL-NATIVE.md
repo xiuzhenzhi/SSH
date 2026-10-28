@@ -9,7 +9,7 @@
 在 GitHub Releases 下载对应架构发布包和 SHA256SUMS，或从成功 CI 的 sshguard-release-assets 获取。私有仓库需要有访问权限的账号。
 
 ```bash
-gh release download v0.3.0-alpha.1 --repo xiuzhenzhi/SSH --pattern sshguard-linux-amd64.tar.gz --pattern SHA256SUMS
+gh release download v0.3.0 --repo xiuzhenzhi/SSH --pattern sshguard-linux-amd64.tar.gz --pattern SHA256SUMS
 sha256sum --ignore-missing -c SHA256SUMS
 tar -xzf sshguard-linux-amd64.tar.gz
 cd sshguard-linux-amd64
@@ -83,3 +83,7 @@ sudo journalctl -u sshguard-api -n 100 --no-pager
 ## 接入与维护
 
 登录 PUBLIC_URL 后按 [Agent 安装](AGENTS.md) 接入服务器，日常升级和备份见 [运维手册](OPERATIONS.md)。
+
+## v0.3 通知加密密钥
+
+手工部署须设置 ENCRYPTION_KEY=64位随机十六进制值（openssl rand -hex 32 生成），保存在 root 专用 api.env；后续更新保持不变。原生向导会自动补充缺失密钥。随数据库一起备份密钥，详见 [告警配置](ALERTING.md)。

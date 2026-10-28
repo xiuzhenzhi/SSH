@@ -1,8 +1,11 @@
 package api
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 	"github.com/google/uuid"
 	"net"
 	"strings"
@@ -69,7 +72,9 @@ func (a *App) agentAuth(c *gin.Context) {
 	}
 	h := hash(strings.TrimPrefix(auth, "Bearer "))
 	var id string
-	e := a.db.Row(c, `SELECT s.id FROM agent_credentials ac JOIN servers s ON s.id=ac.server_id WHERE ac.token_hash=? AND ac.revoked_at IS NULL AND s.revoked=false`, h).Scan(&id)
+	authCtx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	e := a.db.Row(authCtx, `SELECT s.id FROM agent_credentials ac JOIN servers s ON s.id=ac.server_id WHERE ac.token_hash=? AND ac.revoked_at IS NULL AND s.revoked=false`, h).Scan(&id)
+	cancel()
 	if e == sql.ErrNoRows {
 		bad(c, 401, "Agent 凭证无效")
 		return
@@ -83,16 +88,19 @@ func (a *App) agentAuth(c *gin.Context) {
 	c.Next()
 }
 func (a *App) agentTx(c *gin.Context, fn func(*sql.Tx) error) error {
+	return a.agentTransaction(c, c.GetString("server_id"), c.GetString("agent_hash"), fn)
+}
+func (a *App) agentTransaction(c context.Context, serverID, credentialHash string, fn func(*sql.Tx) error) error {
 	tx, e := a.db.BeginTx(c, nil)
 	if e != nil {
 		return e
 	}
 	defer tx.Rollback()
 	var id string
-	if e = tx.QueryRowContext(c, a.db.Bind(`SELECT id FROM servers WHERE id=? AND revoked=false FOR UPDATE`), c.GetString("server_id")).Scan(&id); e != nil {
+	if e = tx.QueryRowContext(c, a.db.Bind(`SELECT id FROM servers WHERE id=? AND revoked=false FOR UPDATE`), serverID).Scan(&id); e != nil {
 		return e
 	}
-	if e = tx.QueryRowContext(c, a.db.Bind(`SELECT server_id FROM agent_credentials WHERE token_hash=? AND revoked_at IS NULL`), c.GetString("agent_hash")).Scan(&id); e != nil {
+	if e = tx.QueryRowContext(c, a.db.Bind(`SELECT server_id FROM agent_credentials WHERE token_hash=? AND server_id=? AND revoked_at IS NULL`), credentialHash, serverID).Scan(&id); e != nil {
 		return e
 	}
 	if e = fn(tx); e != nil {
@@ -100,22 +108,60 @@ func (a *App) agentTx(c *gin.Context, fn func(*sql.Tx) error) error {
 	}
 	return tx.Commit()
 }
-func (a *App) heartbeat(c *gin.Context) {
-	var in struct {
-		Version string `json:"version" binding:"max=32"`
+
+type Heartbeat struct {
+	Version    string     `json:"version" binding:"max=32"`
+	State      string     `json:"collector_state" binding:"omitempty,oneof=starting healthy error"`
+	Message    string     `json:"collector_message" binding:"max=256"`
+	QueueDepth int        `json:"queue_depth" binding:"min=0,max=10000"`
+	Rejected   int        `json:"rejected_events" binding:"min=0,max=1000"`
+	LastPoll   *time.Time `json:"last_poll_at"`
+	LastEvent  *time.Time `json:"last_event_at"`
+}
+
+func (a *App) recordHeartbeat(ctx context.Context, serverID, credentialHash string, in Heartbeat) error {
+	if e := binding.Validator.ValidateStruct(in); e != nil {
+		return errInvalidAgentMessage
 	}
+	e := a.agentTransaction(ctx, serverID, credentialHash, func(tx *sql.Tx) error {
+		if in.State != "" {
+			now := time.Now().UTC()
+			for _, at := range []*time.Time{in.LastPoll, in.LastEvent} {
+				if at != nil && (at.After(now.Add(5*time.Minute)) || at.Before(time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC))) {
+					return errInvalidAgentMessage
+				}
+			}
+			var count int
+			if e := tx.QueryRowContext(ctx, a.db.Bind(`SELECT COUNT(*) FROM agent_health WHERE server_id=?`), serverID).Scan(&count); e != nil {
+				return e
+			}
+			if count == 0 {
+				if _, e := tx.ExecContext(ctx, a.db.Bind(`INSERT INTO agent_health(server_id) VALUES(?)`), serverID); e != nil {
+					return e
+				}
+			}
+			if _, e := tx.ExecContext(ctx, a.db.Bind(`UPDATE agent_health SET state_since=CASE WHEN collector_state<>? THEN ? ELSE state_since END,collector_state=?,collector_message=?,queue_depth=?,rejected_events=?,last_poll_at=?,last_event_at=?,updated_at=? WHERE server_id=?`), in.State, now, in.State, in.Message, in.QueueDepth, in.Rejected, in.LastPoll, in.LastEvent, now, serverID); e != nil {
+				return e
+			}
+		}
+		_, e := tx.ExecContext(ctx, a.db.Bind(`UPDATE servers SET last_seen_at=?,agent_version=CASE WHEN ?='' THEN agent_version ELSE ? END WHERE id=?`), time.Now().UTC(), in.Version, in.Version, serverID)
+		return e
+	})
+	if e == nil {
+		a.hub.publish()
+	}
+	return e
+}
+func (a *App) heartbeat(c *gin.Context) {
+	var in Heartbeat
 	if !bind(c, &in) {
 		return
 	}
-	e := a.agentTx(c, func(tx *sql.Tx) error {
-		_, e := tx.ExecContext(c, a.db.Bind(`UPDATE servers SET last_seen_at=?,agent_version=CASE WHEN ?='' THEN agent_version ELSE ? END WHERE id=?`), time.Now().UTC(), in.Version, in.Version, c.GetString("server_id"))
-		return e
-	})
-	if e != nil {
-		fail(c, e)
+	if e := a.recordHeartbeat(c, c.GetString("server_id"), c.GetString("agent_hash"), in); e != nil {
+		agentFailure(c, e)
 		return
 	}
-	ok(c, gin.H{"received": true, "collector": "not-implemented"})
+	ok(c, gin.H{"received": true})
 }
 
 type Event struct {
@@ -132,44 +178,90 @@ type Event struct {
 func validEvent(e Event, now time.Time) bool {
 	return !e.At.Before(now.AddDate(0, 0, -30)) && !e.At.After(now.Add(5*time.Minute)) && ((e.Type == "ssh.login" && e.Outcome == "success") || (e.Type == "ssh.login_failed" && e.Outcome == "failure")) && !strings.ContainsAny(e.Username, "\r\n\x00")
 }
-func (a *App) batch(c *gin.Context) {
-	var in struct {
-		Events []Event `json:"events" binding:"required,min=1,max=100,dive"`
+
+var errInvalidAgentMessage = errors.New("invalid agent message")
+
+type EventBatch struct {
+	Events []Event `json:"events" binding:"required,min=1,max=100,dive"`
+}
+type BatchResult struct {
+	Accepted   int `json:"accepted"`
+	Inserted   int `json:"inserted"`
+	Duplicates int `json:"duplicates"`
+}
+
+func agentFailure(c *gin.Context, e error) {
+	switch {
+	case errors.Is(e, sql.ErrNoRows):
+		bad(c, 401, "Agent 凭证已失效")
+	case errors.Is(e, errInvalidAgentMessage):
+		bad(c, 400, "事件字段、时间或类型无效")
+	default:
+		bad(c, 503, "暂时无法保存，请保留事件并重试")
 	}
+}
+func (a *App) batch(c *gin.Context) {
+	var in EventBatch
 	if !bind(c, &in) {
 		return
 	}
-	for i, e := range in.Events {
-		if !validEvent(e, time.Now().UTC()) {
-			bad(c, 400, "事件时间或类型不合法，允许最近 30 天及最多 5 分钟时钟偏差")
-			return
-		}
-		in.Events[i].At = e.At.UTC()
-		in.Events[i].ID = uuid.MustParse(e.ID).String()
-		in.Events[i].IP = net.ParseIP(e.IP).String()
+	result, e := a.ingest(c, c.GetString("server_id"), c.GetString("agent_hash"), in)
+	if e != nil {
+		agentFailure(c, e)
+		return
 	}
-	inserted := 0
-	e := a.agentTx(c, func(tx *sql.Tx) error {
+	ok(c, result)
+}
+
+// Both transports acknowledge only after the same transaction commits.
+func (a *App) ingest(ctx context.Context, serverID, credentialHash string, in EventBatch) (BatchResult, error) {
+	result := BatchResult{}
+	if e := binding.Validator.ValidateStruct(in); e != nil {
+		return result, errInvalidAgentMessage
+	}
+	now := time.Now().UTC()
+	for i, event := range in.Events {
+		if !validEvent(event, now) {
+			return result, errInvalidAgentMessage
+		}
+		in.Events[i].At = event.At.UTC()
+		in.Events[i].ID = uuid.MustParse(event.ID).String()
+		in.Events[i].IP = net.ParseIP(event.IP).String()
+	}
+	rules, e := a.readRules(ctx, true)
+	if e != nil {
+		return result, e
+	}
+	e = a.agentTransaction(ctx, serverID, credentialHash, func(tx *sql.Tx) error {
+		var name, group string
+		if e := tx.QueryRowContext(ctx, a.db.Bind(`SELECT name,group_name FROM servers WHERE id=?`), serverID).Scan(&name, &group); e != nil {
+			return e
+		}
 		for _, event := range in.Events {
-			// Server row lock serializes same-server batches on both databases.
 			var n int
-			if e := tx.QueryRowContext(c, a.db.Bind(`SELECT COUNT(*) FROM ssh_events WHERE server_id=? AND event_id=?`), c.GetString("server_id"), event.ID).Scan(&n); e != nil {
+			if e := tx.QueryRowContext(ctx, a.db.Bind(`SELECT COUNT(*) FROM ssh_events WHERE server_id=? AND event_id=?`), serverID, event.ID).Scan(&n); e != nil {
 				return e
 			}
 			if n > 0 {
 				continue
 			}
-			_, e := tx.ExecContext(c, a.db.Bind(`INSERT INTO ssh_events(event_id,server_id,event_type,username,source_ip,source_port,auth_method,outcome,occurred_at) VALUES(?,?,?,?,?,?,?,?,?)`), event.ID, c.GetString("server_id"), event.Type, event.Username, event.IP, event.Port, event.Method, event.Outcome, event.At)
-			if e != nil {
+			if _, e := tx.ExecContext(ctx, a.db.Bind(`INSERT INTO ssh_events(event_id,server_id,event_type,username,source_ip,source_port,auth_method,outcome,occurred_at) VALUES(?,?,?,?,?,?,?,?,?)`), event.ID, serverID, event.Type, event.Username, event.IP, event.Port, event.Method, event.Outcome, event.At); e != nil {
 				return e
 			}
-			inserted++
+			if e := a.evaluateEvent(ctx, tx, rules, serverID, name, group, event); e != nil {
+				return e
+			}
+			result.Inserted++
 		}
 		return nil
 	})
 	if e != nil {
-		fail(c, e)
-		return
+		return BatchResult{}, e
 	}
-	ok(c, gin.H{"accepted": len(in.Events), "inserted": inserted, "duplicates": len(in.Events) - inserted})
+	result.Accepted = len(in.Events)
+	result.Duplicates = result.Accepted - result.Inserted
+	if result.Inserted > 0 {
+		a.hub.publish()
+	}
+	return result, nil
 }

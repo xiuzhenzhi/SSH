@@ -61,6 +61,7 @@ func configureService(action, path string) error {
 		cfg.StartType = mgr.StartAutomatic
 		cfg.ServiceStartName = `NT AUTHORITY\LocalService`
 		cfg.DelayedAutoStart = true
+		cfg.SidType = windows.SERVICE_SID_TYPE_UNRESTRICTED
 		if e = s.UpdateConfig(cfg); e != nil {
 			return e
 		}
@@ -74,7 +75,7 @@ func configureService(action, path string) error {
 		if _, e = loadConfig(path); e != nil {
 			return e
 		}
-		s, e = manager.CreateService(serviceName, exe, mgr.Config{StartType: mgr.StartAutomatic, ServiceStartName: `NT AUTHORITY\LocalService`, DisplayName: "SSHGuard Agent", Description: "SSHGuard registration and heartbeat (SSH collection not yet implemented)", DelayedAutoStart: true}, "-config", path)
+		s, e = manager.CreateService(serviceName, exe, mgr.Config{StartType: mgr.StartAutomatic, ServiceStartName: `NT AUTHORITY\LocalService`, DisplayName: "SSHGuard Agent", Description: "SSHGuard durable SSH login collection and reporting", DelayedAutoStart: true, SidType: windows.SERVICE_SID_TYPE_UNRESTRICTED}, "-config", path)
 		if e != nil {
 			return e
 		}

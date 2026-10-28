@@ -37,9 +37,11 @@ func main() {
 		log.Print("Configuration and database ready")
 		return
 	}
-	s := &http.Server{Addr: c.Listen, Handler: api.New(db, c), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
+	app := api.NewApp(db, c)
+	s := &http.Server{Addr: c.Listen, Handler: app.Router(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
 	stop, done := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer done()
+	waitWorkers := app.StartWorkers(stop)
 	go func() {
 		ticker := time.NewTicker(10 * time.Minute)
 		defer ticker.Stop()
@@ -63,7 +65,9 @@ func main() {
 		}
 	}()
 	<-stop.Done()
+	app.Shutdown()
 	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = s.Shutdown(ctx)
+	waitWorkers()
 }

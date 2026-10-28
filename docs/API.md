@@ -10,6 +10,14 @@
 | POST | /auth/login | Origin + 登录限速 |
 | GET / POST | /auth/me、/auth/logout | 登录用户 |
 | GET | /dashboard/summary | 全角色 |
+| GET | /dashboard/overview、/alerts | 全角色 |
+| POST | /alerts/:id/acknowledge | admin/operator |
+| GET / POST / PATCH | /channels、/channels/:id | admin |
+| POST | /channels/:id/test | admin |
+| GET / POST / PATCH | /rules、/rules/:id | admin |
+| GET / POST | /notifications、/notifications/:id/retry | admin |
+| GET (WebSocket) | /live | 登录会话 + 精确 Origin |
+| GET (WebSocket) | /agent/stream | Agent Bearer，无浏览器 Origin |
 | GET | /servers、/servers/:id | 全角色 |
 | POST / PATCH | /servers、/servers/:id | admin/operator |
 | POST | /servers/:id/enrollment、/servers/:id/revoke | admin |

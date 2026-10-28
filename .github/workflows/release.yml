@@ -34,12 +34,12 @@ jobs:
       - name: Verify packaged checksums
         working-directory: dist/release
         run: sha256sum -c SHA256SUMS
-      - name: Publish preview release
+      - name: Publish verified release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: >-
-          gh release create "$RELEASE_TAG" dist/release/*
-          --verify-tag --prerelease
-          --title "SSHGuard $RELEASE_TAG"
-          --notes-file docs/RELEASE-NOTES.md
+        run: |
+          flags=()
+          if [[ "$RELEASE_TAG" == *-* ]]; then flags+=(--prerelease); fi
+          gh release create "$RELEASE_TAG" dist/release/* --verify-tag "${flags[@]}" \
+            --title "SSHGuard $RELEASE_TAG" --notes-file docs/RELEASE-NOTES.md

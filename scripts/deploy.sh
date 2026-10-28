@@ -126,6 +126,14 @@ else
     unset dsn admin_password
 fi
 printf '%s' "$domain" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z0-9-]+$' || die 'Invalid managed PUBLIC_URL.'
+# Upgrade old wizard installations once, preserving the key on every future update.
+if ! grep -q '^ENCRYPTION_KEY=' /etc/sshguard/api.env; then
+    key_file=$(mktemp /etc/sshguard/.api-env.XXXXXX)
+    chmod 0600 "$key_file"
+    cat /etc/sshguard/api.env > "$key_file"
+    printf '\nENCRYPTION_KEY="%s"\n' "$(openssl rand -hex 32)" >> "$key_file"
+    mv -f "$key_file" /etc/sshguard/api.env
+fi
 if ! id sshguard-api >/dev/null 2>&1; then useradd --system --user-group --no-create-home --shell /usr/sbin/nologin sshguard-api; fi
 mkdir -p /opt/sshguard-releases
 chmod 0755 /opt/sshguard-releases

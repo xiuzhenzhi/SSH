@@ -1,4 +1,3 @@
-// Phase 1 agent: enrollment and heartbeat only. No SSH log collector yet.
 package main
 
 import (
@@ -19,12 +18,13 @@ import (
 	"time"
 )
 
-var version = "0.3.0-alpha.1"
+var version = "0.3.0"
 
 type Config struct {
 	Endpoint string `json:"endpoint"`
 	Token    string `json:"token"`
 	ServerID string `json:"server_id"`
+	LogFile  string `json:"log_file,omitempty"`
 }
 
 var client = &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
@@ -56,7 +56,7 @@ func request(ctx context.Context, endpoint, path, token string, data any, out an
 	}
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
-		return fmt.Errorf("API status %d", res.StatusCode)
+		return apiStatusError(res.StatusCode)
 	}
 	if out != nil {
 		return json.NewDecoder(io.LimitReader(res.Body, 65536)).Decode(out)
@@ -141,24 +141,6 @@ func loadConfig(path string) (Config, error) {
 	}
 	return c, nil
 }
-func heartbeatLoop(ctx context.Context, cfg Config, interval time.Duration) {
-	log.Printf("SSHGuard %s: heartbeat enabled; SSH log collection is NOT implemented", version)
-	timer := time.NewTicker(interval)
-	defer timer.Stop()
-	for {
-		if ctx.Err() != nil {
-			return
-		}
-		if e := request(ctx, cfg.Endpoint, "/api/v1/agent/heartbeat", cfg.Token, map[string]string{"version": version}, nil); e != nil && ctx.Err() == nil {
-			log.Printf("heartbeat failed: %v", e)
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-timer.C:
-		}
-	}
-}
 func checkAgent(ctx context.Context, cfg Config, endpoint string) error {
 	if endpoint != "" && endpoint != cfg.Endpoint {
 		return fmt.Errorf("endpoint differs from installed configuration; refusing update")
@@ -169,6 +151,7 @@ func checkAgent(ctx context.Context, cfg Config, endpoint string) error {
 }
 func main() {
 	path := flag.String("config", defaultConfigPath(), "configuration path")
+	stateDir := flag.String("state-dir", defaultStateDir(), "durable queue and collector cursor directory")
 	endpoint := flag.String("endpoint", "", "HTTPS platform origin")
 	enroll := flag.Bool("enroll", false, "read one-time enrollment token from stdin")
 	showVersion := flag.Bool("version", false, "print agent version")
@@ -193,7 +176,7 @@ func main() {
 		if e = enrollAgent(context.Background(), *path, *endpoint, enrollmentInput(input)); e != nil {
 			log.Fatal(e)
 		}
-		log.Print("enrolled; phase 1 heartbeat only")
+		log.Print("enrolled; start the Agent service to collect SSH logins")
 		return
 	}
 	cfg, e := loadConfig(*path)
@@ -206,7 +189,7 @@ func main() {
 		}
 		return
 	}
-	if e = runPlatform(func(ctx context.Context) { heartbeatLoop(ctx, cfg, 30*time.Second) }); e != nil {
+	if e = runPlatform(func(ctx context.Context) { runAgent(ctx, cfg, *stateDir) }); e != nil {
 		log.Fatal(e)
 	}
 }

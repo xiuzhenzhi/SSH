@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"regexp"
 	"sshguard/migrations"
 	"strings"
 	"time"
@@ -158,6 +159,22 @@ func Migrate(ctx context.Context, d *DB) error {
 		b, e := migrations.Files.ReadFile(dir + "/" + f.Name())
 		if e != nil {
 			return e
+		}
+		if d.Driver == "mysql" && f.Name() == "004_alerting.sql" {
+			// Existing installs may use utf8mb4_bin or 0900 collations. Foreign
+			// key columns must match their actual referenced columns exactly.
+			for _, ref := range []struct{ table, column string }{{"servers", "server_id"}, {"users", "acknowledged_by"}} {
+				var charset, collation string
+				if e = conn.QueryRowContext(ctx, `SELECT CHARACTER_SET_NAME,COLLATION_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME='id'`, ref.table).Scan(&charset, &collation); e != nil {
+					return e
+				}
+				valid := regexp.MustCompile(`^[A-Za-z0-9_]+$`)
+				if !valid.MatchString(charset) || !valid.MatchString(collation) {
+					return fmt.Errorf("unsupported legacy identifier collation")
+				}
+				old := ref.column + " varchar(36)"
+				b = []byte(strings.ReplaceAll(string(b), old, old+" CHARACTER SET "+charset+" COLLATE "+collation))
+			}
 		}
 		tx, e := conn.BeginTx(ctx, nil)
 		if e != nil {

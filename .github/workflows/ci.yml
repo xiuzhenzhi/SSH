@@ -108,6 +108,7 @@ jobs:
       - run: node scripts/check-docs.mjs
   build:
     name: Build API + cross-platform Agents
+    if: github.event_name != 'pull_request'
     needs: [go, postgres, mysql, web]
     runs-on: ubuntu-latest
     timeout-minutes: 30

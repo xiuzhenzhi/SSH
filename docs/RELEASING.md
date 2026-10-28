@@ -7,9 +7,11 @@
 1. Ubuntu/Windows：Go 单元测试和 vet；Linux 额外执行 race 测试；Windows 执行安装器 ACL helper 测试。
 2. 两个独立服务容器：PostgreSQL 16、MySQL 8.4，执行完整真实数据库 API 集成测试。
 3. 前端：npm ci、TypeScript/Vite 构建、high 级别依赖漏洞检查。
-4. 所有检查通过后构建两个 Linux API 架构、四个 Agent，检查 ELF/PE 架构、静态链接和 SHA-256，上传产物。
+4. main、手动运行和 Release 的所有检查通过后，构建两个 Linux API 架构、四个 Agent，检查 ELF/PE 架构、静态链接和 SHA-256，上传产物。PR 只执行检查，不上传安装包。
 
 流程没有生产凭证；CI 数据库密码只在临时测试容器内使用。不要把生产环境连接串放进 workflow。未通过检查不会发布安装产物。
+
+Dependabot 按周分组提交 Go/npm 的 minor/patch 更新，不自动合并；major 升级单独评估兼容性。PR 检查失败不会影响已验证的 main/Release，也不能绕过检查直接合并。
 
 ## 产物
 

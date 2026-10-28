@@ -79,8 +79,8 @@ Linux Agent 使用纯 Go 静态构建，Alpine 不依赖 glibc、Bash 或 sudo�
 
 ## 自动构建与发布
 
-- 提交 `main`、创建 PR 或手动运行 CI：执行 Linux/Windows Go 测试、PostgreSQL/MySQL 集成测试、Vue 构建及跨平台 Agent 编译。
-- CI 成功后，在该运行的 **Artifacts → sshguard-release-assets** 下载产物，保留 14 天。
+- 提交 `main`、创建 PR 或手动运行 CI：执行 Linux/Windows Go 测试、PostgreSQL/MySQL 集成测试和 Vue 构建。
+- `main`、手动运行及版本标签的检查通过后，再构建跨平台 Agent；在该运行的 **Artifacts → sshguard-release-assets** 下载产物，保留 14 天。PR 只检查，不重复打包分发。
 - 推送与 `VERSION` 一致的 `v*` 标签：重新通过相同检查后，发布 **Prerelease**，包含两个中央平台包、四个 Agent、安装脚本和 `SHA256SUMS`。
 - 普通 CI 只有仓库读取权限；仅发布任务拥有写入 Release 的权限。Action 依赖锁定到提交 SHA。
 

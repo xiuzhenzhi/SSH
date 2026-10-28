@@ -37,3 +37,9 @@
 - 各系统的真实 SSH 日志采集仍属于第二阶段，Windows OpenSSH Event Log、Linux journal/auth.log/secure 的采集器尚未实现。
 
 平台实现参考：[Go Windows service API](https://pkg.go.dev/golang.org/x/sys/windows/svc)、[OpenRC supervise-daemon](https://github.com/OpenRC/openrc/blob/master/supervise-daemon-guide.md)、[Alpine init scripts](https://wiki.alpinelinux.org/wiki/Writing_Init_Scripts)。
+
+## GitHub 云端验证
+
+[首次 main CI](https://github.com/xiuzhenzhi/SSH/actions/runs/40659110222) 已成功：Ubuntu/Windows Go 测试与 vet、Linux race、Windows ACL helper、PostgreSQL/MySQL 容器中的真实数据库集成测试、Vue 构建及依赖检查，以及两个中央平台包与四个 Agent 的构建/校验。产物名为 sshguard-release-assets。
+
+这补充了云端 Linux 构建和数据库容器测试证据；仍不等同于在真实业务主机完成 systemd/OpenRC/Windows SCM 安装及 SSH 日志采集验收。后续运行结果以 Actions 中对应提交为准。

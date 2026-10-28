@@ -1,0 +1,27 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.api
+    restart: unless-stopped
+    environment:
+      DB_DRIVER: ${DB_DRIVER:?Run scripts/init-env.mjs}
+      DATABASE_URL: ${DATABASE_URL:?Run scripts/init-env.mjs}
+      PUBLIC_URL: ${PUBLIC_URL:?Set PUBLIC_URL}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD}
+      GIN_MODE: release
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+  web:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.web
+    restart: unless-stopped
+    depends_on: [api]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/certs:/etc/nginx/certs:ro

@@ -1,0 +1,28 @@
+name: 缺陷报告
+description: 提交可复现问题（请先脱敏）
+title: '[Bug] '
+body:
+  - type: input
+    id: version
+    attributes:
+      label: 版本或提交 SHA
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 运行环境
+      description: 中央平台系统、Agent 系统/架构、数据库、原生或 Compose。
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤、预期与实际行为
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 脱敏日志或截图
+      description: 不要上传密码、Token、Cookie、.env、agent.json 或证书私钥；安全漏洞按 SECURITY.md 私下反馈。

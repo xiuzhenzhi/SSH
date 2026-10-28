@@ -1,0 +1,21 @@
+[Unit]
+Description=SSHGuard API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=sshguard
+Group=sshguard
+WorkingDirectory=/opt/sshguard
+EnvironmentFile=/etc/sshguard/api.env
+ExecStart=/opt/sshguard/sshguard-api
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

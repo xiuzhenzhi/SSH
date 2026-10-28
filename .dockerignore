@@ -1,0 +1,8 @@
+.git
+.env
+.local
+bin
+web/node_modules
+web/dist
+deploy/certs
+*.zip

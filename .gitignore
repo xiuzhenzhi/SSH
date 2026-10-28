@@ -1,0 +1,9 @@
+.env
+node_modules/
+dist/
+bin/
+.local/
+deploy/certs/*
+!deploy/certs/.gitkeep
+*.zip
+*.log

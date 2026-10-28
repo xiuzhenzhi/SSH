@@ -1,0 +1,4 @@
+CREATE TABLE IF NOT EXISTS ssh_events (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, event_id varchar(36) NOT NULL, server_id varchar(36) NOT NULL REFERENCES servers(id), event_type varchar(32) NOT NULL CHECK(event_type IN ('ssh.login','ssh.login_failed')), username varchar(128) NOT NULL, source_ip varchar(45) NOT NULL, source_port integer CHECK(source_port BETWEEN 1 AND 65535), auth_method varchar(32) NOT NULL DEFAULT '', outcome varchar(16) NOT NULL CHECK(outcome IN ('success','failure')), occurred_at timestamptz NOT NULL, received_at timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(server_id,event_id));
+CREATE INDEX IF NOT EXISTS events_time ON ssh_events(occurred_at DESC);
+CREATE INDEX IF NOT EXISTS events_server_time ON ssh_events(server_id,occurred_at DESC);
+CREATE INDEX IF NOT EXISTS events_ip_time ON ssh_events(source_ip,occurred_at DESC);

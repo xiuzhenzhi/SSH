@@ -1,0 +1,21 @@
+services:
+  api:
+    depends_on:
+      db:
+        condition: service_healthy
+  db:
+    image: postgres:16.14-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sshguard
+      POSTGRES_USER: sshguard
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sshguard -d sshguard"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+volumes:
+  pgdata:

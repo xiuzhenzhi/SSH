@@ -1,0 +1,18 @@
+name: 需求建议
+description: 描述使用场景与验收条件
+title: '[Feature] '
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 想解决什么问题？
+      description: 谁在什么情况下遇到了什么困难？目前如何处理？
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 如何判断需求已经满足？
+      description: 给出一个具体流程或可验证结果。
+    validations:
+      required: true

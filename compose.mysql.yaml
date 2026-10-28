@@ -1,0 +1,23 @@
+services:
+  api:
+    depends_on:
+      db:
+        condition: service_healthy
+  db:
+    image: mysql:8.4.13
+    restart: unless-stopped
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_bin", "--default-time-zone=+00:00"]
+    environment:
+      MYSQL_DATABASE: sshguard
+      MYSQL_USER: sshguard
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD}
+    volumes:
+      - mysqldata:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_PASSWORD mysql -h 127.0.0.1 -u sshguard -D sshguard -e 'SELECT 1'"]
+      interval: 5s
+      timeout: 3s
+      retries: 40
+volumes:
+  mysqldata:

@@ -93,6 +93,13 @@ func (a *App) login(c *gin.Context) {
 	}
 	t := token()
 	if e = a.mutate(c, u.ID, "auth.login", u.ID, func(tx *sql.Tx) error {
+		var current string
+		if e := tx.QueryRowContext(c, a.db.Bind(`SELECT password_hash FROM users WHERE id=? FOR UPDATE`), u.ID).Scan(&current); e != nil {
+			return e
+		}
+		if current != pw {
+			return sql.ErrNoRows
+		}
 		_, e := tx.ExecContext(c, a.db.Bind(`INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)`), hash(t), u.ID, time.Now().UTC().Add(12*time.Hour))
 		return e
 	}); e != nil {
@@ -102,6 +109,55 @@ func (a *App) login(c *gin.Context) {
 	c.SetSameSite(http.SameSiteStrictMode)
 	c.SetCookie("sshguard_session", t, 43200, "/", "", a.cfg.SecureCookie, true)
 	ok(c, u)
+}
+func (a *App) changePassword(c *gin.Context) {
+	var in struct {
+		Current string `json:"current_password" binding:"required,max=72"`
+		New     string `json:"new_password" binding:"required,min=12,max=72"`
+	}
+	if !bind(c, &in) {
+		return
+	}
+	if len(in.New) < 12 || len(in.New) > 72 {
+		bad(c, 400, "新密码必须为 12–72 字节")
+		return
+	}
+	u := c.MustGet("user").(User)
+	var pw string
+	if e := a.db.Row(c, `SELECT password_hash FROM users WHERE id=?`, u.ID).Scan(&pw); e != nil {
+		fail(c, e)
+		return
+	}
+	if bcrypt.CompareHashAndPassword([]byte(pw), []byte(in.Current)) != nil {
+		bad(c, 403, "当前密码错误")
+		return
+	}
+	b, e := bcrypt.GenerateFromPassword([]byte(in.New), 12)
+	if e != nil {
+		fail(c, e)
+		return
+	}
+	e = a.mutate(c, u.ID, "auth.password.change", u.ID, func(tx *sql.Tx) error {
+		var current string
+		if e := tx.QueryRowContext(c, a.db.Bind(`SELECT password_hash FROM users WHERE id=? FOR UPDATE`), u.ID).Scan(&current); e != nil {
+			return e
+		}
+		if current != pw {
+			return sql.ErrNoRows
+		}
+		if _, e := tx.ExecContext(c, a.db.Bind(`UPDATE users SET password_hash=? WHERE id=?`), string(b), u.ID); e != nil {
+			return e
+		}
+		_, e := tx.ExecContext(c, a.db.Bind(`DELETE FROM sessions WHERE user_id=?`), u.ID)
+		return e
+	})
+	if e != nil {
+		fail(c, e)
+		return
+	}
+	c.SetSameSite(http.SameSiteStrictMode)
+	c.SetCookie("sshguard_session", "", -1, "/", "", a.cfg.SecureCookie, true)
+	ok(c, gin.H{"login_required": true})
 }
 func (a *App) session(c *gin.Context) {
 	t, e := c.Cookie("sshguard_session")
@@ -156,6 +212,10 @@ func (a *App) createUser(c *gin.Context) {
 		Role     string `json:"role" binding:"required,oneof=admin operator viewer"`
 	}
 	if !bind(c, &in) {
+		return
+	}
+	if len(in.Password) < 12 || len(in.Password) > 72 {
+		bad(c, 400, "密码必须为 12–72 字节")
 		return
 	}
 	b, e := bcrypt.GenerateFromPassword([]byte(in.Password), 12)

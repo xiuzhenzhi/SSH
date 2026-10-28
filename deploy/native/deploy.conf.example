@@ -1,0 +1,10 @@
+# Raw KEY=value, no shell quotes or expansion. chmod 600 before --config.
+DOMAIN=guard.example.com
+# local-postgres installs PostgreSQL; mysql/postgres connect an existing database.
+DB_DRIVER=mysql
+DATABASE_URL=sshguard:REPLACE_PASSWORD@tcp(127.0.0.1:3306)/sshguard?charset=utf8mb4&parseTime=true&loc=UTC
+# Choose existing certificate/key, or remove these two lines and set ACME_EMAIL.
+TLS_CERT=/path/to/fullchain.pem
+TLS_KEY=/path/to/privkey.pem
+# ACME_EMAIL=admin@example.com
+# Empty/omitted ADMIN_PASSWORD generates a random password in /etc/sshguard/api.env.

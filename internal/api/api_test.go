@@ -65,6 +65,19 @@ func TestIntegration(t *testing.T) {
 	if e = storage.Migrate(ctx, db); e != nil {
 		t.Fatal("migration repeat", e)
 	}
+	if _, e = db.Exec(ctx, `DELETE FROM schema_migrations WHERE version=?`, "003_maintenance_indexes.sql"); e != nil {
+		t.Fatal(e)
+	}
+	if e = storage.Migrate(ctx, db); e != nil {
+		t.Fatal("interrupted index migration retry", e)
+	}
+	if driver == "mysql" {
+		var zone, charset, version string
+		if e = db.Row(ctx, `SELECT @@session.time_zone,@@character_set_connection,VERSION()`).Scan(&zone, &charset, &version); e != nil || zone != "+00:00" || charset != "utf8mb4" {
+			t.Fatal("MySQL session settings", zone, charset, e)
+		}
+		t.Log("MySQL tested:", version)
+	}
 	cfg := Config{Driver: driver, PublicURL: "https://guard.example.com", AdminUsername: "admin", AdminPassword: "integration-password-2026", SecureCookie: true}
 	if e = Bootstrap(ctx, db, cfg); e != nil {
 		t.Fatal(e)
@@ -101,8 +114,13 @@ func TestIntegration(t *testing.T) {
 		t.Fatal("insecure cookie")
 	}
 	session := cookie.Name + "=" + cookie.Value
-	result, _ := call("POST", "/servers", map[string]string{"name": "integration-node", "group_name": "test"}, session, "", true, 200)
+	result, _ := call("POST", "/servers", map[string]string{"name": "集成测试🔒", "group_name": "生产"}, session, "", true, 200)
 	id := result["data"].(map[string]any)["id"].(string)
+	result, _ = call("GET", "/servers/"+id, nil, session, "", false, 200)
+	if result["data"].(map[string]any)["name"] != "集成测试🔒" {
+		t.Fatal("utf8mb4 round-trip failed")
+	}
+	call("GET", "/agent/update-commands", nil, session, "", false, 200)
 	result, _ = call("POST", "/servers/"+id+"/enrollment", map[string]string{}, session, "", true, 200)
 	command := result["data"].(map[string]any)["command"].(string)
 	commands := result["data"].(map[string]any)["commands"].(map[string]any)
@@ -117,6 +135,11 @@ func TestIntegration(t *testing.T) {
 	agent := result["data"].(map[string]any)["token"].(string)
 	call("POST", "/agent/enroll", map[string]string{"token": enrollment, "hostname": "test-host", "version": "test"}, "", "", false, 401)
 	call("POST", "/agent/heartbeat", map[string]string{}, "", agent, false, 200)
+	call("POST", "/agent/heartbeat", map[string]string{"version": "upgrade-test"}, "", agent, false, 200)
+	result, _ = call("GET", "/servers/"+id, nil, session, "", false, 200)
+	if result["data"].(map[string]any)["agent_version"] != "upgrade-test" {
+		t.Fatal("heartbeat did not update version")
+	}
 	event := map[string]any{"event_id": uuid.NewString(), "event_type": "ssh.login", "username": "root", "source_ip": "2001:db8::1", "outcome": "success", "occurred_at": time.Now().UTC().Format(time.RFC3339)}
 	batch := map[string]any{"events": []any{event}}
 	result, _ = call("POST", "/agent/events/batch", batch, "", agent, false, 200)
@@ -140,12 +163,35 @@ func TestIntegration(t *testing.T) {
 		call("GET", "/servers", nil, s, "", false, 200)
 		call("POST", "/servers/"+id+"/enrollment", map[string]string{}, s, "", true, 403)
 		call("GET", "/audit-logs", nil, s, "", false, 403)
+		call("GET", "/agent/update-commands", nil, s, "", false, 403)
 		want := 403
 		if role == "operator" {
 			want = 200
 		}
 		call("POST", "/servers", map[string]string{"name": "role-check"}, s, "", true, want)
+		call("POST", "/auth/password", map[string]string{"current_password": "wrong", "new_password": "new-password-2026"}, s, "", true, 403)
+		call("POST", "/auth/password", map[string]string{"current_password": "viewer-test-password", "new_password": strings.Repeat("密", 30)}, s, "", true, 400)
+		call("POST", "/auth/password", map[string]string{"current_password": "viewer-test-password", "new_password": "new-password-2026"}, s, "", true, 200)
+		call("GET", "/auth/me", nil, s, "", false, 401)
+		call("POST", "/auth/login", map[string]string{"username": name, "password": "viewer-test-password"}, "", "", true, 401)
+		call("POST", "/auth/login", map[string]string{"username": name, "password": "new-password-2026"}, "", "", true, 200)
 	}
+	var adminID string
+	if e = db.Row(ctx, `SELECT id FROM users WHERE username=?`, cfg.AdminUsername).Scan(&adminID); e != nil {
+		t.Fatal(e)
+	}
+	expired := hash(uuid.NewString())
+	if _, e = db.Exec(ctx, `INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)`, expired, adminID, time.Now().UTC().Add(-time.Hour)); e != nil {
+		t.Fatal(e)
+	}
+	if e = storage.Cleanup(ctx, db); e != nil {
+		t.Fatal(e)
+	}
+	var expiredCount int
+	if e = db.Row(ctx, `SELECT COUNT(*) FROM sessions WHERE token_hash=?`, expired).Scan(&expiredCount); e != nil || expiredCount != 0 {
+		t.Fatal("expired session retained", e)
+	}
+	call("GET", "/auth/me", nil, session, "", false, 200)
 	call("POST", "/servers/"+id+"/revoke", map[string]string{}, session, "", true, 200)
 	call("POST", "/agent/heartbeat", nil, "", agent, false, 401)
 	call("POST", "/auth/logout", nil, session, "", true, 200)

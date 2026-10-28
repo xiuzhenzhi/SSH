@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"github.com/gin-gonic/gin"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"sshguard/internal/storage"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -18,15 +20,19 @@ type App struct {
 	dummyHash string
 }
 
-var Version = "0.2.0-alpha.1"
+var Version = "0.3.0-alpha.1"
 
 func New(db *storage.DB, cfg Config) *gin.Engine {
 	h, _ := bcrypt.GenerateFromPassword([]byte(token()), 12)
 	a := &App{db, cfg, string(h)}
 	r := gin.New()
+	r.ContextWithFallback = true
 	r.Use(gin.Recovery())
 	_ = r.SetTrustedProxies(nil)
 	r.Use(func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 20*time.Second)
+		defer cancel()
+		c.Request = c.Request.WithContext(ctx)
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.Header("Cache-Control", "no-store")
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20)
@@ -47,10 +53,13 @@ func New(db *storage.DB, cfg Config) *gin.Engine {
 		}
 		c.Next()
 	}
-	r.POST("/api/v1/auth/login", origin, a.login)
+	authLimit := authThrottle()
+	r.POST("/api/v1/auth/login", origin, authLimit, a.login)
 	web := r.Group("/api/v1", origin, a.session)
 	web.GET("/auth/me", func(c *gin.Context) { ok(c, c.MustGet("user")) })
 	web.POST("/auth/logout", a.logout)
+	web.POST("/auth/password", authLimit, a.changePassword)
+	web.GET("/agent/update-commands", role("admin"), func(c *gin.Context) { ok(c, gin.H{"commands": updateCommands(cfg.PublicURL), "version": Version}) })
 	web.GET("/dashboard/summary", a.summary)
 	web.GET("/servers", a.servers)
 	web.GET("/servers/:id", a.server)
@@ -73,6 +82,33 @@ func New(db *storage.DB, cfg Config) *gin.Engine {
 	agent.POST("/events/batch", a.batch)
 	r.NoRoute(func(c *gin.Context) { bad(c, 404, "接口不存在") })
 	return r
+}
+
+// A bounded global budget also covers random usernames and direct API traffic.
+// Account-specific limits remain shared in SQL across replicas.
+func authThrottle() gin.HandlerFunc {
+	var mu sync.Mutex
+	var next time.Time
+	count := 0
+	return func(c *gin.Context) {
+		mu.Lock()
+		now := time.Now()
+		if !now.Before(next) {
+			count = 0
+			next = now.Add(time.Minute)
+		}
+		allowed := count < 60
+		if allowed {
+			count++
+		}
+		mu.Unlock()
+		if !allowed {
+			c.Header("Retry-After", "60")
+			bad(c, 429, "请求过多，请稍后再试")
+			return
+		}
+		c.Next()
+	}
 }
 func ok(c *gin.Context, v any)                   { c.JSON(200, gin.H{"data": v}) }
 func bad(c *gin.Context, status int, msg string) { c.AbortWithStatusJSON(status, gin.H{"error": msg}) }
@@ -141,17 +177,13 @@ func (a *App) summary(c *gin.Context) {
 	since := time.Now().UTC().Add(-24 * time.Hour)
 	online := time.Now().UTC().Add(-90 * time.Second)
 	var total, on, rev, events, success int64
-	for _, v := range []struct {
-		q    string
-		args []any
-		dest *int64
-	}{
-		{`SELECT COUNT(*) FROM servers`, nil, &total}, {`SELECT COUNT(*) FROM servers WHERE revoked=false AND last_seen_at>?`, []any{online}, &on}, {`SELECT COUNT(*) FROM servers WHERE revoked=true`, nil, &rev}, {`SELECT COUNT(*) FROM ssh_events WHERE occurred_at>=?`, []any{since}, &events}, {`SELECT COUNT(*) FROM ssh_events WHERE occurred_at>=? AND outcome='success'`, []any{since}, &success},
-	} {
-		if e := a.db.Row(c, v.q, v.args...).Scan(v.dest); e != nil {
-			fail(c, e)
-			return
-		}
+	if e := a.db.Row(c, `SELECT COUNT(*),COALESCE(SUM(CASE WHEN revoked=false AND last_seen_at>? THEN 1 ELSE 0 END),0),COALESCE(SUM(CASE WHEN revoked=true THEN 1 ELSE 0 END),0) FROM servers`, online).Scan(&total, &on, &rev); e != nil {
+		fail(c, e)
+		return
 	}
-	ok(c, gin.H{"servers": total, "online": on, "offline_or_pending": total - on - rev, "revoked": rev, "events_24h": events, "success_24h": success, "failure_24h": events - success, "database": a.db.Driver})
+	if e := a.db.Row(c, `SELECT COUNT(*),COALESCE(SUM(CASE WHEN outcome='success' THEN 1 ELSE 0 END),0) FROM ssh_events WHERE occurred_at>=?`, since).Scan(&events, &success); e != nil {
+		fail(c, e)
+		return
+	}
+	ok(c, gin.H{"version": Version, "servers": total, "online": on, "offline_or_pending": total - on - rev, "revoked": rev, "events_24h": events, "success_24h": success, "failure_24h": events - success, "database": a.db.Driver})
 }

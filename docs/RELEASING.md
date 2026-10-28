@@ -5,9 +5,9 @@
 `.github/workflows/ci.yml` 在 main push、PR、workflow_dispatch 时运行，也被 Release 工作流复用：
 
 1. Ubuntu/Windows：Go 单元测试和 vet；Linux 额外执行 race 测试；Windows 执行安装器 ACL helper 测试。
-2. 两个独立服务容器：PostgreSQL 16、MySQL 8.4，执行完整真实数据库 API 集成测试。
+2. 三个独立服务容器：PostgreSQL 16、MySQL 5.6.51 / 8.4，执行真实数据库 API 集成测试。
 3. 前端：npm ci、TypeScript/Vite 构建、high 级别依赖漏洞检查。
-4. main、手动运行和 Release 的所有检查通过后，构建两个 Linux API 架构、四个 Agent，检查 ELF/PE 架构、静态链接和 SHA-256，上传产物。PR 只执行检查，不上传安装包。
+4. main、手动运行和 Release 的检查通过后，构建两个 Linux API 架构、四个 Agent，检查 ELF/PE 架构、静态链接和 SHA-256；在临时 Ubuntu runner 上运行 Nginx/TLS、原生部署与真实 systemd Agent 安装/更新/失败恢复测试，再上传产物。PR 只执行检查，不上传安装包。
 
 流程没有生产凭证；CI 数据库密码只在临时测试容器内使用。不要把生产环境连接串放进 workflow。未通过检查不会发布安装产物。
 
@@ -28,14 +28,14 @@ Actions Artifact 是一次构建快照，保存 14 天；Release 是命名版本
 
 ## 创建预览版
 
-1. 修改 `VERSION`，例如 `0.2.0-alpha.1`，长度不超过 32。
+1. 修改 `VERSION`、`scripts/quick-start.sh` 默认标签及版本文档，例如 `0.3.0-alpha.1`，版本长度不超过 32。
 2. 更新 CHANGELOG、docs/RELEASE-NOTES.md 和验收记录。
 3. 提交到 main，等待 CI 全部通过。
 4. 在对应提交创建并推送标签：
 
 ```bash
-git tag -a v0.2.0-alpha.1 -m "SSHGuard 0.2.0 alpha 1"
-git push origin v0.2.0-alpha.1
+git tag -a v0.3.0-alpha.1 -m "SSHGuard 0.3.0 alpha 1"
+git push origin v0.3.0-alpha.1
 ```
 
 Release 工作流检查标签与 VERSION 完全一致，再复用 CI、下载并校验产物，最后通过 GitHub 自带 Token 创建 Prerelease。所有当前版本都标为预览版；正式稳定版需在采集/通知闭环和生产验收完成后单独修改发布策略。

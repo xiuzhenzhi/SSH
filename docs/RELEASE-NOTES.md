@@ -1,15 +1,15 @@
-# SSHGuard 0.2.0-alpha.1
+# SSHGuard v0.3.0-alpha.1
 
-这是基础预览版本，适合小规模测试和接口联调，不是完整生产告警系统。
+本版重点：让中央平台和 Agent 更容易安装、更新和维护。
 
-已提供：
+- 原生一键部署，无需 Docker/Go/Node：本机 PostgreSQL 或已有 MySQL/PostgreSQL、systemd、Nginx、可选自动 HTTPS。
+- Agent 支持 Windows / Ubuntu / Debian / Alpine，amd64 / arm64；保留凭证更新、SHA256 校验和失败回退。
+- MySQL 5.6.51 / 8.4 兼容与测试，中文/emoji、UTC、索引迁移重试。
+- 改密后统一失效旧会话、请求取消/超时、认证限流、只读 Agent 凭证、认证元数据清理。
+- Web 按需加载、动态页面 30 秒刷新、版本展示、更新命令入口。
 
-- Go API + Vue 后台，登录、角色权限、服务器管理、事件查询和操作审计。
-- MySQL / PostgreSQL 二选一；原生部署 / Docker Compose 二选一。
-- Windows、Ubuntu、Debian、Alpine Agent 注册与心跳；Windows/Linux 各 amd64/arm64 构建。
-- 后台生成 15 分钟单次安装命令、TLS 校验、凭证撤销、事件去重 API。
-- Linux/Windows 单元测试、双数据库集成测试与自动打包。
+升级前备份数据库与配置，新增索引会执行 DDL；自动回退仅恢复程序，不逆向迁移数据库。从 v0.2 手工部署迁入步骤见 [一键部署文档](QUICKSTART.md)。先更新平台，再更新 Agent。
 
-尚未提供：真实 SSH 日志采集、断线补传队列、规则引擎、Telegram/Webhook/SMTP 投递、MFA，以及 70 台生产容量验收。
+下载中央平台包 sshguard-linux-amd64.tar.gz / sshguard-linux-arm64.tar.gz，校验后解压，运行 sudo sh deploy.sh。Windows/Linux 独立 Agent 和安装器同时提供。安装说明见仓库 README。
 
-下载前请按中央平台 CPU 架构选择 sshguard-linux-*.tar.gz，按 SHA256SUMS 校验后阅读随包安装文档。Agent 由管理后台通过自己的 HTTPS 域名分发；无需把 GitHub 凭证复制到被管理主机。
+这仍是基础预览版：Agent 只有注册和心跳，真实 SSH 日志采集、规则、通知尚未实现。MySQL 5.6 已停止官方维护，兼容性不代表数据库安全维护。无需把 GitHub 凭证分发到 Agent。

@@ -2,9 +2,9 @@
 
 **面向多服务器环境的 SSH 安全审计与登录告警平台。** 管理后台集中查看资产和事件，Agent 主动通过 HTTPS 上报，无需保存服务器 SSH 密码或私钥。
 
-[安装中央平台](docs/INSTALL-NATIVE.md) · [安装 Agent](docs/AGENTS.md) · [Docker Compose](docs/INSTALL-COMPOSE.md) · [下载构建](https://github.com/xiuzhenzhi/SSH/actions) · [版本发布](https://github.com/xiuzhenzhi/SSH/releases) · [产品路线图](docs/ROADMAP.md)
+[一键部署 / 更新](docs/QUICKSTART.md) · [手工部署](docs/INSTALL-NATIVE.md) · [安装 Agent](docs/AGENTS.md) · [Docker Compose](docs/INSTALL-COMPOSE.md) · [下载构建](https://github.com/xiuzhenzhi/SSH/actions) · [版本发布](https://github.com/xiuzhenzhi/SSH/releases) · [产品路线图](docs/ROADMAP.md)
 
-> **当前版本：0.2.0-alpha.1，基础预览版。** 已完成管理后台、认证权限、服务器管理、跨平台 Agent 注册/心跳与事件入库 API。**尚未实现真实 SSH 日志采集、规则引擎和通知发送。** 不要把 Agent 在线状态当作安全告警已经覆盖生产服务器。
+> **当前版本：0.3.0-alpha.1，基础预览版。** 已完成管理后台、认证权限、服务器管理、跨平台 Agent 注册/心跳与事件入库 API。**尚未实现真实 SSH 日志采集、规则引擎和通知发送。** 不要把 Agent 在线状态当作安全告警已经覆盖生产服务器。
 
 ## 能做什么
 
@@ -12,7 +12,9 @@
 |---|---|
 | 管理员登录、可撤销会话、admin/operator/viewer 权限 | 已实现 |
 | 服务器分组、搜索、编辑、心跳状态、操作审计 | 已实现 |
-| 后台生成短期、一次性 Agent 安装命令 | 已实现 |
+| 后台生成短期安装命令、免重新注册的更新命令 | 已实现，更新校验与失败回退 |
+| 原生一键部署 / 更新、自动 HTTPS、本机 PostgreSQL 或外部数据库 | 已实现，Docker 可选 |
+| 自助改密并失效全部会话、过期认证数据清理 | 已实现 |
 | Windows / Ubuntu / Debian / Alpine Agent 注册、心跳、凭证撤销 | 已实现代码与构建；服务安装需目标机器验收 |
 | SSH 事件批量入库、UUID 去重、查询、详情 | API 已实现；目前用于联调 |
 | SSH 成功/失败日志采集、断线补传 | 下一阶段 |
@@ -32,11 +34,25 @@
 | Go 二进制 + systemd + Nginx | 已有 Linux 主机、数据库和运维规范 | [原生部署](docs/INSTALL-NATIVE.md) |
 | Docker Compose + Nginx | 希望应用和数据库一并启动 | [Compose 部署](docs/INSTALL-COMPOSE.md) |
 | PostgreSQL 16 | 新部署或已有 PostgreSQL | 两套部署方案均支持 |
-| MySQL 8.4 | 已有 MySQL 运维体系 | 两套部署方案均支持 |
+| MySQL 5.6.51 / 8.4 | 兼容已有 MySQL；新部署优先维护中的版本 | 5.6 接入现有数据库，Compose 默认 8.4 |
 
 数据库切换不会自动迁移已有数据。中央平台当前以 Linux 为部署目标；Agent 系统与中央平台系统可以不同。
 
-### 快速体验：Compose + MySQL
+### 推荐：一键部署（无需 Docker）
+
+准备 Ubuntu / Debian + systemd 主机，将域名解析到本机并开放 80/443。私有仓库先用有权限的账号执行 `gh auth login`。
+
+```sh
+git clone https://github.com/xiuzhenzhi/SSH.git
+cd SSH
+sh scripts/quick-start.sh
+```
+
+向导自动下载校验发行包，配置服务、数据库和 HTTPS。数据库可选自动安装本机 PostgreSQL，或填写已有 MySQL（含 5.6.51）/PostgreSQL DSN。初始随机密码写入 `/etc/sshguard/api.env`，登录后可在右上角改密。
+
+升级：`sh scripts/quick-start.sh --update`，保留配置和数据；先备份数据库。离线安装、无交互参数、失败回退及 v0.2 迁移见 [一键部署文档](docs/QUICKSTART.md)。
+
+### 可选：Compose + MySQL
 
 准备 Git、Node.js、Docker Engine 和 Compose 2.24.4+：
 
@@ -56,9 +72,20 @@ docker compose up -d --build
 
 从 [Releases](https://github.com/xiuzhenzhi/SSH/releases) 或成功的 [CI 运行](https://github.com/xiuzhenzhi/SSH/actions/workflows/ci.yml) 下载 `sshguard-linux-amd64.tar.gz`，ARM64 中央服务器选择 `arm64`。压缩包包含 API、已构建 Web、Agent 和部署模板，运行时不需要 Go/Node.js。
 
-按照 [原生安装文档](docs/INSTALL-NATIVE.md) 创建数据库、配置 `/etc/sshguard/api.env`、证书及 Nginx，然后启动服务。源码编译见 [开发文档](docs/DEVELOPMENT.md)。
+解压后执行 `sudo sh sshguard-linux-amd64/deploy.sh` 启动向导，或按 [原生安装文档](docs/INSTALL-NATIVE.md) 手工配置。源码编译见 [开发文档](docs/DEVELOPMENT.md)。
 
 仓库为私有时，源码及 Actions/Release 下载需要有访问权限的 GitHub 账号。目标 Agent 从**你自己的平台域名**下载程序，不需要 GitHub Token。
+
+## Agent 一键安装与更新
+
+首次安装从后台复制命令，使用 15 分钟一次性令牌。已有 Agent 使用「更新命令」，不重新注册，不替换身份和凭证；自动按架构下载，校验 SHA256，验证版本和心跳，失败时恢复原二进制。
+
+```sh
+# Linux 更新，替换为自己的平台域名；Ubuntu/Debian 使用 sudo，Alpine 使用 root。
+(f=$(mktemp) && trap 'rm -f "$f"' EXIT && curl --proto '=https' -fsS https://guard.example.com/downloads/install-agent.sh -o "$f" && sudo sh "$f" https://guard.example.com --update)
+```
+
+Windows 使用后台生成的管理员 PowerShell 命令（`-Update`）。更新来源是自己的平台，必须先更新平台，再更新 Agent；没有强制推送、远程执行通道或静默自动升级。Agent 是单个静态 Go 程序，无 Node/Python、无监听端口、默认每 30 秒一个心跳；Windows 使用 LocalService，Linux 使用专用低权限用户。
 
 ## 接入服务器
 
@@ -100,10 +127,17 @@ flowchart LR
 
 API 负责会话、权限、校验与事务；Agent 不执行平台下发的任意 Shell 命令。通知 Worker 尚未实现，虚线为规划能力。
 
+## 轻量化与安全
+
+Vue 组件与样式按需加载；页面切换取消旧请求，动态列表每 30 秒刷新，后台标签页暂停轮询。统计查询合并，认证数据分批定时清理，事件和审计记录不会自动删除。API 使用有界连接池、分页、超时、登录限速、角色权限、Origin 校验和参数化 SQL。
+
+MySQL 5.6 已停止官方维护，应用兼容不代表数据库没有漏洞。验收范围与限制见 [验证记录](docs/VALIDATION.md)。
+
 ## 文档导航
 
 | 文档 | 内容 |
 |---|---|
+| [一键部署 / 更新](docs/QUICKSTART.md) | 原生向导、MySQL 5.6、HTTPS、升级回退、旧版迁移 |
 | [原生安装](docs/INSTALL-NATIVE.md) / [Compose 安装](docs/INSTALL-COMPOSE.md) | 数据库、环境配置、Nginx、HTTPS 和启动 |
 | [Agent 手册](docs/AGENTS.md) | 四种系统安装、权限、服务检查与卸载 |
 | [运维手册](docs/OPERATIONS.md) | 升级、备份恢复、凭证撤销、健康检查 |

@@ -19,7 +19,7 @@ import (
 	"time"
 )
 
-var version = "0.2.0-alpha.1"
+var version = "0.3.0-alpha.1"
 
 type Config struct {
 	Endpoint string `json:"endpoint"`
@@ -156,11 +156,18 @@ func heartbeatLoop(ctx context.Context, cfg Config, interval time.Duration) {
 		}
 	}
 }
+func checkAgent(ctx context.Context, cfg Config, endpoint string) error {
+	if endpoint != "" && endpoint != cfg.Endpoint {
+		return fmt.Errorf("endpoint differs from installed configuration; refusing update")
+	}
+	return request(ctx, cfg.Endpoint, "/api/v1/agent/heartbeat", cfg.Token, map[string]string{"version": version}, nil)
+}
 func main() {
 	path := flag.String("config", defaultConfigPath(), "configuration path")
 	endpoint := flag.String("endpoint", "", "HTTPS platform origin")
 	enroll := flag.Bool("enroll", false, "read one-time enrollment token from stdin")
 	showVersion := flag.Bool("version", false, "print agent version")
+	check := flag.Bool("check", false, "validate config and send one heartbeat, then exit")
 	serviceAction := flag.String("service", "", "Windows service setup: install or uninstall (administrator)")
 	flag.Parse()
 	if *showVersion {
@@ -187,6 +194,12 @@ func main() {
 	cfg, e := loadConfig(*path)
 	if e != nil {
 		log.Fatal(e)
+	}
+	if *check {
+		if e = checkAgent(context.Background(), cfg, *endpoint); e != nil {
+			log.Fatal(e)
+		}
+		return
 	}
 	if e = runPlatform(func(ctx context.Context) { heartbeatLoop(ctx, cfg, 30*time.Second) }); e != nil {
 		log.Fatal(e)

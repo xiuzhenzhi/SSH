@@ -1,5 +1,11 @@
 # Agent 安装与管理
 
+## 保留身份的一键更新
+
+先更新中央平台，再在服务器列表点击「更新命令」。Linux 使用同一安装器的 `--update`，Windows 使用 `-Update`，不需要新的注册令牌。新程序下载和 SHA256 校验完成后才停止服务；更新会核对原配置 endpoint，服务启动/心跳检查失败恢复旧程序。同版本重复执行不会重新注册。后台 Agent 版本随心跳更新。
+
+凭证已撤销时更新会拒绝，必须由管理员重新生成安装命令。首次安装或重新注册会更换凭证，不能当作更新使用。Linux 凭证文件为 root 所有、服务组只读；Windows 凭证仅 Administrators/SYSTEM 可写，LocalService 只读。更新需本机管理员权限，平台不提供远程命令执行。SHA256 是完整性检查，信任来源仍是平台 HTTPS。
+
 > 当前仅注册与心跳，尚不采集 SSH 日志。
 
 ### 4. 登录与接入服务器
@@ -34,7 +40,7 @@ Windows 使用自带 PowerShell 下载并校验 SHA-256，无需 NSSM、WinSW、
 
 命令包含短期凭证，避免公开粘贴；长期令牌的存放与权限：
 
-- Linux：`/etc/sshguard/agent.json`（0600，sshguard 所有）；父目录 root:sshguard、0750，服务账号不能替换目录条目。
+- Linux：`/etc/sshguard/agent.json`（0640，root:sshguard）；父目录 root:sshguard、0750，服务账号只读，不能替换目录条目。v0.2 旧文件权限会在更新时加固。
 - Windows：`%ProgramData%\SSHGuard\agent.json`；ACL 只授权 Administrators/SYSTEM 完全控制、LocalService 读取，普通用户无访问权限。程序在 `%ProgramFiles%\SSHGuardAgent`，服务不以管理员账号运行。
 
 注册响应因网络断开丢失时，重新生成安装命令重试；旧令牌会被替换。重新安装期间短暂停止旧服务，注册失败时尝试恢复旧服务。安装凭证单次消耗，成功后再执行旧命令会失败，需要后台生成新命令。
@@ -53,10 +59,10 @@ systemctl status sshguard-agent
 journalctl -u sshguard-agent -n 50 --no-pager
 # Alpine
 rc-service sshguard-agent status
-tail -n 50 /var/log/sshguard/agent.log
+logread | grep sshguard-agent
 ```
 
-Alpine 文件日志需结合本机 logrotate 管理保留期；Windows 交由事件日志保留策略管理。卸载脚本：`scripts/uninstall-agent.sh`（root）或 `scripts/uninstall-agent.ps1`（管理员 PowerShell）。卸载保留凭证文件和历史日志，须在后台撤销凭证；系统用户/事件源不自动删除。
+新安装的 Alpine Agent 交给 syslog 管理日志与轮转，需启用本机 syslog 服务；从 v0.2 更新保留原服务定义，原 `/var/log/sshguard/agent.log` 仍需 logrotate。Windows 交由事件日志保留策略管理。卸载脚本：`scripts/uninstall-agent.sh`（root）或 `scripts/uninstall-agent.ps1`（管理员 PowerShell）。卸载保留凭证文件和历史日志，须在后台撤销凭证；系统用户/事件源不自动删除。
 
 
 ## 单台验收

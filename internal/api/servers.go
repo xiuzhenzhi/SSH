@@ -97,6 +97,11 @@ func (a *App) enrollment(c *gin.Context) {
 	commands := installCommands(a.cfg.PublicURL, t)
 	ok(c, gin.H{"command": commands["ubuntu"], "commands": commands, "expires_at": expires, "phase": "registration-and-heartbeat-only"})
 }
+func updateCommands(origin string) map[string]string {
+	commands := installCommands(origin, "--update")
+	commands["windows"] = strings.Replace(commands["windows"], "-EnrollmentToken '--update'", "-Update", 1)
+	return commands
+}
 func (a *App) revoke(c *gin.Context) {
 	id := c.Param("id")
 	e := a.mutate(c, c.MustGet("user").(User).ID, "agent.revoke", id, func(tx *sql.Tx) error {

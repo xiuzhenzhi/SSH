@@ -1,5 +1,7 @@
 # 原生部署：Go 二进制 + systemd + Nginx
 
+> 推荐先使用 [一键部署向导](QUICKSTART.md)，自动配置数据库、systemd、Nginx 和 HTTPS。下文保留手工部署方案。MySQL 可接入 5.6.51 或 8.4；新部署建议维护中的版本。
+
 中央平台部署在 Linux，Agent 可运行在 Windows / Ubuntu / Debian / Alpine。
 
 ## 下载发布包
@@ -7,7 +9,7 @@
 在 GitHub Releases 下载对应架构发布包和 SHA256SUMS，或从成功 CI 的 sshguard-release-assets 获取。私有仓库需要有访问权限的账号。
 
 ```bash
-gh release download v0.2.0-alpha.1 --repo xiuzhenzhi/SSH --pattern sshguard-linux-amd64.tar.gz --pattern SHA256SUMS
+gh release download v0.3.0-alpha.1 --repo xiuzhenzhi/SSH --pattern sshguard-linux-amd64.tar.gz --pattern SHA256SUMS
 sha256sum --ignore-missing -c SHA256SUMS
 tar -xzf sshguard-linux-amd64.tar.gz
 cd sshguard-linux-amd64

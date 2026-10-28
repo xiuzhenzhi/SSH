@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
 	"net/http"
 	"os"
@@ -13,6 +14,8 @@ import (
 )
 
 func main() {
+	check := flag.Bool("check", false, "check config, migrate database, bootstrap admin, then exit")
+	flag.Parse()
 	c, e := api.LoadConfig()
 	if e != nil {
 		log.Fatal(e)
@@ -30,9 +33,29 @@ func main() {
 		log.Fatal(e)
 	}
 	cancel()
+	if *check {
+		log.Print("Configuration and database ready")
+		return
+	}
 	s := &http.Server{Addr: c.Listen, Handler: api.New(db, c), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
 	stop, done := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer done()
+	go func() {
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+		for {
+			ctx, cancel := context.WithTimeout(stop, 30*time.Second)
+			if e := storage.Cleanup(ctx, db); e != nil && stop.Err() == nil {
+				log.Print("Authentication metadata cleanup failed")
+			}
+			cancel()
+			select {
+			case <-stop.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
 	go func() {
 		log.Printf("SSHGuard API listening on %s", c.Listen)
 		if e := s.ListenAndServe(); e != nil && e != http.ErrServerClosed {

@@ -23,3 +23,14 @@ func TestInstallCommandsPlatforms(t *testing.T) {
 		t.Fatal("PowerShell quote escaping")
 	}
 }
+func TestUpdateDoesNotEnroll(t *testing.T) {
+	commands := updateCommands("https://guard.example.com")
+	for _, platform := range []string{"ubuntu", "debian", "alpine"} {
+		if !strings.Contains(commands[platform], "'--update'") {
+			t.Fatal("update flag missing", platform)
+		}
+	}
+	if strings.Contains(commands["windows"], "-EnrollmentToken") || !strings.Contains(commands["windows"], "-Update") {
+		t.Fatal("Windows update would enroll")
+	}
+}

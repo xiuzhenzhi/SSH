@@ -1,65 +1,99 @@
 #!/bin/sh
-# POSIX sh: Ubuntu/Debian (systemd) and Alpine (OpenRC). No bash/glibc required.
+# Ubuntu/Debian: systemd. Alpine: OpenRC. No bash, Python, Node or container.
 set -eu
 umask 077
-[ "$(id -u)" -eq 0 ] || { echo 'Run as root (sudo sh on Ubuntu/Debian; root shell on Alpine).' >&2; exit 1; }
-[ "$#" -eq 2 ] || { echo 'Usage: install-agent.sh HTTPS_ORIGIN ONE_TIME_TOKEN' >&2; exit 1; }
+die() { echo "$*" >&2; exit 1; }
+[ "$(id -u)" -eq 0 ] || die 'Run as root (sudo sh on Ubuntu/Debian).'
+[ "$#" -eq 2 ] || die 'Usage: install-agent.sh HTTPS_ORIGIN ONE_TIME_TOKEN|--update'
 endpoint=${1%/}
+mode=install
 enrollment=$2
-case "$endpoint" in https://*) ;; *) echo 'HTTPS required.' >&2; exit 1 ;; esac
-printf '%s' "$enrollment" | grep -Eq '^[a-f0-9]{64}$' || { echo 'Invalid enrollment token.' >&2; exit 1; }
-if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
-    init=systemd
-elif command -v rc-service >/dev/null 2>&1 && command -v supervise-daemon >/dev/null 2>&1; then
-    init=openrc
-else
-    echo 'A running systemd or OpenRC installation is required.' >&2; exit 1
-fi
-command -v curl >/dev/null 2>&1 || { echo 'Install curl and ca-certificates first (apt or apk).' >&2; exit 1; }
+printf '%s' "$endpoint" | grep -Eq '^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$' || die 'Expected an HTTPS DNS origin.'
+if [ "$enrollment" = --update ]; then mode=update
+else printf '%s' "$enrollment" | grep -Eq '^[a-f0-9]{64}$' || die 'Invalid enrollment token.'; fi
+if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then init=systemd
+elif command -v rc-service >/dev/null 2>&1 && command -v supervise-daemon >/dev/null 2>&1; then init=openrc
+else die 'A running systemd or OpenRC installation is required.'; fi
+command -v curl >/dev/null 2>&1 || die 'Install curl and ca-certificates first (apt or apk).'
 command -v sha256sum >/dev/null 2>&1
-case "$(uname -m)" in x86_64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; *) echo 'Only amd64 / arm64 supported.' >&2; exit 1 ;; esac
-tmp=$(mktemp -d)
-trap 'rm -rf -- "$tmp"' EXIT
-curl --proto '=https' --tlsv1.2 -fsS "$endpoint/downloads/sshguard-agent-linux-$arch" -o "$tmp/agent"
-curl --proto '=https' --tlsv1.2 -fsS "$endpoint/downloads/sshguard-agent-linux-$arch.sha256" -o "$tmp/hash"
-expected=$(awk '{print $1}' "$tmp/hash")
-printf '%s' "$expected" | grep -Eq '^[a-f0-9]{64}$' || exit 1
-printf '%s  %s\n' "$expected" "$tmp/agent" | sha256sum -c -
-if ! id sshguard >/dev/null 2>&1; then
-    if command -v useradd >/dev/null 2>&1; then
-        useradd --system --user-group --no-create-home --shell /usr/sbin/nologin sshguard
-    else
-        addgroup -S sshguard
-        adduser -S -D -H -h /nonexistent -s /sbin/nologin -G sshguard sshguard
-    fi
+case "$(uname -m)" in x86_64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; *) die 'Only amd64 / arm64 supported.' ;; esac
+for path in /etc/sshguard /etc/sshguard/agent.json /usr/local/bin/sshguard-agent /etc/systemd/system/sshguard-agent.service /etc/init.d/sshguard-agent; do
+    [ ! -L "$path" ] || die "Refusing symlink: $path"
+done
+config=/etc/sshguard/agent.json
+exe=/usr/local/bin/sshguard-agent
+if [ "$mode" = update ]; then
+    [ -f "$config" ] && [ -f "$exe" ] || die 'Agent not installed; use a new installation command.'
 fi
-mkdir -p /etc/sshguard /usr/local/bin
-# The daemon may read its credential, but cannot replace directory entries.
+mkdir /run/sshguard-agent-install.lock 2>/dev/null || die 'Another installation is active (or a stale /run/sshguard-agent-install.lock exists).'
+tmp=''
+rollback=false
+was_active=false
+service_stop() { if [ "$init" = systemd ]; then systemctl stop sshguard-agent; else rc-service sshguard-agent stop; fi; }
+service_start() { if [ "$init" = systemd ]; then systemctl start sshguard-agent; else rc-service sshguard-agent start; fi; }
+service_active() { if [ "$init" = systemd ]; then systemctl is-active --quiet sshguard-agent; else rc-service sshguard-agent status >/dev/null 2>&1; fi; }
+cleanup() {
+    status=$?
+    trap - EXIT HUP INT TERM
+    if "$rollback"; then
+        service_stop || true
+        if [ -f "$tmp/previous" ]; then mv -f "$tmp/previous" "$exe"; fi
+        if "$was_active"; then service_start || true; fi
+        echo 'Update failed; previous binary restored. Configuration preserved.' >&2
+    fi
+    [ -z "$tmp" ] || rm -rf -- "$tmp"
+    rmdir /run/sshguard-agent-install.lock
+    exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+mkdir -p /usr/local/bin
+tmp=$(mktemp -d /usr/local/bin/.sshguard-install.XXXXXX)
+curl --proto '=https' --tlsv1.2 --connect-timeout 15 --max-time 180 --retry 2 -fsS "$endpoint/downloads/sshguard-agent-linux-$arch" -o "$tmp/agent"
+curl --proto '=https' --tlsv1.2 --connect-timeout 15 --max-time 30 -fsS "$endpoint/downloads/sshguard-agent-linux-$arch.sha256" -o "$tmp/hash"
+expected=$(awk '{print $1}' "$tmp/hash")
+printf '%s' "$expected" | grep -Eq '^[a-f0-9]{64}$' || die 'Invalid checksum.'
+printf '%s  %s\n' "$expected" "$tmp/agent" | sha256sum -c -
+chmod 0755 "$tmp/agent"
+"$tmp/agent" -version
+if [ "$mode" = update ]; then
+    chown root:sshguard "$config"
+    chmod 0640 "$config"
+    "$tmp/agent" -check -endpoint "$endpoint" -config "$config"
+    if cmp -s "$tmp/agent" "$exe"; then
+        if ! service_active; then service_start; sleep 2; service_active; fi
+        echo 'Already up to date; credentials verified and service running.'; exit 0
+    fi
+    cp -p "$exe" "$tmp/previous"
+    if service_active; then was_active=true; fi
+    rollback=true
+    service_stop
+    mv -f "$tmp/agent" "$exe"
+    service_start
+    sleep 2
+    service_active
+    "$exe" -check -endpoint "$endpoint" -config "$config"
+    rollback=false
+    echo 'Agent updated; existing server identity and credentials preserved.'
+    exit 0
+fi
+if ! id sshguard >/dev/null 2>&1; then
+    if command -v useradd >/dev/null 2>&1; then useradd --system --user-group --no-create-home --shell /usr/sbin/nologin sshguard
+    else addgroup -S sshguard; adduser -S -D -H -h /nonexistent -s /sbin/nologin -G sshguard sshguard; fi
+fi
+mkdir -p /etc/sshguard
 chown root:sshguard /etc/sshguard
 chmod 0750 /etc/sshguard
-was_active=false
-if [ "$init" = systemd ]; then
-    if systemctl is-active --quiet sshguard-agent; then was_active=true; systemctl stop sshguard-agent; fi
-else
-    if rc-service sshguard-agent status >/dev/null 2>&1; then was_active=true; rc-service sshguard-agent stop; fi
-fi
-chmod 0700 "$tmp/agent"
-if ! printf '%s' "$enrollment" | "$tmp/agent" -enroll -endpoint "$endpoint" -config /etc/sshguard/agent.json; then
-    if "$was_active"; then
-        if [ "$init" = systemd ]; then systemctl start sshguard-agent; else rc-service sshguard-agent start; fi
-    fi
-    echo 'Enrollment failed; generate a new command and retry.' >&2; exit 1
-fi
+printf '%s' "$enrollment" | "$tmp/agent" -enroll -endpoint "$endpoint" -config "$config"
 unset enrollment
-chown sshguard:sshguard /etc/sshguard/agent.json
-chmod 0600 /etc/sshguard/agent.json
-cp "$tmp/agent" /usr/local/bin/sshguard-agent
-chown root:root /usr/local/bin/sshguard-agent
-chmod 0755 /usr/local/bin/sshguard-agent
+chown root:sshguard "$config"
+chmod 0640 "$config"
+if service_active; then service_stop; fi
+mv -f "$tmp/agent" "$exe"
 if [ "$init" = systemd ]; then
     cat > /etc/systemd/system/sshguard-agent.service <<'UNIT'
 [Unit]
-Description=SSHGuard Agent (phase 1 heartbeat only)
+Description=SSHGuard Agent
 After=network-online.target
 Wants=network-online.target
 [Service]
@@ -81,26 +115,22 @@ UNIT
 else
     cat > /etc/init.d/sshguard-agent <<'OPENRC'
 #!/sbin/openrc-run
-description="SSHGuard Agent (phase 1 heartbeat only)"
+description="SSHGuard Agent"
 supervisor="supervise-daemon"
 command="/usr/local/bin/sshguard-agent"
 command_args="-config /etc/sshguard/agent.json"
 command_user="sshguard:sshguard"
 respawn_delay=10
 respawn_max=0
-output_log="/var/log/sshguard/agent.log"
-error_log="/var/log/sshguard/agent.log"
-depend() {
-    need net
-    after firewall
-}
-start_pre() {
-    checkpath --directory --owner sshguard:sshguard --mode 0750 /var/log/sshguard
-    checkpath --file --owner sshguard:sshguard --mode 0640 /var/log/sshguard/agent.log
-}
+output_logger="logger -t sshguard-agent"
+error_logger="logger -t sshguard-agent"
+depend() { need net; after firewall; }
 OPENRC
     chmod 0755 /etc/init.d/sshguard-agent
     rc-update add sshguard-agent default
     rc-service sshguard-agent start
 fi
-echo "Installed for $init: registration + heartbeat only; SSH collection is not implemented."
+sleep 2
+service_active
+"$exe" -check -endpoint "$endpoint" -config "$config"
+echo "Installed for $init. Registration + heartbeat; SSH collection is not implemented."

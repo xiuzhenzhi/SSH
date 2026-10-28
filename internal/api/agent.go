@@ -101,8 +101,14 @@ func (a *App) agentTx(c *gin.Context, fn func(*sql.Tx) error) error {
 	return tx.Commit()
 }
 func (a *App) heartbeat(c *gin.Context) {
+	var in struct {
+		Version string `json:"version" binding:"max=32"`
+	}
+	if !bind(c, &in) {
+		return
+	}
 	e := a.agentTx(c, func(tx *sql.Tx) error {
-		_, e := tx.ExecContext(c, a.db.Bind(`UPDATE servers SET last_seen_at=? WHERE id=?`), time.Now().UTC(), c.GetString("server_id"))
+		_, e := tx.ExecContext(c, a.db.Bind(`UPDATE servers SET last_seen_at=?,agent_version=CASE WHEN ?='' THEN agent_version ELSE ? END WHERE id=?`), time.Now().UTC(), in.Version, in.Version, c.GetString("server_id"))
 		return e
 	})
 	if e != nil {

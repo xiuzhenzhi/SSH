@@ -46,3 +46,10 @@ POST /api/v1/servers/:id/enrollment 返回 command（Ubuntu 兼容字段）、co
 GET /api/v1/health 返回 status、database、phase、version，不返回连接串或密码。
 
 安装凭证错误/过期/重复使用返回 401；角色不足或 Origin 不匹配返回 403；参数错误返回 400；登录限速返回 429；重复事件仍返回 200，并在 duplicates 字段计数。
+
+## v0.3 新增
+
+- `GET /api/v1/agent/update-commands`：admin 获取各系统更新命令与平台版本，无注册令牌。
+- `POST /api/v1/auth/password`：已登录用户提交 `current_password`、`new_password`（12–72 字节），成功后全部旧会话失效，需重新登录。
+- 心跳接受可选 `version`（最多 32 字符），更新服务器 Agent 版本；旧版空对象仍兼容。
+- 统计摘要返回 `version`；请求上下文 20 秒超时。登录/改密共享每进程每分钟 60 次预算；登录另有数据库级账号窗口限速。

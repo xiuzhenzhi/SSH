@@ -121,3 +121,24 @@ func TestPlatformsAndValidation(t *testing.T) {
 		t.Fatal("invalid origin/token validation")
 	}
 }
+func TestCheckPreservesCredentialsAndRejectsOtherOrigin(t *testing.T) {
+	oldClient := client
+	defer func() { client = oldClient }()
+	calls := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.URL.Path != "/api/v1/agent/heartbeat" || r.Header.Get("Authorization") != "Bearer "+strings.Repeat("a", 64) {
+			t.Error("unexpected request")
+		}
+		w.Write([]byte(`{"data":{"received":true}}`))
+	}))
+	defer server.Close()
+	client = server.Client()
+	cfg := Config{Endpoint: server.URL, Token: strings.Repeat("a", 64), ServerID: "same-server"}
+	if e := checkAgent(context.Background(), cfg, "https://other.example.com"); e == nil || calls != 0 {
+		t.Fatal("sent credential to another origin")
+	}
+	if e := checkAgent(context.Background(), cfg, server.URL); e != nil || calls != 1 {
+		t.Fatal(e)
+	}
+}

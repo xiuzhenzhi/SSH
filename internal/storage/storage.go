@@ -3,8 +3,9 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"sshguard/migrations"
 	"strings"
@@ -17,11 +18,41 @@ type DB struct {
 }
 
 func Open(ctx context.Context, driver, dsn string) (*DB, error) {
+	if driver != "mysql" && driver != "postgres" {
+		return nil, fmt.Errorf("unsupported database driver")
+	}
 	name := driver
 	if driver == "postgres" {
 		name = "pgx"
 	}
-	p, e := sql.Open(name, dsn)
+	var p *sql.DB
+	var e error
+	if driver == "mysql" {
+		cfg, err := mysql.ParseDSN(dsn)
+		if err != nil {
+			return nil, fmt.Errorf("invalid MySQL DSN")
+		}
+		cfg.ParseTime = true
+		if err := cfg.Apply(mysql.Charset("utf8mb4", "utf8mb4_unicode_ci")); err != nil {
+			return nil, err
+		}
+		cfg.Loc = time.UTC
+		if cfg.Params == nil {
+			cfg.Params = map[string]string{}
+		}
+		cfg.Params["time_zone"] = "'+00:00'"
+		cfg.MultiStatements = false
+		cfg.Timeout = 10 * time.Second
+		cfg.ReadTimeout = 15 * time.Second
+		cfg.WriteTimeout = 15 * time.Second
+		connector, err := mysql.NewConnector(cfg)
+		if err != nil {
+			return nil, fmt.Errorf("invalid MySQL connection settings")
+		}
+		p = sql.OpenDB(connector)
+	} else {
+		p, e = sql.Open(name, dsn)
+	}
 	if e != nil {
 		return nil, e
 	}
@@ -137,6 +168,12 @@ func Migrate(ctx context.Context, d *DB) error {
 				continue
 			}
 			if _, e = tx.ExecContext(ctx, statement); e != nil {
+				// MySQL DDL commits independently. An interrupted index migration
+				// can be retried without marking partially applied DDL as complete.
+				var mysqlErr *mysql.MySQLError
+				if d.Driver == "mysql" && strings.HasPrefix(strings.TrimSpace(statement), "CREATE INDEX ") && errors.As(e, &mysqlErr) && mysqlErr.Number == 1061 {
+					continue
+				}
 				tx.Rollback()
 				return fmt.Errorf("%s: %w", f.Name(), e)
 			}
@@ -146,6 +183,47 @@ func Migrate(ctx context.Context, d *DB) error {
 			return e
 		}
 		if e = tx.Commit(); e != nil {
+			return e
+		}
+	}
+	return nil
+}
+
+// Cleanup only removes expired authentication metadata, never events/audit logs.
+// Each pass is bounded to avoid large transactions and long row locks.
+func Cleanup(ctx context.Context, d *DB) error {
+	now := time.Now().UTC()
+	for _, item := range []struct {
+		table, key, predicate string
+		cutoff                time.Time
+	}{
+		{"sessions", "token_hash", "expires_at", now},
+		{"agent_enrollments", "token_hash", "expires_at", now},
+		{"login_attempts", "bucket_key", "window_start", now.Add(-24 * time.Hour)},
+	} {
+		rows, e := d.QueryContext(ctx, d.Bind("SELECT "+item.key+" FROM "+item.table+" WHERE "+item.predicate+"<? LIMIT 1000"), item.cutoff)
+		if e != nil {
+			return e
+		}
+		ids := []any{}
+		for rows.Next() {
+			var id string
+			if e = rows.Scan(&id); e != nil {
+				rows.Close()
+				return e
+			}
+			ids = append(ids, id)
+		}
+		e = rows.Err()
+		rows.Close()
+		if e != nil {
+			return e
+		}
+		if len(ids) == 0 {
+			continue
+		}
+		marks := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+		if _, e = d.Exec(ctx, "DELETE FROM "+item.table+" WHERE "+item.key+" IN ("+marks+")", ids...); e != nil {
 			return e
 		}
 	}

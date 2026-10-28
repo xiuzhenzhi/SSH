@@ -13,7 +13,7 @@ start() { return 0; }
 UNIT
 chmod 0755 /etc/init.d/ci-network
 rc-service ci-network start
-rc-service syslog start
+syslogd
 sh /ci/install-agent.sh https://guard.sshguard.test "$SSHGUARD_ENROLLMENT_TOKEN"
 unset SSHGUARD_ENROLLMENT_TOKEN
 before=$(sha256sum /etc/sshguard/agent.json)

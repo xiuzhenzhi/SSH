@@ -9,17 +9,24 @@ if [ "${1:-}" = --help ]; then
     exit 0
 fi
 [ "$(id -u)" -eq 0 ] || die 'Run with sudo sh deploy.sh.'
-if [ "$#" -eq 0 ] && [ -f /etc/sshguard/deploy-managed ] && [ -t 0 ]; then
+if [ "$#" -eq 0 ] && [ -t 0 ]; then
     printf '\n============== SSHGuard 管理菜单 ==============\n'
-    printf '  1) 更新到当前安装包版本\n  2) 查看运行状态与访问地址\n  3) 查看最近日志\n  4) 重启 SSHGuard\n  0) 退出\n请选择 [0–4]: '
+    if [ -f /etc/sshguard/deploy-managed ]; then printf '状态：已安装\n'; else printf '状态：未安装\n'; fi
+    printf '  1) 安装 / 更新\n  2) 查看状态\n  3) 查看日志\n  4) 重启\n  5) 启动\n  6) 停止\n  0) 退出\n请选择 [默认 1]: '
     IFS= read -r choice
-    case "$choice" in 1) set -- --update ;; 2) set -- --status ;; 3) set -- --logs ;; 4) set -- --restart ;; 0|'') exit 0 ;; *) die '无效选项。' ;; esac
+    case "${choice:-1}" in
+        1) if [ -f /etc/sshguard/deploy-managed ]; then set -- --update; fi ;;
+        2) set -- --status ;; 3) set -- --logs ;; 4) set -- --restart ;;
+        5) set -- --start ;; 6) set -- --stop ;; 0) exit 0 ;; *) die '无效选项。' ;;
+    esac
 fi
 case "${1:-}" in
-    --status|--logs|--restart)
+    --status|--logs|--restart|--start|--stop)
         [ "$#" -eq 1 ] && [ -f /etc/sshguard/deploy-managed ] || die '未找到向导管理的安装，或参数无效。'
         case "$1" in
             --logs) journalctl -u sshguard-api -n 100 --no-pager; exit $? ;;
+            --start) systemctl start sshguard-api ;;
+            --stop) systemctl stop sshguard-api ;;
             --restart) systemctl restart sshguard-api; systemctl is-active --quiet sshguard-api || die '启动失败，请查看 --logs。' ;;
         esac
         printf '\nSSHGuard 运行状态\n'
@@ -40,6 +47,7 @@ config_file=''
 proxy_arg=''
 while [ "$#" -gt 0 ]; do
     case "$1" in
+        --install) shift ;;
         --update) mode=update; shift ;;
         --config) [ "$#" -ge 2 ] || die '--config requires a file'; config_file=$2; shift 2 ;;
         --proxy) [ "$#" -ge 2 ] || die '--proxy requires standalone, external or managed'; proxy_arg=$2; shift 2 ;;
@@ -47,7 +55,7 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 domain=''; driver=''; dsn=''; certificate=''; private_key=''; email=''; admin_password=''; proxy_mode=''
-app_port=''; public_origin=''; builtin_tls=false
+app_port=''; public_origin=''; builtin_tls=false; initial_setup=false
 if [ -n "$config_file" ]; then
     [ -f "$config_file" ] && [ ! -L "$config_file" ] || die 'Configuration must be a regular file.'
     [ "$(stat -c %a "$config_file")" = 600 ] || die 'Set configuration permissions to 600.'
@@ -72,7 +80,7 @@ elif [ -L /opt/sshguard ]; then die 'Already installed. Use --update.'; fi
 printf '\n============================================================\n'
 printf '  SSHGuard %s · 安装 / 更新向导\n' "$version"
 printf '============================================================\n'
-printf '\n[1/5] 检查环境与 Web 服务\n'
+printf '\n[1/5] 检查运行环境\n'
 existing_web=false
 custom_web=false
 if command -v openresty >/dev/null 2>&1; then custom_web=true; fi
@@ -149,7 +157,7 @@ if [ "$mode" = install ]; then
     if [ "$proxy_mode" = managed ] && [ ! -x /usr/sbin/nginx ]; then install_packages nginx; fi
 fi
 command -v curl >/dev/null 2>&1 || die 'curl is required.'
-printf '\n[2/5] 配置端口与数据库\n'
+printf '\n[2/5] 设置应用端口\n'
 if [ -f /etc/sshguard/api.env ]; then
     [ -f /etc/sshguard/deploy-managed ] || die 'Existing api.env is not wizard-managed; migrate explicitly, do not overwrite credentials.'
     public_origin=$(sed -n 's/^PUBLIC_URL="\([^"]*\)"$/\1/p' /etc/sshguard/api.env)
@@ -158,6 +166,7 @@ if [ -f /etc/sshguard/api.env ]; then
     if grep -q '^TLS_CERT_FILE=' /etc/sshguard/api.env; then builtin_tls=true; fi
 else
     [ "$mode" = install ] || die 'Missing /etc/sshguard/api.env.'
+    initial_setup=true
     if [ "$proxy_mode" != standalone ] || [ -n "$certificate" ]; then
         if [ -z "$domain" ] && [ -z "$config_file" ]; then prompt 'HTTPS domain: '; domain=$answer; fi
         printf '%s' "$domain" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z0-9-]+$' || die 'DOMAIN required for explicit HTTPS/proxy mode.'
@@ -180,11 +189,6 @@ else
     fi
     configured_origin=$public_origin
     if [ "$proxy_mode" = standalone ] && ! "$builtin_tls" && [ -z "$domain" ]; then configured_origin=''; public_origin="http://SERVER_IP:$app_port"; fi
-    if [ -z "$driver" ] && [ -z "$config_file" ]; then
-        printf '\n  1) SQLite：单机部署，无需安装数据库（推荐）\n  2) 本机 PostgreSQL：自动安装\n  3) 已有 PostgreSQL\n  4) 已有 MySQL\n'
-        prompt '请选择数据库 [1/2/3/4，默认 1]: '
-        case "${answer:-1}" in 1|sqlite) driver=sqlite ;; 2|local-postgres) driver=local-postgres ;; 3|postgres) driver=postgres ;; 4|mysql) driver=mysql ;; *) die '请选择 1、2、3 或 4。' ;; esac
-    fi
     driver=${driver:-sqlite}
     case "$driver" in
         sqlite)
@@ -363,6 +367,18 @@ if [ "$proxy_mode" = managed ]; then
     systemctl reload nginx
 fi
 switched=false
-printf '\n安装完成 · SSHGuard %s\n访问地址：%s（SERVER_IP 替换为服务器 IP）\n' "$version" "$public_origin"
-printf '管理员：admin\n初始密码：查看 /etc/sshguard/api.env 中的 ADMIN_PASSWORD\n'
+if [ "$public_origin" = "http://SERVER_IP:$app_port" ]; then
+    detected_ip=$(hostname -I 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/){print $i; exit}}') || detected_ip=''
+    public_origin="http://${detected_ip:-127.0.0.1}:$app_port"
+fi
+printf '\n安装完成 · SSHGuard %s\n访问地址：%s\n' "$version" "$public_origin"
+printf '管理员：admin\n'
+if "$initial_setup" && [ -t 1 ] && [ -w /dev/tty ]; then
+    # Only show the first-install password on the operator's terminal, never CI/redirected logs.
+    initial_password=$(sed -n 's/^ADMIN_PASSWORD="\([^"]*\)"$/\1/p' /etc/sshguard/api.env)
+    printf '初始密码：%s\n首次登录后请修改密码。\n' "$initial_password" > /dev/tty
+    unset initial_password
+else
+    printf '初始密码保存在 /etc/sshguard/api.env 的 ADMIN_PASSWORD 中（已修改的登录密码保持不变）。\n'
+fi
 printf '可选反代、HTTPS 与 Agent 接入见文档：\nhttps://github.com/xiuzhenzhi/SSH/blob/main/docs/QUICKSTART.md\n'

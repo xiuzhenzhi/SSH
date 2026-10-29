@@ -1,8 +1,20 @@
 #!/bin/sh
 # Download as the invoking user; elevate only the verified deployment step.
 set -eu
+if [ "$#" -eq 0 ] && [ -t 0 ]; then
+    printf '\n========== SSHGuard ==========\n'
+    if [ -f /opt/sshguard/deploy.sh ]; then printf '状态：已安装\n'; else printf '状态：未安装\n'; fi
+    printf '1) 安装 / 更新\n2) 查看状态\n3) 查看日志\n4) 重启\n5) 启动\n6) 停止\n0) 退出\n请选择 [默认 1]: '
+    IFS= read -r choice
+    case "${choice:-1}" in
+        1) if [ -f /opt/sshguard/deploy.sh ]; then set -- --update; else set -- --install; fi ;;
+        2) set -- --status ;; 3) set -- --logs ;; 4) set -- --restart ;;
+        5) set -- --start ;; 6) set -- --stop ;; 0) exit 0 ;;
+        *) echo '无效选项。' >&2; exit 1 ;;
+    esac
+fi
 case "${1:-}" in
-    --status|--logs|--restart)
+    --status|--logs|--restart|--start|--stop)
         [ -f /opt/sshguard/deploy.sh ] || { echo 'No installed SSHGuard management script found.' >&2; exit 1; }
         if [ "$(id -u)" -eq 0 ]; then exec sh /opt/sshguard/deploy.sh "$@";
         else exec sudo sh /opt/sshguard/deploy.sh "$@"; fi ;;

@@ -187,7 +187,7 @@ func Migrate(ctx context.Context, d *DB) error {
 		if e != nil {
 			return e
 		}
-		if d.Driver == "mysql" && f.Name() == "004_alerting.sql" {
+		if d.Driver == "mysql" && (f.Name() == "004_alerting.sql" || f.Name() == "005_agent_updates.sql") {
 			// Existing installs may use utf8mb4_bin or 0900 collations. Foreign
 			// key columns must match their actual referenced columns exactly.
 			for _, ref := range []struct{ table, column string }{{"servers", "server_id"}, {"users", "acknowledged_by"}} {

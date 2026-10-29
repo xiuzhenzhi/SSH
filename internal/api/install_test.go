@@ -37,3 +37,14 @@ func TestUpdateDoesNotEnroll(t *testing.T) {
 		t.Fatal("Windows update would enroll")
 	}
 }
+
+func TestUninstallCommands(t *testing.T) {
+	for platform, command := range uninstallCommands("https://guard.example.com") {
+		if !strings.Contains(command, "uninstall-agent.") || strings.Contains(command, "EnrollmentToken") || strings.Contains(command, "--update") {
+			t.Fatal("invalid uninstall command", platform)
+		}
+		if platform == "alpine" && strings.Contains(command, "sudo") {
+			t.Fatal("Alpine requires root directly")
+		}
+	}
+}

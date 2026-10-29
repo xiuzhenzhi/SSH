@@ -4,7 +4,21 @@
 
 先更新中央平台，再在服务器列表点击「更新命令」。Linux 使用同一安装器的 `--update`，Windows 使用 `-Update`，不需要新的注册令牌。新程序下载和 SHA256 校验完成后才停止服务；更新会核对原配置 endpoint，服务启动/心跳检查失败恢复旧程序。同版本重复执行不会重新注册。后台 Agent 版本随心跳更新。
 
-凭证已撤销时更新会拒绝，必须由管理员重新生成安装命令。首次安装或重新注册会更换凭证，不能当作更新使用。Linux 凭证文件为 root 所有、服务组只读；Windows 凭证仅 Administrators/SYSTEM 可写，LocalService 只读。更新需本机管理员权限，平台不提供远程命令执行。SHA256 是完整性检查，信任来源仍是平台 HTTPS。
+凭证已撤销时更新会拒绝，必须由管理员重新生成安装命令。首次安装或重新注册会更换凭证，不能当作更新使用。Linux 凭证文件为 root 所有、服务组只读；Windows 凭证仅 Administrators/SYSTEM 可写，LocalService 只读。SHA256 是完整性检查，信任来源仍是平台 HTTPS。
+
+## 平台触发更新与卸载
+
+新版安装器会安装独立的维护服务，管理员可在服务器列表点击「平台更新」，更新到中央平台提供的 Agent 版本。旧 Agent 先执行一次「更新命令」，之后入口才会显示就绪。维护服务每分钟出站检查一次，不开放入站端口；采集进程仍使用原有低权限账号。
+
+维护服务只运行安装时保存的本地固定更新器，任务只有 ID 和版本号，不接受 shell、脚本、下载地址或其他命令参数。待领取任务 15 分钟过期，已领取任务 10 分钟超时，不自动重复执行；任务绑定目标服务器及当前凭证。请求和执行结果记入操作审计。平台版本在执行前发生变化时拒绝更新，失败后检查日志再重新发起；凭证撤销不能保证中止已开始的本地替换。
+
+- Ubuntu/Debian：`sshguard-agent-update.timer` 每分钟运行一次固定的 root 维护任务；查看 `journalctl -u sshguard-agent-update`。
+- Alpine：独立 OpenRC 服务 `sshguard-agent-update`，检查 `rc-service sshguard-agent-update status`。
+- Windows：计划任务 `SSHGuardAgentUpdate` 以 SYSTEM 执行；采集服务仍是 LocalService，可在任务计划程序检查结果。
+
+不需要平台更新时，可以在本机禁用上述维护服务或计划任务，采集上报不受影响。后续重新执行安装/更新脚本会重新启用维护服务。维护脚本逻辑升级需要手动执行新版安装器，平台不会远程下载并执行脚本。
+
+点击「卸载命令」，选择系统并在目标机器以管理员身份执行。卸载会移除采集及更新服务，保留配置、队列和历史数据；再在平台点击「撤销」使凭证失效。平台没有远程卸载或通用命令执行功能。
 
 > 安装后分别检查连接状态与采集状态；在线心跳不代表日志源可读。
 
@@ -40,7 +54,7 @@ Windows 使用自带 PowerShell 下载并校验 SHA-256，无需 NSSM、WinSW、
 
 命令包含短期凭证，避免公开粘贴；长期令牌的存放与权限：
 
-- Linux：`/etc/sshguard/agent.json`（0640，root:sshguard）；父目录 root:sshguard、0750，服务账号只读，不能替换目录条目。v0.2 旧文件权限会在更新时加固。
+- Linux：`/etc/sshguard/agent.json`（0640，root:sshguard）；共享父目录 root:root、0711，只允许穿越，不能列目录或替换条目；API 配置保持 0600，内置 TLS 子目录单独授权 API 用户。v0.2 旧文件权限会在更新时加固。
 - Windows：`%ProgramData%\SSHGuard\agent.json`；ACL 只授权 Administrators/SYSTEM 完全控制、LocalService 读取，普通用户无访问权限。程序在 `%ProgramFiles%\SSHGuardAgent`，服务不以管理员账号运行。
 
 注册响应因网络断开丢失时，重新生成安装命令重试；旧令牌会被替换。重新安装期间短暂停止旧服务，注册失败时尝试恢复旧服务。安装凭证单次消耗，成功后再执行旧命令会失败，需要后台生成新命令。

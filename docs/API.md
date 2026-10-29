@@ -58,6 +58,10 @@ GET /api/v1/health 返回 status、database、phase、version，不返回连接�
 ## v0.3 新增
 
 - `GET /api/v1/agent/update-commands`：admin 获取各系统更新命令与平台版本，无注册令牌。
+- `GET /api/v1/agent/uninstall-commands`：admin 获取各系统手动卸载命令，不远程执行。
+- `POST /api/v1/servers/:id/update`：admin + 同源校验创建固定版本更新任务；无 URL、脚本或命令参数。需要近期在线的维护服务，无重复运行任务。
+- `POST /api/v1/agent/update/poll`：Agent 凭证认证，维护服务领取绑定自己服务器及当前凭证的任务；响应 `update: null` 或 `{id, version}`，任务只领取一次。
+- `POST /api/v1/agent/update/result`：Agent 上报 `{id, status}`，status 只允许 success / failed；必须匹配自己当前运行且未过期的任务。
 - `POST /api/v1/auth/password`：已登录用户提交 `current_password`、`new_password`（12–72 字节），成功后全部旧会话失效，需重新登录。
 - 心跳接受可选 `version`（最多 32 字符），更新服务器 Agent 版本；旧版空对象仍兼容。
 - 统计摘要返回 `version`；请求上下文 20 秒超时。登录/改密共享每进程每分钟 60 次预算；登录另有数据库级账号窗口限速。

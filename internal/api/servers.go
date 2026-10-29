@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const serverColumns = `id,name,hostname,distribution,group_name,notes,agent_version,last_seen_at,created_at,CASE WHEN revoked=true THEN 'revoked' WHEN last_seen_at IS NULL THEN 'pending' WHEN last_seen_at>? THEN 'online' ELSE 'offline' END AS status,(SELECT collector_state FROM agent_health WHERE server_id=servers.id) AS collector_state,(SELECT collector_message FROM agent_health WHERE server_id=servers.id) AS collector_message,(SELECT queue_depth FROM agent_health WHERE server_id=servers.id) AS queue_depth,(SELECT rejected_events FROM agent_health WHERE server_id=servers.id) AS rejected_events`
+const serverColumns = `id,name,hostname,distribution,group_name,notes,agent_version,last_seen_at,created_at,CASE WHEN revoked=true THEN 'revoked' WHEN last_seen_at IS NULL THEN 'pending' WHEN last_seen_at>? THEN 'online' ELSE 'offline' END AS status,(SELECT collector_state FROM agent_health WHERE server_id=servers.id) AS collector_state,(SELECT collector_message FROM agent_health WHERE server_id=servers.id) AS collector_message,(SELECT queue_depth FROM agent_health WHERE server_id=servers.id) AS queue_depth,(SELECT rejected_events FROM agent_health WHERE server_id=servers.id) AS rejected_events,(SELECT status FROM agent_updates WHERE server_id=servers.id) AS update_status,(SELECT updater_seen_at FROM agent_updates WHERE server_id=servers.id) AS updater_seen_at,(SELECT target_version FROM agent_updates WHERE server_id=servers.id) AS update_target,(SELECT expires_at FROM agent_updates WHERE server_id=servers.id) AS update_expires_at`
 
 func (a *App) servers(c *gin.Context) {
 	q := "%" + c.Query("q") + "%"
@@ -105,6 +105,13 @@ func updateCommands(origin string) map[string]string {
 	commands := installCommands(origin, "--update")
 	commands["windows"] = strings.Replace(commands["windows"], "-EnrollmentToken '--update'", "-Update", 1)
 	return commands
+}
+func uninstallCommands(origin string) map[string]string {
+	linux := func(privilege string) string {
+		return fmt.Sprintf(`(f=$(mktemp) && trap 'rm -f "$f"' EXIT && curl --proto '=https' --tlsv1.2 --connect-timeout 15 --max-time 60 -fsS %s -o "$f" && %ssh "$f")`, shellQuote(origin+"/downloads/uninstall-agent.sh"), privilege)
+	}
+	windows := fmt.Sprintf(`[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $f=Join-Path $env:TEMP ([guid]::NewGuid().ToString()+'.ps1'); try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 60 -MaximumRedirection 0 -Uri %s -OutFile $f; & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $f; if ($LASTEXITCODE -ne 0) { throw 'Agent uninstall failed' } } finally { if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f } }`, powershellQuote(origin+"/downloads/uninstall-agent.ps1"))
+	return map[string]string{"ubuntu": linux("sudo "), "debian": linux("sudo "), "alpine": linux(""), "windows": windows}
 }
 func (a *App) revoke(c *gin.Context) {
 	id := c.Param("id")

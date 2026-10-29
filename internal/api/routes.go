@@ -80,6 +80,7 @@ func (a *App) Router() *gin.Engine {
 		ok(c, gin.H{"commands": updateCommands(cfg.PublicURL), "version": Version})
 	})
 	web.GET("/dashboard/summary", a.summary)
+	web.GET("/agent/uninstall-commands", role("admin"), func(c *gin.Context) { ok(c, gin.H{"commands": uninstallCommands(cfg.PublicURL)}) })
 	web.GET("/dashboard/overview", a.overview)
 	web.GET("/live", a.live)
 	web.GET("/rules", role("admin"), a.rules)
@@ -100,6 +101,7 @@ func (a *App) Router() *gin.Engine {
 	web.PATCH("/servers/:id", role("admin", "operator"), a.saveServer)
 	web.POST("/servers/:id/enrollment", role("admin"), a.enrollment)
 	web.POST("/servers/:id/revoke", role("admin"), a.revoke)
+	web.POST("/servers/:id/update", role("admin"), a.queueAgentUpdate)
 	web.GET("/events", a.events)
 	web.GET("/events/:id", a.event)
 	web.GET("/audit-logs", role("admin"), func(c *gin.Context) {
@@ -113,6 +115,8 @@ func (a *App) Router() *gin.Engine {
 	agent := r.Group("/api/v1/agent", a.agentAuth)
 	agent.GET("/stream", a.agentStream)
 	agent.POST("/heartbeat", a.heartbeat)
+	agent.POST("/update/poll", a.pollAgentUpdate)
+	agent.POST("/update/result", a.finishAgentUpdate)
 	agent.POST("/events/batch", a.batch)
 	r.NoRoute(a.serveWeb)
 	return r

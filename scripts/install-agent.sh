@@ -75,6 +75,60 @@ OPENRC
 
 fi
 }
+configure_updater() {
+    for path in /usr/local/lib/sshguard /usr/local/lib/sshguard/update-agent.sh /usr/local/lib/sshguard/update-loop.sh /etc/init.d/sshguard-agent-update /etc/systemd/system/sshguard-agent-update.service /etc/systemd/system/sshguard-agent-update.timer; do
+        [ ! -L "$path" ] || die "Refusing symlink: $path"
+    done
+    mkdir -p /usr/local/lib/sshguard
+    chown root:root /usr/local/lib/sshguard
+    chmod 0700 /usr/local/lib/sshguard
+    # Keep a trusted local installer. Never fetch scripts in a remote task.
+    cp "$0" "$tmp/update-agent.sh"
+    chmod 0700 "$tmp/update-agent.sh"
+    mv -f "$tmp/update-agent.sh" /usr/local/lib/sshguard/update-agent.sh
+    if [ "$init" = systemd ]; then
+        cat > /etc/systemd/system/sshguard-agent-update.service <<'UNIT'
+[Unit]
+Description=SSHGuard fixed Agent updater (no remote commands)
+After=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/sshguard-agent -poll-update -config /etc/sshguard/agent.json
+TimeoutStartSec=9min
+UMask=0077
+UNIT
+        cat > /etc/systemd/system/sshguard-agent-update.timer <<'UNIT'
+[Unit]
+Description=Check administrator-requested SSHGuard Agent update
+[Timer]
+OnBootSec=60s
+OnUnitInactiveSec=60s
+[Install]
+WantedBy=timers.target
+UNIT
+        systemctl daemon-reload
+        systemctl enable --now sshguard-agent-update.timer
+    else
+        # OpenRC uses a separate scheduler process; collector remains unprivileged.
+        cat > /etc/init.d/sshguard-agent-update <<'OPENRC'
+#!/sbin/openrc-run
+description="SSHGuard fixed Agent updater"
+supervisor="supervise-daemon"
+command="/bin/sh"
+command_args="/usr/local/lib/sshguard/update-loop.sh"
+respawn_delay=10
+depend() { need net; }
+OPENRC
+        cat > /usr/local/lib/sshguard/update-loop.sh <<'LOOP'
+#!/bin/sh
+while sleep 60; do /usr/local/bin/sshguard-agent -poll-update -config /etc/sshguard/agent.json; done
+LOOP
+        chmod 0700 /usr/local/lib/sshguard/update-loop.sh
+        chmod 0755 /etc/init.d/sshguard-agent-update
+        rc-update add sshguard-agent-update default
+        if ! rc-service sshguard-agent-update status >/dev/null 2>&1; then rc-service sshguard-agent-update start; fi
+    fi
+}
 prepare_collection() {
     mkdir -p /var/lib/sshguard-agent
     chown sshguard:sshguard /var/lib/sshguard-agent
@@ -114,12 +168,16 @@ printf '%s' "$expected" | grep -Eq '^[a-f0-9]{64}$' || die 'Invalid checksum.'
 printf '%s  %s\n' "$expected" "$tmp/agent" | sha256sum -c -
 chmod 0755 "$tmp/agent"
 "$tmp/agent" -version
+if [ -n "${SSHGUARD_EXPECTED_VERSION:-}" ]; then
+    [ "$("$tmp/agent" -version)" = "SSHGuard $SSHGUARD_EXPECTED_VERSION linux/$arch" ] || die 'Platform version changed; refusing mismatched update.'
+fi
 if [ "$mode" = update ]; then
     chown root:sshguard "$config"
     chmod 0640 "$config"
     "$tmp/agent" -check -endpoint "$endpoint" -config "$config"
     if cmp -s "$tmp/agent" "$exe"; then
         if ! service_active; then service_start; sleep 2; service_active; fi
+        configure_updater
         echo 'Already up to date; credentials verified and service running.'; exit 0
     fi
     prepare_collection
@@ -135,6 +193,7 @@ if [ "$mode" = update ]; then
     sleep 2
     service_active
     "$exe" -check -endpoint "$endpoint" -config "$config"
+    configure_updater
     rollback=false
     echo 'Agent updated; existing server identity and credentials preserved.'
     exit 0
@@ -160,4 +219,5 @@ service_start
 sleep 2
 service_active
 "$exe" -check -endpoint "$endpoint" -config "$config"
+configure_updater
 echo "Installed for $init. Durable SSH collection enabled; check collector health in the console."

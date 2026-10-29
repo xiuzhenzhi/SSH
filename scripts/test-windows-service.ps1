@@ -58,6 +58,9 @@ try {
     (Get-Service SSHGuardAgent).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30))
     $stream=[IO.File]::Open($exe,'Append','Write'); $stream.WriteByte(10); $stream.Dispose()
     Start-Service SSHGuardAgent
+    Invoke-WebRequest -UseBasicParsing https://localhost:9443/queue-update | Out-Null
+    & (Join-Path $env:ProgramFiles 'SSHGuardAgent\poll-update.ps1')
+    if ((Invoke-RestMethod https://localhost:9443/update-result).status -ne 'success') { throw 'Platform-triggered update failed' }
     & "$PSScriptRoot/install-agent.ps1" -Endpoint https://localhost:9443 -Update
     & "$PSScriptRoot/install-agent.ps1" -Endpoint https://localhost:9443 -Update
     if ((Get-FileHash $config -Algorithm SHA256).Hash -ne $configHash) { throw 'Update changed credentials' }

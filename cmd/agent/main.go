@@ -156,6 +156,7 @@ func main() {
 	enroll := flag.Bool("enroll", false, "read one-time enrollment token from stdin")
 	showVersion := flag.Bool("version", false, "print agent version")
 	check := flag.Bool("check", false, "validate config and send one heartbeat, then exit")
+	poll := flag.Bool("poll-update", false, "local scheduled updater: process only a platform Agent-version update")
 	serviceAction := flag.String("service", "", "Windows service setup: install or uninstall (administrator)")
 	flag.Parse()
 	if *showVersion {
@@ -185,6 +186,12 @@ func main() {
 	}
 	if *check {
 		if e = checkAgent(context.Background(), cfg, *endpoint); e != nil {
+			log.Fatal(e)
+		}
+		return
+	}
+	if *poll {
+		if e := pollUpdate(context.Background(), cfg); e != nil {
 			log.Fatal(e)
 		}
 		return

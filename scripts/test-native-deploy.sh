@@ -90,6 +90,15 @@ cmp /usr/local/bin/sshguard-agent "$bundle/web/downloads/sshguard-agent-linux-am
 # Idempotent second update must also succeed without enrollment.
 sh "$bundle/web/downloads/install-agent.sh" "$origin" --update
 node scripts/test-native-api.mjs verify
+# The updater is a fixed local maintenance service, not a command execution channel.
+systemctl stop sshguard-agent-update.timer
+systemctl stop sshguard-agent
+printf '\n' >> /usr/local/bin/sshguard-agent
+systemctl start sshguard-agent
+sleep 3
+node scripts/test-native-api.mjs queue-update
+systemctl start sshguard-agent-update.service
+node scripts/test-native-api.mjs verify-update
 # Simulate a checksum-verified but broken release served by the test platform.
 download=/opt/sshguard/web/downloads/sshguard-agent-linux-amd64
 cp "$download" "$tmp/good-agent"
@@ -124,6 +133,12 @@ echo 'Native deploy, HTTPS, real systemd Agent install/update/idempotence/rollba
 SSHGUARD_TEST_SERVER_NAME=CI-Alpine-OpenRC node scripts/test-native-api.mjs enroll
 SSHGUARD_ENROLLMENT_TOKEN=$(cat "$tmp/enrollment")
 export SSHGUARD_ENROLLMENT_TOKEN
+pulled=false
+for attempt in 1 2 3; do
+    if docker pull alpine:3.22; then pulled=true; break; fi
+    sleep 5
+done
+"$pulled" || { echo 'Alpine test image download failed after retries' >&2; exit 1; }
 docker run --rm --network host --add-host guard.sshguard.test:127.0.0.1 \
     -e SSHGUARD_ENROLLMENT_TOKEN -e SSHGUARD_TEST_ORIGIN \
     -v "$(pwd)/scripts:/ci:ro" \
@@ -131,3 +146,9 @@ docker run --rm --network host --add-host guard.sshguard.test:127.0.0.1 \
     alpine:3.22 sh /ci/test-alpine-agent.sh
 unset SSHGUARD_ENROLLMENT_TOKEN
 node scripts/test-native-api.mjs verify-alpine
+sh "$bundle/web/downloads/uninstall-agent.sh"
+if systemctl is-active --quiet sshguard-agent; then echo 'Agent still running after uninstall' >&2; exit 1; fi
+[ ! -e /usr/local/bin/sshguard-agent ]
+[ ! -e /etc/systemd/system/sshguard-agent-update.timer ]
+[ -f /etc/sshguard/agent.json ]
+curl -fsS "$origin/api/v1/health" >/dev/null

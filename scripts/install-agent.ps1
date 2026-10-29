@@ -84,6 +84,35 @@ function Initialize-CollectorAccess {
     } finally { if ($channel) { $channel.Dispose() } }
 }
 Protect-Directory $installDir
+function Initialize-FixedUpdater {
+    $localInstaller = Join-Path $installDir 'update-agent.ps1'
+    $runner = Join-Path $installDir 'poll-update.ps1'
+    Assert-NoReparsePoint $localInstaller
+    Assert-NoReparsePoint $runner
+    if ([IO.Path]::GetFullPath($PSCommandPath) -ne $localInstaller) { Copy-Item -LiteralPath $PSCommandPath -Destination $localInstaller -Force }
+    @'
+#Requires -RunAsAdministrator
+$ErrorActionPreference = 'Stop'
+$dir = Split-Path -Parent $PSCommandPath
+$worker = Join-Path $dir (([Guid]::NewGuid().ToString()) + '.exe')
+try {
+    Copy-Item -LiteralPath (Join-Path $dir 'sshguard-agent.exe') -Destination $worker
+    & $worker -poll-update -config (Join-Path $env:ProgramData 'SSHGuard\agent.json')
+    if ($LASTEXITCODE -ne 0) { throw 'Fixed Agent updater failed; inspect platform update status.' }
+} finally { if (Test-Path -LiteralPath $worker) { Remove-Item -LiteralPath $worker -Force } }
+'@ | Set-Content -LiteralPath $runner -Encoding UTF8
+    Protect-File $localInstaller
+    Protect-File $runner
+    $shell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"' -f $runner
+    $existingTask = Get-ScheduledTask -TaskName SSHGuardAgentUpdate -ErrorAction SilentlyContinue
+    if ($existingTask -and ($existingTask.Actions.Count -ne 1 -or $existingTask.Actions[0].Execute -ne $shell -or $existingTask.Actions[0].Arguments -ne $arguments)) { throw 'Existing updater task belongs to a different installation.' }
+    $action = New-ScheduledTaskAction -Execute $shell -Argument $arguments
+    $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 1)
+    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+    $settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 9)
+    Register-ScheduledTask -TaskName SSHGuardAgentUpdate -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+}
 Protect-Directory $configDir
 Assert-NoReparsePoint $exe
 Assert-NoReparsePoint $config
@@ -110,6 +139,7 @@ try {
     if ($expected -notmatch '^[a-f0-9]{64}$' -or (Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash -ne $expected) { throw 'Agent checksum mismatch.' }
     & $download -version
     if ($LASTEXITCODE -ne 0) { throw 'Downloaded Agent cannot run on this machine.' }
+    if ($env:SSHGUARD_EXPECTED_VERSION -and ((& $download -version) -ne "SSHGuard $env:SSHGUARD_EXPECTED_VERSION windows/$arch")) { throw 'Platform version changed; refusing mismatched update.' }
     if ($Update) {
         & $download -check -endpoint $Endpoint -config $config
         if ($LASTEXITCODE -ne 0) { throw 'Existing credentials or endpoint check failed; service unchanged.' }
@@ -125,6 +155,7 @@ try {
         if ($Update -and (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash -eq $expected) {
             Protect-File $config
             if (-not $wasRunning) { Start-Service -Name SSHGuardAgent; (Get-Service SSHGuardAgent).WaitForStatus('Running',[TimeSpan]::FromSeconds(30)) }
+            Initialize-FixedUpdater
             Write-Output 'Already up to date; credentials verified and service running.'
             return
         }
@@ -162,6 +193,7 @@ try {
     if ((Get-Service SSHGuardAgent).Status -ne 'Running') { throw 'Agent stopped unexpectedly.' }
     & $exe -check -endpoint $Endpoint -config $config
     if ($LASTEXITCODE -ne 0) { throw 'Post-install heartbeat check failed.' }
+    Initialize-FixedUpdater
     $replaced = $false
     Write-Output 'Installed/updated as LocalService. Durable SSH collection enabled; check collector health in the console.'
     Write-Output 'Logs: Windows Event Viewer / Application / SSHGuardAgent.'

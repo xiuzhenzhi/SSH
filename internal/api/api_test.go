@@ -160,6 +160,39 @@ func TestIntegration(t *testing.T) {
 	enrollment := parts[len(parts)-2]
 	result, _ = call("POST", "/agent/enroll", map[string]string{"token": enrollment, "hostname": "test-host", "version": "test"}, "", "", false, 200)
 	agent := result["data"].(map[string]any)["token"].(string)
+	call("GET", "/agent/uninstall-commands", nil, session, "", false, 200)
+	call("POST", "/agent/update/poll", map[string]string{}, session, "", false, 401)
+	call("POST", "/servers/"+id+"/update", map[string]string{}, session, "", false, 403)
+	call("POST", "/servers/"+id+"/update", map[string]string{}, session, "", true, 409)
+	call("POST", "/agent/update/poll", map[string]string{}, "", agent, false, 200)
+	result, _ = call("POST", "/servers/"+id+"/update", map[string]string{}, session, "", true, 200)
+	updateID := result["data"].(map[string]any)["request_id"].(string)
+	otherID, otherToken := uuid.NewString(), token()
+	if _, e := db.Exec(ctx, `INSERT INTO servers(id,name) VALUES(?,?)`, otherID, "update isolation"); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := db.Exec(ctx, `INSERT INTO agent_credentials(token_hash,server_id) VALUES(?,?)`, hash(otherToken), otherID); e != nil {
+		t.Fatal(e)
+	}
+	result, _ = call("POST", "/agent/update/poll", map[string]string{"server_id": id}, "", otherToken, false, 200)
+	if result["data"].(map[string]any)["update"] != nil {
+		t.Fatal("another Agent claimed update")
+	}
+	call("POST", "/agent/update/result", map[string]string{"id": updateID, "status": "success", "server_id": id}, "", otherToken, false, 400)
+	call("POST", "/servers/"+id+"/update", map[string]string{}, session, "", true, 409)
+	result, _ = call("POST", "/agent/update/poll", map[string]string{}, "", agent, false, 200)
+	task := result["data"].(map[string]any)["update"].(map[string]any)
+	if task["id"] != updateID || task["version"] != Version || len(task) != 2 {
+		t.Fatal("unexpected remote update payload", task)
+	}
+	result, _ = call("POST", "/agent/update/poll", map[string]string{}, "", agent, false, 200)
+	if result["data"].(map[string]any)["update"] != nil {
+		t.Fatal("claimed update replayed")
+	}
+	call("POST", "/agent/update/result", map[string]string{"id": uuid.NewString(), "status": "success"}, "", agent, false, 400)
+	call("POST", "/agent/update/result", map[string]string{"id": updateID, "status": "execute"}, "", agent, false, 400)
+	call("POST", "/agent/update/result", map[string]string{"id": updateID, "status": "success"}, "", agent, false, 200)
+	call("POST", "/agent/update/result", map[string]string{"id": updateID, "status": "success"}, "", agent, false, 400)
 	// Agent credentials are not web sessions, and session cookies are not agent credentials.
 	call("GET", "/users", nil, "", agent, false, 401)
 	call("POST", "/agent/heartbeat", map[string]string{}, session, "", false, 401)
@@ -223,6 +256,8 @@ func TestIntegration(t *testing.T) {
 		call("POST", "/servers/"+id+"/enrollment", map[string]string{}, s, "", true, 403)
 		call("GET", "/audit-logs", nil, s, "", false, 403)
 		call("GET", "/agent/update-commands", nil, s, "", false, 403)
+		call("GET", "/agent/uninstall-commands", nil, s, "", false, 403)
+		call("POST", "/servers/"+id+"/update", map[string]string{}, s, "", true, 403)
 		call("GET", "/channels", nil, s, "", false, 403)
 		call("GET", "/rules", nil, s, "", false, 403)
 		for _, route := range []struct{ method, path string }{
@@ -269,6 +304,7 @@ func TestIntegration(t *testing.T) {
 	call("GET", "/auth/me", nil, session, "", false, 200)
 	call("POST", "/servers/"+id+"/revoke", map[string]string{}, session, "", true, 200)
 	call("POST", "/agent/heartbeat", nil, "", agent, false, 401)
+	call("POST", "/agent/update/poll", map[string]string{}, "", agent, false, 401)
 	call("POST", "/auth/logout", nil, session, "", true, 200)
 	call("GET", "/auth/me", nil, session, "", false, 401)
 	var count int

@@ -19,6 +19,18 @@ if(process.argv[2]==='enroll'){
  if(!token) throw Error('Generated installation command missing token');
  writeFileSync(`${state}/enrollment`,token,{mode:0o600});
  writeFileSync(`${state}/server`,id,{mode:0o600});
+}else if(process.argv[2]==='queue-update'){
+ const cfg=JSON.parse(readFileSync('/etc/sshguard/agent.json','utf8'));
+ const agent=async(path,body)=>{
+  const res=await fetch(origin+'/api/v1/agent/'+path,{method:'POST',headers:{Authorization:'Bearer '+cfg.token,'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(!res.ok)throw Error('Agent fixture request failed: '+res.status);
+ };
+ await agent('update/poll',{});
+ await agent('heartbeat',{version:'0.0.0'});
+ await api(`/servers/${cfg.server_id}/update`,'POST',{});
+}else if(process.argv[2]==='verify-update'){
+ const server=await api('/servers/'+readFileSync(`${state}/server`,'utf8'));
+ if(server.update_status!=='success')throw Error('Platform-triggered update did not succeed: '+server.update_status);
 }else{
  const server=await api('/servers/'+readFileSync(`${state}/server`,'utf8'));
  if(server.status!=='online' || server.agent_version!==readFileSync('VERSION','utf8').trim()) throw Error('Agent status/version incorrect');

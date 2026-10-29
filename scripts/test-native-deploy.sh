@@ -67,6 +67,13 @@ node scripts/test-native-api.mjs enroll
 token=$(cat "$tmp/enrollment")
 sh "$bundle/web/downloads/install-agent.sh" "$origin" "$token"
 unset token
+[ "$(stat -c %a /etc/sshguard)" = 711 ]
+if su sshguard -s /bin/sh -c 'test -r /etc/sshguard/api.env'; then echo 'Agent can read API secrets' >&2; exit 1; fi
+if su sshguard-api -s /bin/sh -c 'test -r /etc/sshguard/agent.json'; then echo 'API can read Agent credentials' >&2; exit 1; fi
+if [ "$proxy_mode" = standalone ]; then
+    su sshguard-api -s /bin/sh -c 'test -r /etc/sshguard/tls/privkey.pem'
+    if su sshguard -s /bin/sh -c 'test -r /etc/sshguard/tls/privkey.pem'; then echo 'Agent can read API TLS key' >&2; exit 1; fi
+fi
 systemctl is-active --quiet sshguard-agent
 sleep 3
 logger -t sshd 'Accepted publickey for ci-fixture from 192.0.2.10 port 2222 ssh2'

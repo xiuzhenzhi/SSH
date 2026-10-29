@@ -230,7 +230,10 @@ else
     [ -n "$admin_password" ] || admin_password=$(openssl rand -hex 20)
     [ "${#admin_password}" -ge 12 ] && [ "${#admin_password}" -le 72 ] || die 'ADMIN_PASSWORD must be 12–72 bytes.'
     mkdir -p /etc/sshguard
-    chmod 0750 /etc/sshguard
+    # Shared parent for API and Agent: traversal only for other accounts.
+    # Secrets remain protected by their own file/subdirectory permissions.
+    chown root:root /etc/sshguard
+    chmod 0711 /etc/sshguard
     # systemd EnvironmentFile escaping, never interpreted by a shell.
     env_line() { printf '%s="' "$1"; printf '%s' "$2" | sed 's/\\/\\\\/g; s/"/\\"/g'; printf '"\n'; }
     {
@@ -258,11 +261,12 @@ if ! grep -q '^ENCRYPTION_KEY=' /etc/sshguard/api.env; then
     mv -f "$key_file" /etc/sshguard/api.env
 fi
 if ! id sshguard-api >/dev/null 2>&1; then useradd --system --user-group --no-create-home --shell /usr/sbin/nologin sshguard-api; fi
+chown root:root /etc/sshguard
+chmod 0711 /etc/sshguard
 if [ "$mode" = install ] && [ "$proxy_mode" = standalone ] && "$builtin_tls"; then
     [ -f "$certificate" ] && [ -f "$private_key" ] || die 'TLS_CERT and TLS_KEY must exist.'
     [ ! -L /etc/sshguard/tls ] || die 'Refusing symlink: /etc/sshguard/tls'
     install -d -o root -g sshguard-api -m 0750 /etc/sshguard/tls
-    chgrp sshguard-api /etc/sshguard
     install -o root -g sshguard-api -m 0640 "$certificate" /etc/sshguard/tls/fullchain.pem
     install -o root -g sshguard-api -m 0640 "$private_key" /etc/sshguard/tls/privkey.pem
 fi

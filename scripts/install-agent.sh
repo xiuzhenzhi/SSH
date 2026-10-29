@@ -145,8 +145,10 @@ if ! id sshguard >/dev/null 2>&1; then
 fi
 prepare_collection
 mkdir -p /etc/sshguard
-chown root:sshguard /etc/sshguard
-chmod 0750 /etc/sshguard
+# API and Agent may share this parent. Keep their secrets in separately
+# protected files/directories instead of assigning the parent to one service.
+chown root:root /etc/sshguard
+chmod 0711 /etc/sshguard
 printf '%s' "$enrollment" | "$tmp/agent" -enroll -endpoint "$endpoint" -config "$config"
 unset enrollment
 chown root:sshguard "$config"

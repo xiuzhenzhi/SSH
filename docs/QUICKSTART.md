@@ -17,13 +17,15 @@ sh scripts/quick-start.sh
 向导询问：
 
 1. 公网域名，例如 `guard.example.com`。
-2. 数据库：`local-postgres` 自动安装本机 PostgreSQL；`mysql` / `postgres` 连接已建好的数据库。
-3. 外部数据库 DSN（输入隐藏）；本机 PostgreSQL 自动生成随机密码。
+2. 数据库：`sqlite` 使用本机文件数据库；`local-postgres` 自动安装本机 PostgreSQL；`mysql` / `postgres` 连接已建好的数据库。
+3. 外部数据库 DSN（输入隐藏）；本机 PostgreSQL 自动生成随机密码；SQLite 无需填写 DSN。
 4. TLS：填写已有证书和私钥路径；或者留空，填写邮箱，由 Certbot/Let's Encrypt 自动申请。此选项接受 ACME 服务条款，域名必须指向本机且公网可访问 80 端口。
 
 向导安装依赖、初始化数据库、创建低权限服务账号、配置 systemd / Nginx，最后检查 API 健康状态。初始账号 `admin`，随机密码仅保存在 `/etc/sshguard/api.env`，不会输出到部署日志。登录后点右上角「修改密码」，旧会话会全部失效。
 
 SHA256 用于检查下载完整性；发行包与校验文件来自同一个受信任仓库，它不等同于独立数字签名。
+
+SQLite 安装支持需要包含该功能的新发行包，固定版本下载不会使用源码目录中的未发布修改。向导将数据库放在 `/var/lib/sshguard-api/sshguard.db`，由 systemd 创建权限为 0700 的专用目录；升级保留数据库和加密密钥。无人值守部署设置 `DB_DRIVER=sqlite` 并省略 `DATABASE_URL`，其他域名和证书配置与下述示例相同。使用本机磁盘，备份前停止 API，同时保存数据库文件、存在的 WAL/SHM 文件和 `/etc/sshguard/api.env`。
 
 ## 离线包 / 不在服务器保存 GitHub 登录
 

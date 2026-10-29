@@ -2,7 +2,7 @@
 
 先阅读 [产品路线图](docs/ROADMAP.md) 和 [开发文档](docs/DEVELOPMENT.md)。提交应围绕一个明确问题，说明触发场景、行为变化与验证结果。
 
-- 修改 API/数据存储时同时考虑 MySQL 和 PostgreSQL；新增迁移分别编写两套 SQL，并说明升级风险。
+- 修改 API/数据存储时同时考虑 SQLite、MySQL 和 PostgreSQL；新增迁移分别编写三套 SQL，并说明升级风险。SQLite 测试默认使用临时数据库，其他数据库通过独立测试 DSN 验证。
 - 修改 Agent 时检查 Linux/Windows、amd64/arm64；涉及日志格式时附脱敏样本和解析测试。
 - 不提交真实服务器信息、令牌、Cookie、密码、证书私钥、.env 或本地数据库文件。
 - 修改安装/升级脚本时说明目标系统、用户权限、现有配置保留行为及失败恢复。

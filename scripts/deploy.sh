@@ -88,9 +88,14 @@ else
     [ "$mode" = install ] || die 'Missing /etc/sshguard/api.env.'
     if [ -z "$domain" ] && [ -z "$config_file" ]; then prompt 'Public DNS name (e.g. guard.example.com): '; domain=$answer; fi
     printf '%s' "$domain" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z0-9-]+$' || die 'Set DOMAIN to your public DNS name.'
-    if [ -z "$driver" ] && [ -z "$config_file" ]; then prompt 'Database [local-postgres / postgres / mysql] (default local-postgres): '; driver=${answer:-local-postgres}; fi
+    if [ -z "$driver" ] && [ -z "$config_file" ]; then prompt 'Database [sqlite / local-postgres / postgres / mysql] (default local-postgres): '; driver=${answer:-local-postgres}; fi
     driver=${driver:-local-postgres}
     case "$driver" in
+        sqlite)
+            # Keep writable state outside release directories and inside the
+            # systemd StateDirectory. Do not accept arbitrary filesystem paths.
+            [ -z "$dsn" ] || [ "$dsn" = 'file:/var/lib/sshguard-api/sshguard.db' ] || die 'SQLite wizard uses file:/var/lib/sshguard-api/sshguard.db; omit DATABASE_URL.'
+            dsn='file:/var/lib/sshguard-api/sshguard.db' ;;
         local-postgres)
             [ -z "$dsn" ] || die 'Use DB_DRIVER=postgres for an existing database.'
             apt-get install -y postgresql
@@ -109,7 +114,7 @@ else
                 hidden=true; stty -echo; IFS= read -r dsn; stty echo; hidden=false; printf '\n' >&2
             fi
             [ -n "$dsn" ] || die 'Set DATABASE_URL for your existing database.' ;;
-        *) die 'DB_DRIVER must be local-postgres, postgres or mysql.' ;;
+        *) die 'DB_DRIVER must be sqlite, local-postgres, postgres or mysql.' ;;
     esac
     [ -n "$admin_password" ] || admin_password=$(openssl rand -hex 20)
     [ "${#admin_password}" -ge 12 ] && [ "${#admin_password}" -le 72 ] || die 'ADMIN_PASSWORD must be 12–72 bytes.'
@@ -144,7 +149,7 @@ find "$stage" -type d -exec chmod 0755 {} +
 find "$stage" -type f -exec chmod 0644 {} +
 chmod 0755 "$stage/sshguard-api"
 # Validate database/migrations before switching or stopping the current API.
-systemd-run --quiet --wait --pipe --collect --unit="sshguard-check-$$" -p User=sshguard-api -p EnvironmentFile=/etc/sshguard/api.env "$stage/sshguard-api" -check
+systemd-run --quiet --wait --pipe --collect --unit="sshguard-check-$$" -p User=sshguard-api -p StateDirectory=sshguard-api -p StateDirectoryMode=0700 -p UMask=0077 -p EnvironmentFile=/etc/sshguard/api.env "$stage/sshguard-api" -check
 if [ "$mode" = install ]; then
     [ ! -e /etc/nginx/conf.d/sshguard.conf ] || [ -f /etc/sshguard/nginx-managed ] || die 'Existing nginx sshguard.conf is not wizard-managed.'
     nginx_backup=$(mktemp /etc/sshguard/.nginx-backup.XXXXXX)

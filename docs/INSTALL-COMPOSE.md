@@ -12,8 +12,9 @@ cd SSH
 需要 Docker Engine 与 Compose **2.24.4+**，Node.js 仅用于生成 `.env`。本地模式的端口覆盖使用 `!override`。
 
 ```bash
-# 两条命令只选一条；默认使用 localhost 体验
-node scripts/init-env.mjs postgres http://localhost:8088
+# 三条命令只选一条；默认使用 localhost 体验
+node scripts/init-env.mjs sqlite http://localhost:8088
+# node scripts/init-env.mjs postgres http://localhost:8088
 # node scripts/init-env.mjs mysql http://localhost:8088
 docker compose config --quiet
 docker compose up -d --build
@@ -27,7 +28,7 @@ curl -fsS http://localhost:8088/api/v1/health
 
 ```bash
 node scripts/init-env.mjs mysql https://guard.example.com
-# PostgreSQL 则把 mysql 换成 postgres
+# PostgreSQL / SQLite 则把 mysql 换成 postgres / sqlite
 mkdir -p deploy/certs
 cp /path/to/fullchain.pem deploy/certs/fullchain.pem
 cp /path/to/privkey.pem deploy/certs/privkey.pem
@@ -38,7 +39,9 @@ docker compose up -d --build
 
 生成器拒绝覆盖已有 `.env`。从 localhost 切到 HTTPS，手动修改 `PUBLIC_URL` 并从 `COMPOSE_FILE` 去掉 `:compose.local.yaml`，放入证书后重建容器。`COMPOSE_FILE` 自动只启用选中的数据库，DB/API 不映射公网端口。数据库文件保存在命名卷；不要执行 `docker compose down -v`，它会删除数据卷。
 
-**二选一指新部署选择数据库，不是数据迁移工具。** 已有 PostgreSQL 数据不会因为修改 `DB_DRIVER` 自动迁入 MySQL，反之亦然。已有数据切换需单独导出、转换和验证。Compose 镜像固定版本线，正式发布建议进一步锁定补丁和 digest。
+**数据库选项用于新部署，不是数据迁移工具。** 已有数据不会因为修改 `DB_DRIVER` 自动迁入另一种数据库。切换需单独导出、转换和验证。Compose 镜像固定版本线，正式发布建议进一步锁定补丁和 digest。
+
+SQLite 模式只启动 API 和 Web，数据保存在 `sqlite-data` 命名卷中的 `/var/lib/sshguard/sshguard.db`，使用本机磁盘和单个 API 实例。API 根文件系统仍为只读，仅数据卷可写。备份前先停止 API，保存卷内数据库及存在的 WAL/SHM 文件，同时备份 `.env` 中的加密密钥；恢复时停止 API 并保持数据目录归属容器用户（UID 10001）。
 
 
 已有数据库卷不会因编辑环境变量重新初始化。修改数据库密码时，先修改实际数据库账号，再同步 DSN。

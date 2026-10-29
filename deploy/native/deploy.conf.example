@@ -1,5 +1,6 @@
 # Raw KEY=value, no shell quotes or expansion. chmod 600 before --config.
 DOMAIN=guard.example.com
+# sqlite uses /var/lib/sshguard-api/sshguard.db (omit DATABASE_URL).
 # local-postgres installs PostgreSQL; mysql/postgres connect an existing database.
 DB_DRIVER=mysql
 DATABASE_URL=sshguard:REPLACE_PASSWORD@tcp(127.0.0.1:3306)/sshguard?charset=utf8mb4&parseTime=true&loc=UTC

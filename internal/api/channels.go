@@ -118,7 +118,7 @@ func (a *App) saveChannel(c *gin.Context) {
 	e = a.mutate(c, c.MustGet("user").(User).ID, action, id, func(tx *sql.Tx) error {
 		if create {
 			var locked string
-			if e := tx.QueryRowContext(c, `SELECT id FROM users WHERE role='admin' ORDER BY id LIMIT 1 FOR UPDATE`).Scan(&locked); e != nil {
+			if e := tx.QueryRowContext(c, a.db.Bind(`SELECT id FROM users WHERE role='admin' ORDER BY id LIMIT 1 FOR UPDATE`)).Scan(&locked); e != nil {
 				return e
 			}
 			var count int

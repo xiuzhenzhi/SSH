@@ -89,7 +89,7 @@ func (a *App) saveRule(c *gin.Context) {
 	e := a.mutate(c, c.MustGet("user").(User).ID, "rule.save", id, func(tx *sql.Tx) error {
 		// Serialize count+insert without database-specific partial indexes.
 		var locked string
-		if e := tx.QueryRowContext(c, `SELECT id FROM users WHERE role='admin' ORDER BY id LIMIT 1 FOR UPDATE`).Scan(&locked); e != nil {
+		if e := tx.QueryRowContext(c, a.db.Bind(`SELECT id FROM users WHERE role='admin' ORDER BY id LIMIT 1 FOR UPDATE`)).Scan(&locked); e != nil {
 			return e
 		}
 		for _, channel := range in.Channels {

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	_ "modernc.org/sqlite"
+	"net/url"
 	"regexp"
 	"sshguard/migrations"
 	"strings"
@@ -19,8 +21,21 @@ type DB struct {
 }
 
 func Open(ctx context.Context, driver, dsn string) (*DB, error) {
-	if driver != "mysql" && driver != "postgres" {
+	if driver != "mysql" && driver != "postgres" && driver != "sqlite" {
 		return nil, fmt.Errorf("unsupported database driver")
+	}
+	if driver == "sqlite" {
+		base, raw, _ := strings.Cut(dsn, "?")
+		params, err := url.ParseQuery(raw)
+		if err != nil {
+			return nil, fmt.Errorf("invalid SQLite DSN")
+		}
+		params.Set("_txlock", "immediate")
+		params.Set("_time_format", "sqlite")
+		params.Add("_pragma", "busy_timeout(10000)")
+		params.Add("_pragma", "foreign_keys(1)")
+		params.Add("_pragma", "journal_mode(WAL)")
+		dsn = base + "?" + params.Encode()
 	}
 	name := driver
 	if driver == "postgres" {
@@ -60,6 +75,11 @@ func Open(ctx context.Context, driver, dsn string) (*DB, error) {
 	p.SetMaxOpenConns(20)
 	p.SetMaxIdleConns(5)
 	p.SetConnMaxLifetime(5 * time.Minute)
+	if driver == "sqlite" {
+		p.SetMaxOpenConns(1)
+		p.SetMaxIdleConns(1)
+		p.SetConnMaxLifetime(0)
+	}
 	if e = p.PingContext(ctx); e != nil {
 		p.Close()
 		return nil, e
@@ -67,6 +87,10 @@ func Open(ctx context.Context, driver, dsn string) (*DB, error) {
 	return &DB{p, driver}, nil
 }
 func (d *DB) Bind(q string) string {
+	if d.Driver == "sqlite" {
+		// BEGIN IMMEDIATE serializes writers before any transaction reads.
+		return strings.TrimSuffix(q, " FOR UPDATE")
+	}
 	if d.Driver != "postgres" {
 		return q
 	}
@@ -123,6 +147,9 @@ func (d *DB) List(ctx context.Context, q string, args ...any) ([]map[string]any,
 
 // MySQL DDL auto-commits: migrations must be idempotent for retry after interruption.
 func Migrate(ctx context.Context, d *DB) error {
+	if d.Driver == "sqlite" {
+		return migrateSQLite(ctx, d)
+	}
 	conn, e := d.Conn(ctx)
 	if e != nil {
 		return e

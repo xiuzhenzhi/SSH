@@ -6,3 +6,15 @@ web/node_modules
 web/dist
 deploy/certs
 *.zip
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm
+*.db-journal
+*.sqlite-journal
+*.sqlite3-journal

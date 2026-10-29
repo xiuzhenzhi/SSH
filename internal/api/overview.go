@@ -23,6 +23,9 @@ func (a *App) overview(c *gin.Context) {
 	if a.db.Driver == "mysql" {
 		expression = `FLOOR(UNIX_TIMESTAMP(occurred_at)/3600)`
 	}
+	if a.db.Driver == "sqlite" {
+		expression = `CAST(strftime('%s',substr(occurred_at,1,19)) AS INTEGER)/3600`
+	}
 	rows, e := a.db.QueryContext(c, a.db.Bind(`SELECT `+expression+`,SUM(CASE WHEN outcome='success' THEN 1 ELSE 0 END),SUM(CASE WHEN outcome='failure' THEN 1 ELSE 0 END) FROM ssh_events WHERE occurred_at>=? AND occurred_at<=? GROUP BY `+expression+` ORDER BY 1`), since, now)
 	if e != nil {
 		fail(c, e)

@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS users (id varchar(36) NOT NULL PRIMARY KEY, username varchar(64) UNIQUE NOT NULL, password_hash varchar(128) NOT NULL, role varchar(16) NOT NULL CHECK(role IN ('admin','operator','viewer')), created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS sessions (token_hash varchar(64) NOT NULL PRIMARY KEY, user_id varchar(36) NOT NULL REFERENCES users(id), expires_at timestamp NOT NULL);
+CREATE TABLE IF NOT EXISTS login_attempts (bucket_key varchar(64) NOT NULL PRIMARY KEY, attempts integer NOT NULL, window_start timestamp NOT NULL);
+CREATE TABLE IF NOT EXISTS servers (id varchar(36) NOT NULL PRIMARY KEY, name varchar(128) NOT NULL, hostname varchar(253) NOT NULL DEFAULT '', distribution varchar(128) NOT NULL DEFAULT '', group_name varchar(64) NOT NULL DEFAULT '', notes varchar(1024) NOT NULL DEFAULT '', agent_version varchar(32) NOT NULL DEFAULT '', revoked boolean NOT NULL DEFAULT false, last_seen_at timestamp, created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS agent_enrollments (token_hash varchar(64) NOT NULL PRIMARY KEY, server_id varchar(36) NOT NULL REFERENCES servers(id), expires_at timestamp NOT NULL, used_at timestamp);
+CREATE TABLE IF NOT EXISTS agent_credentials (token_hash varchar(64) NOT NULL PRIMARY KEY, server_id varchar(36) NOT NULL REFERENCES servers(id), created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, revoked_at timestamp);
+CREATE TABLE IF NOT EXISTS audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, actor_id varchar(36) REFERENCES users(id), action varchar(64) NOT NULL, target varchar(128) NOT NULL, created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX IF NOT EXISTS audit_time ON audit_logs(created_at DESC);

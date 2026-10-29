@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"sshguard/internal/storage"
 	"sshguard/migrations"
 	"strings"
@@ -49,7 +50,8 @@ func TestConfigRequiresHTTPS(t *testing.T) {
 func TestIntegration(t *testing.T) {
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
-		t.Skip("set TEST_DATABASE_URL and TEST_DB_DRIVER for real database integration")
+		dsn = filepath.Join(t.TempDir(), "integration.db")
+		t.Setenv("TEST_DB_DRIVER", "sqlite")
 	}
 	driver := os.Getenv("TEST_DB_DRIVER")
 	if driver == "" {
@@ -158,6 +160,9 @@ func TestIntegration(t *testing.T) {
 	enrollment := parts[len(parts)-2]
 	result, _ = call("POST", "/agent/enroll", map[string]string{"token": enrollment, "hostname": "test-host", "version": "test"}, "", "", false, 200)
 	agent := result["data"].(map[string]any)["token"].(string)
+	// Agent credentials are not web sessions, and session cookies are not agent credentials.
+	call("GET", "/users", nil, "", agent, false, 401)
+	call("POST", "/agent/heartbeat", map[string]string{}, session, "", false, 401)
 	call("POST", "/agent/enroll", map[string]string{"token": enrollment, "hostname": "test-host", "version": "test"}, "", "", false, 401)
 	call("POST", "/agent/heartbeat", map[string]string{}, "", agent, false, 200)
 	call("POST", "/agent/heartbeat", map[string]string{"version": "upgrade-test"}, "", agent, false, 200)
@@ -167,9 +172,17 @@ func TestIntegration(t *testing.T) {
 	}
 	event := map[string]any{"event_id": uuid.NewString(), "event_type": "ssh.login", "username": "root", "source_ip": "2001:db8::1", "outcome": "success", "occurred_at": time.Now().UTC().Format(time.RFC3339)}
 	batch := map[string]any{"events": []any{event}}
+	// The authenticated credential, never a client-supplied ID, determines ownership.
+	forgedServer := uuid.NewString()
+	event["server_id"] = forgedServer
+	batch["server_id"] = forgedServer
 	result, _ = call("POST", "/agent/events/batch", batch, "", agent, false, 200)
 	if result["data"].(map[string]any)["inserted"] != float64(1) {
 		t.Fatal("event not inserted")
+	}
+	var eventOwner string
+	if e = db.Row(ctx, `SELECT server_id FROM ssh_events WHERE event_id=?`, event["event_id"]).Scan(&eventOwner); e != nil || eventOwner != id {
+		t.Fatal("client-controlled event ownership", eventOwner, e)
 	}
 	result, _ = call("POST", "/agent/events/batch", batch, "", agent, false, 200)
 	if result["data"].(map[string]any)["duplicates"] != float64(1) {
@@ -212,6 +225,20 @@ func TestIntegration(t *testing.T) {
 		call("GET", "/agent/update-commands", nil, s, "", false, 403)
 		call("GET", "/channels", nil, s, "", false, 403)
 		call("GET", "/rules", nil, s, "", false, 403)
+		for _, route := range []struct{ method, path string }{
+			{"GET", "/users"}, {"POST", "/users"},
+			{"GET", "/channels/" + channelID}, {"POST", "/channels"}, {"PATCH", "/channels/" + channelID},
+			{"POST", "/channels/" + channelID + "/test"},
+			{"POST", "/rules"}, {"PATCH", "/rules/00000000-0000-4000-8000-000000000001"},
+			{"GET", "/notifications"}, {"POST", "/notifications/missing/retry"},
+			{"POST", "/servers/" + id + "/revoke"},
+		} {
+			call(route.method, route.path, map[string]any{}, s, "", true, 403)
+		}
+		if role == "viewer" {
+			call("PATCH", "/servers/"+id, map[string]string{"name": "forbidden"}, s, "", true, 403)
+			call("POST", "/alerts/missing/acknowledge", map[string]any{}, s, "", true, 403)
+		}
 		want := 403
 		if role == "operator" {
 			want = 200

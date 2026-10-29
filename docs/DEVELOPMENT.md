@@ -1,6 +1,6 @@
 # 开发与测试
 
-Go 版本以 go.mod 为准；Node.js 24 LTS；PostgreSQL 16 或 MySQL 8.4。依赖使用 go.sum / package-lock.json 锁定。
+Go 版本以 go.mod 为准；Node.js 24 LTS；数据库可选内嵌 SQLite、PostgreSQL 16 或 MySQL 8.4。依赖使用 go.sum / package-lock.json 锁定。
 
 ```bash
 git clone https://github.com/xiuzhenzhi/SSH.git
@@ -56,7 +56,7 @@ npm audit
 
 --reuse-web 仅可在 web/dist 已成功构建且前端未改动时使用。Windows 下构建前停止本项目 Vite，避免 npm ci 替换 esbuild 时文件被占用。
 
-真实数据库测试必须使用独立测试库（写入测试账号/资产，不删库）；未设置 DSN 会显式跳过：
+未设置测试 DSN 时，集成测试自动创建临时 SQLite 数据库，测试结束自动清理，无需外部数据库服务。PostgreSQL / MySQL 测试必须使用独立测试库（写入测试账号/资产，不删库）：
 
 ```bash
 TEST_DB_DRIVER=postgres TEST_DATABASE_URL='postgres://USER:PASS@127.0.0.1:5432/sshguard_test?sslmode=disable' go test ./internal/api -run TestIntegration -count=1 -v

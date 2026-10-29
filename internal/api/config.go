@@ -43,8 +43,8 @@ func LoadConfig() (Config, error) {
 	if c.Driver == "" {
 		c.Driver = "postgres"
 	}
-	if c.Driver != "postgres" && c.Driver != "mysql" {
-		return c, fmt.Errorf("DB_DRIVER must be postgres or mysql")
+	if c.Driver != "postgres" && c.Driver != "mysql" && c.Driver != "sqlite" {
+		return c, fmt.Errorf("DB_DRIVER must be postgres, mysql or sqlite")
 	}
 	if c.Listen == "" {
 		c.Listen = ":8080"

@@ -10,9 +10,20 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj /CN=guard.sshguard.test 
 printf '127.0.0.1 guard.sshguard.test\n' >> /etc/hosts
 cp "$tmp/cert.pem" /usr/local/share/ca-certificates/sshguard-ci.crt
 update-ca-certificates >/dev/null
-printf 'DOMAIN=guard.sshguard.test\nDB_DRIVER=local-postgres\nTLS_CERT=%s/cert.pem\nTLS_KEY=%s/key.pem\n' "$tmp" "$tmp" > "$tmp/deploy.conf"
+driver=${SSHGUARD_NATIVE_DB:-local-postgres}
+case "$driver" in local-postgres|sqlite) ;; *) exit 1 ;; esac
+printf 'DOMAIN=guard.sshguard.test\nDB_DRIVER=%s\nTLS_CERT=%s/cert.pem\nTLS_KEY=%s/key.pem\n' "$driver" "$tmp" "$tmp" > "$tmp/deploy.conf"
 chmod 600 "$tmp/deploy.conf"
 sh "$bundle/deploy.sh" --config "$tmp/deploy.conf"
+check_sqlite_state() {
+    [ "$driver" = sqlite ] || return 0
+    [ "$(stat -c %a /var/lib/sshguard-api)" = 700 ]
+    [ "$(stat -c %U /var/lib/sshguard-api)" = sshguard-api ]
+    [ -s /var/lib/sshguard-api/sshguard.db ]
+    [ "$(stat -c %a /var/lib/sshguard-api/sshguard.db)" = 600 ]
+    curl -fsS http://127.0.0.1:8080/api/v1/health | grep -Fq '"database":"sqlite"'
+}
+check_sqlite_state
 curl -fsS https://guard.sshguard.test/api/v1/health >/dev/null
 export NODE_EXTRA_CA_CERTS="$tmp/cert.pem"
 export SSHGUARD_TEST_STATE="$tmp"
@@ -50,6 +61,7 @@ cp "$tmp/good-agent" "$download"
 cp "$tmp/good-hash" "$download.sha256"
 old=$(readlink /opt/sshguard)
 sh "$bundle/deploy.sh" --update
+check_sqlite_state
 [ "$old" != "$(readlink /opt/sshguard)" ]
 [ "$before_env" = "$(sha256sum /etc/sshguard/api.env)" ]
 node scripts/test-native-api.mjs verify

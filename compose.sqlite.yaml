@@ -1,0 +1,7 @@
+services:
+  api:
+    volumes:
+      - sqlite-data:/var/lib/sshguard
+
+volumes:
+  sqlite-data:

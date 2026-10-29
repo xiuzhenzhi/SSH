@@ -17,7 +17,9 @@ cd sshguard-linux-amd64
 
 ARM64 中央服务器把 amd64 改成 arm64。包内已有 API、Web 和全部 Agent，运行时无需 Go/Node.js。源码构建见 [开发文档](DEVELOPMENT.md)。
 
-### 2. 准备数据库（二选一）
+### 2. 准备数据库（三选一）
+
+SQLite：使用包含 SQLite 功能的新构建包，无需安装数据库服务；设置 `DB_DRIVER=sqlite`、`DATABASE_URL=file:/var/lib/sshguard-api/sshguard.db`。随包 systemd 服务会创建权限为 0700 的数据目录。如果在启动 systemd 前手动运行 API 的 `-check`，先执行 `sudo install -d -o sshguard-api -g sshguard-api -m 700 /var/lib/sshguard-api`（须先创建下文的服务用户）。SQLite 使用本机磁盘和单个 API 实例；旧 `v0.3.0` 发行包不包含本次源码新增功能。
 
 先安装数据库，或使用已有实例。下面在数据库管理员会话中执行，把密码占位符换成随机密码；建议密码只使用十六进制字符，避免 DSN/环境文件转义问题。
 
@@ -55,7 +57,7 @@ sudo install -m 644 deploy/nginx.conf /etc/nginx/conf.d/sshguard.conf
 sudo install -d -m 700 /etc/sshguard/certs
 ```
 
-编辑 `/etc/sshguard/api.env`：选择 `DB_DRIVER=postgres` 或 `mysql`，填好 `DATABASE_URL`、真实 `PUBLIC_URL=https://guard.example.com`、随机 `ADMIN_PASSWORD`（12–72 字节）。`LISTEN_ADDR=127.0.0.1:8080` 只绑定回环。环境模板展示了两种 DSN。
+编辑 `/etc/sshguard/api.env`：选择 `DB_DRIVER=sqlite`、`postgres` 或 `mysql`，填好 `DATABASE_URL`、真实 `PUBLIC_URL=https://guard.example.com`、随机 `ADMIN_PASSWORD`（12–72 字节）。`LISTEN_ADDR=127.0.0.1:8080` 只绑定回环。环境模板展示了三种数据库配置。
 
 编辑 `/etc/nginx/conf.d/sshguard.conf`，把两处 `guard.example.com` 换成真实域名。将可信 CA 签发的证书链及私钥安装到对应路径：
 

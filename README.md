@@ -1,6 +1,8 @@
 # SSHGuard
 
-面向多服务器环境的 SSH 登录审计与实时告警平台。Go API + Vue 控制台 + 轻量 Go Agent，数据库可选 PostgreSQL 或 MySQL（兼容 5.6.51），Docker Compose 可选。
+面向多服务器环境的 SSH 登录审计与实时告警平台。Go API + Vue 控制台 + 轻量 Go Agent，数据库可选 PostgreSQL、MySQL（兼容 5.6.51）或 SQLite，Docker Compose 可选。
+
+在一个控制台查看谁在什么时间、从哪里登录了哪台服务器；对异常登录、连续认证失败和采集离线配置通知。适合需要集中审计多台 Windows / Linux 主机的运维团队。
 
 [一键部署](docs/QUICKSTART.md) · [Agent 安装更新](docs/AGENTS.md) · [告警配置](docs/ALERTING.md) · [生产验收](docs/PRODUCTION.md) · [Releases](https://github.com/xiuzhenzhi/SSH/releases) · [Actions](https://github.com/xiuzhenzhi/SSH/actions)
 
@@ -24,13 +26,15 @@ Agent 主动出站连接平台，不保存服务器 SSH 密码或私钥，不接
 
 中央平台推荐 Ubuntu / Debian + systemd。准备解析到平台主机的域名、80/443 端口和可信 HTTPS；私有仓库使用有权限的 GitHub 账号，先完成 gh auth login。
 
+**版本提示：SQLite 支持目前在源码分支中，尚未发布为新的安装包。** 下方一键入口默认下载 `v0.3.0`；要立即使用 SQLite，请按下方 Compose 步骤从源码构建。新版本发布后再通过一键入口安装或更新。
+
 ```sh
 git clone https://github.com/xiuzhenzhi/SSH.git
 cd SSH
 sh scripts/quick-start.sh
 ```
 
-向导下载固定版本、校验 SHA256、配置 systemd / Nginx / HTTPS。数据库选择自动安装 PostgreSQL，或填写已有 PostgreSQL / MySQL DSN。初始管理员密码及通知加密密钥保存在 root 专用的 /etc/sshguard/api.env。
+向导下载固定版本、校验 SHA256、配置 systemd / Nginx / HTTPS。数据库可选择 SQLite、自动安装 PostgreSQL，或填写已有 PostgreSQL / MySQL DSN。SQLite 使用 `/var/lib/sshguard-api/sshguard.db`，无需填写 DSN。初始管理员密码及通知加密密钥保存在 root 专用的 /etc/sshguard/api.env。
 
 更新平台：`sh scripts/quick-start.sh --update`。先备份数据库与 api.env，再更新平台、最后分批更新 Agent。自动回退恢复程序，**不逆向恢复数据库迁移**。离线包、无人值守配置、证书和迁移说明见 [快速开始](docs/QUICKSTART.md)。
 
@@ -39,12 +43,22 @@ sh scripts/quick-start.sh
 ```sh
 git clone https://github.com/xiuzhenzhi/SSH.git
 cd SSH
-node scripts/init-env.mjs mysql http://localhost:8088
+node scripts/init-env.mjs sqlite http://localhost:8088
 docker compose config --quiet
 docker compose up -d --build
 ```
 
-打开 http://localhost:8088，用户名 admin，随机密码在 .env。PostgreSQL 将 mysql 改成 postgres；生成器拒绝覆盖已有 .env。本地 HTTP 仅用于体验，接入 Agent 必须启用可信 HTTPS。公网配置见 [Compose 安装](docs/INSTALL-COMPOSE.md)。已有 MySQL 5.6 使用外部数据库，不会自动升级你的数据库。
+打开 http://localhost:8088，用户名 admin，随机密码在 `.env`。示例使用无需独立数据库服务的 SQLite；需要 PostgreSQL / MySQL 时将 `sqlite` 改为 `postgres` / `mysql`。生成器拒绝覆盖已有 `.env`。本地 HTTP 仅用于体验，接入 Agent 必须启用可信 HTTPS。公网配置见 [Compose 安装](docs/INSTALL-COMPOSE.md)。已有 MySQL 5.6 使用外部数据库，不会自动升级你的数据库。
+
+## SQLite 部署
+
+SQLite 适合单机部署，无需独立数据库服务，首次启动自动创建完整业务表；登录审计、规则、通知和权限功能与其他数据库共用同一套 API。首次使用可直接执行上面的 Compose 命令。
+
+数据库保存在命名卷 `sqlite-data` 的 `/var/lib/sshguard/sshguard.db`，容器重建后保留。生成器不会覆盖已有 `.env`；已有配置需手动调整 `DB_DRIVER`、`DATABASE_URL` 和 `COMPOSE_FILE`（使用 `compose.sqlite.yaml`）。
+
+直接运行 API 时，设置 `DB_DRIVER=sqlite`、`DATABASE_URL=file:/绝对路径/sshguard.db`，并保留原有 `PUBLIC_URL`、`ADMIN_PASSWORD` 和 `ENCRYPTION_KEY` 配置。父目录须已存在且仅服务用户可读写；首次启动自动建表。Windows 可使用 `DATABASE_URL=C:/sshguard/data/sshguard.db`。原生安装向导选择 `sqlite` 即可；无人值守配置使用 `DB_DRIVER=sqlite` 并省略 `DATABASE_URL`。systemd 自动创建权限为 0700 的专用数据目录，升级保留数据库。
+
+SQLite 使用 WAL、外键检查和立即写事务，适用于本机磁盘上的单实例部署。备份时先停止 API，再复制数据库文件及存在的 `-wal`、`-shm` 文件，同时保存 `ENCRYPTION_KEY`；不要执行会删除数据卷的 `docker compose down -v`。切换数据库类型不会自动搬迁已有数据。
 
 ## 接入第一台服务器
 
@@ -63,7 +77,7 @@ flowchart LR
   Logs[Linux / Windows SSH 日志] --> Queue[Agent 持久化队列]
   Queue -->|HTTPS / WSS| API[Go API]
   Browser[Vue 控制台] <-->|HTTPS / 实时刷新提示| API
-  API --> DB[(PostgreSQL 或 MySQL)]
+  API --> DB[(SQLite / PostgreSQL / MySQL)]
   DB --> Worker[通知投递 Worker]
   Worker --> Channels[企业微信 / 钉钉 / 飞书 / Telegram / SMTP / Webhook]
 ```
@@ -76,16 +90,32 @@ flowchart LR
 |---|---|
 | 中央平台 | Linux amd64 / arm64；Go 二进制 + systemd + Nginx，或 Compose |
 | Agent | Windows / Ubuntu / Debian / Alpine，amd64 / arm64 |
-| 数据库 | PostgreSQL 16；MySQL 5.6.51 / 8.4；MySQL 5.6 不使用 JSON、SKIP LOCKED 等新版本特性 |
+| 数据库 | SQLite（内嵌，无需额外安装）；PostgreSQL 16；MySQL 5.6.51 / 8.4 |
 | 运行依赖 | 发布包无需 Go / Node；不依赖 Redis；Linux Agent 静态构建兼容 glibc / musl |
 
 MySQL 5.6 已停止官方维护，兼容旧版本不等于修复数据库自身漏洞。新部署优先选择维护中的版本，已有 5.6 限制网络访问并制定升级计划。
+
+| 你的场景 | 数据库选择 | 运维重点 |
+|---|---|---|
+| 单机部署，希望减少安装与维护步骤 | SQLite | 本机磁盘、单个 API 实例，定期停机备份数据与密钥 |
+| 已有 PostgreSQL，或计划部署多个 API 实例 | PostgreSQL | 独立数据库、连接权限、备份与容量规划 |
+| 已有 MySQL 运维体系 | MySQL | 复用现有基础设施；旧 5.6 环境制定升级计划 |
+
+## 权限与产品边界
+
+| 角色 | 可以执行的操作 |
+|---|---|
+| viewer | 查看全部服务器、事件、概览和告警；修改自己的密码 |
+| operator | viewer 的操作，以及新增/编辑服务器、确认告警 |
+| admin | 用户管理、Agent 注册/撤销、规则和通知渠道配置、投递重试、审计查询 |
+
+权限按全局角色划分，**不提供按租户或服务器分组的数据隔离**；服务器分组用于筛选与规则匹配。Agent 只能向凭证绑定的服务器上报，不具备后台用户权限。平台不提供远程 SSH 登录或命令执行，也不会自动迁移不同数据库之间的数据。
 
 ## 文档与构建
 
 | 文档 | 内容 |
 |---|---|
-| [快速开始](docs/QUICKSTART.md) | 一键部署、升级、MySQL、HTTPS、回退 |
+| [快速开始](docs/QUICKSTART.md) | 一键部署、SQLite / MySQL、HTTPS、升级与回退 |
 | [原生安装](docs/INSTALL-NATIVE.md) / [Compose](docs/INSTALL-COMPOSE.md) | 手工部署与配置 |
 | [Agent 手册](docs/AGENTS.md) | 采集源、权限、安装更新、诊断 |
 | [告警配置](docs/ALERTING.md) | 六类渠道、规则、加密、测试、重试 |

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"strings"
 	"time"
 )
 
@@ -13,8 +12,7 @@ var errUpdateUnavailable = errors.New("updater unavailable or busy")
 
 // The protocol intentionally has no command, URL, script or argument fields.
 func (a *App) queueAgentUpdate(c *gin.Context) {
-	if !strings.HasPrefix(a.cfg.PublicURL, "https://") {
-		bad(c, 409, "Agent 更新需要 HTTPS")
+	if _, valid := a.agentOrigin(c); !valid {
 		return
 	}
 	id := c.Param("id")

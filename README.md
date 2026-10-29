@@ -26,9 +26,9 @@ Agent 主动出站连接平台，不保存服务器 SSH 密码或私钥，不接
 
 *开发验收截图，包含隔离测试数据，不是生产服务器监控结果。*
 
-中央平台推荐 Ubuntu / Debian + systemd，直接通过 IP 和端口访问，无需域名或 Nginx；接入 Agent 时再配置可信 HTTPS。私有仓库使用有权限的 GitHub 账号，先完成 gh auth login。
+主控推荐 Ubuntu / Debian + systemd，默认直接通过 IP 和端口访问，无需域名、Docker 或 Nginx，Agent 也可使用同一 IP 地址接入。HTTPS、反代和外部数据库均为可选配置。私有仓库使用有权限的 GitHub 账号，先完成 gh auth login。
 
-**版本提示：SQLite 从 v0.3.1 开始支持。** 下方一键入口下载固定版本 `v0.3.6`，安装前确认 [Releases](https://github.com/xiuzhenzhi/SSH/releases) 中该版本已构建完成并包含安装包；也可按下方 Compose 步骤从源码构建。
+**版本提示：SQLite 从 v0.3.1 开始支持。** 下方一键入口下载固定版本 `v0.3.7`，安装前确认 [Releases](https://github.com/xiuzhenzhi/SSH/releases) 中该版本已构建完成并包含安装包；也可按下方 Compose 步骤从源码构建。
 
 ```sh
 git clone https://github.com/xiuzhenzhi/SSH.git
@@ -36,13 +36,15 @@ cd SSH
 sh scripts/quick-start.sh
 ```
 
-向导下载固定版本、校验 SHA256，并配置 systemd。程序直接提供网页和 API，无需安装 Nginx；已有 Nginx / OpenResty / 宝塔可按文档反代。首次打开网页选择 SQLite（推荐，无需数据库服务）、MySQL 或 PostgreSQL，并创建管理员。SQLite 数据位于 `/var/lib/sshguard-api/sshguard.db`，网页数据库配置保存在同目录的 `setup.json`；通知加密密钥保存在 root 专用的 `/etc/sshguard/api.env`，备份时一起保存。详见 [安装与管理](docs/QUICKSTART.md)。
+安装路径：**运行命令 → 打开初始化链接 → 创建管理员 → 添加服务器并复制 Agent 命令**。默认使用 SQLite，创建账号后自动进入服务器管理；MySQL / PostgreSQL 收纳在可选的「存储设置」中。程序直接提供网页和 API，已有 Nginx / OpenResty / 宝塔可按需反代。SQLite 数据位于 `/var/lib/sshguard-api/sshguard.db`，网页配置保存在同目录的 `setup.json`；通知加密密钥保存在 `/etc/sshguard/api.env`，备份时一起保存。详见 [安装与管理](docs/QUICKSTART.md) 和 [安装流程说明](docs/INSTALLATION-FLOW.md)。
 
 更新平台：`sh scripts/quick-start.sh --update`。先备份数据库与 api.env，再更新平台、最后分批更新 Agent。自动回退恢复程序，**不逆向恢复数据库迁移**。离线包、无人值守配置、证书和迁移说明见 [快速开始](docs/QUICKSTART.md)。
 
-安装脚本提供中文编号菜单：选择安装，端口回车即可。首次交互安装显示初始化链接，打开网页完成数据库和管理员配置；旧版升级保留原账号和数据库。菜单也可卸载中央平台，默认保留数据，兼容旧版原生安装。Agent 安装后保存本地卸载脚本，平台离线时仍可卸载。反代与 HTTPS 按快速开始文档按需配置。
+安装脚本提供中文编号菜单：选择安装，端口回车使用 8080，也可用 `sh scripts/quick-start.sh --port 8081` 指定。初始化链接丢失时执行 `sudo sh /opt/sshguard/deploy.sh --setup-link` 查看；已有安装保留原账号和数据库。卸载默认保留数据；Agent 自带本地卸载脚本，平台离线时仍可卸载。直连 HTTP 的登录、凭证、下载与上报未加密，应确保网络可信；HTTPS 可在安装后配置。
 
 ## Compose（可选）
+
+已有 Nginx / OpenResty / 宝塔的配置、端口提示和 Agent 切换步骤见 [反代与 HTTPS](docs/REVERSE-PROXY.md)。
 
 ```sh
 git clone https://github.com/xiuzhenzhi/SSH.git

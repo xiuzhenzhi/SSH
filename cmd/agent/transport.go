@@ -44,7 +44,8 @@ func (t *transport) connect(ctx context.Context) {
 	}
 	dialCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	conn, resp, e := websocket.Dial(dialCtx, "wss"+strings.TrimPrefix(t.cfg.Endpoint, "https")+"/api/v1/agent/stream", &websocket.DialOptions{
+	endpoint := "ws" + strings.TrimPrefix(t.cfg.Endpoint, "http") + "/api/v1/agent/stream"
+	conn, resp, e := websocket.Dial(dialCtx, endpoint, &websocket.DialOptions{
 		HTTPClient: client, HTTPHeader: http.Header{"Authorization": []string{"Bearer " + t.cfg.Token}}, CompressionMode: websocket.CompressionDisabled,
 	})
 	if e != nil {

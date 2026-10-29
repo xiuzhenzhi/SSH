@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -92,6 +93,9 @@ type setupInput struct {
 }
 
 func (in setupInput) connection(c Config) (setupRecord, error) {
+	if in.Driver == "" {
+		in.Driver = "sqlite"
+	}
 	record := setupRecord{Driver: in.Driver, AdminUsername: strings.TrimSpace(in.Username)}
 	if in.Driver == "sqlite" {
 		record.DatabaseURL = "file:" + filepath.ToSlash(filepath.Join(filepath.Dir(c.SetupFile), "sshguard.db"))
@@ -165,14 +169,18 @@ func (s *Setup) Router() *gin.Engine {
 }
 
 func setupDecode(c *gin.Context) (setupInput, bool) {
-	var in setupInput
+	var in *setupInput
 	decoder := json.NewDecoder(c.Request.Body)
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&in); err != nil {
+	if err := decoder.Decode(&in); err != nil || in == nil {
 		bad(c, 400, "请检查初始化表单")
-		return in, false
+		return setupInput{}, false
 	}
-	return in, true
+	if decoder.Decode(new(any)) != io.EOF {
+		bad(c, 400, "初始化请求只能包含一个 JSON 对象")
+		return setupInput{}, false
+	}
+	return *in, true
 }
 
 func setupTables(ctx context.Context, db *storage.DB) (int, error) {

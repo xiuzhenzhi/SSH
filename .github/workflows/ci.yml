@@ -37,6 +37,15 @@ jobs:
         run: ./scripts/test-windows-service.ps1
       - run: go test ./...
       - run: go vet ./...
+      - name: Verify domain-free setup and real Agent flow
+        shell: bash
+        run: |
+          suffix=''
+          if [ "$RUNNER_OS" = Windows ]; then suffix='.exe'; fi
+          mkdir -p .local/direct-flow
+          go build -o ".local/direct-flow/api$suffix" ./cmd/api
+          go build -o ".local/direct-flow/agent$suffix" ./cmd/agent
+          node scripts/test-direct-flow.mjs ".local/direct-flow/api$suffix" ".local/direct-flow/agent$suffix"
       - if: runner.os == 'Linux'
         run: |
           go test -race ./cmd/agent ./internal/api ./internal/storage
@@ -209,6 +218,12 @@ jobs:
           tar -xzf sshguard-linux-amd64.tar.gz -C ..
       - name: Verify installation, upgrades, permissions and recovery
         run: sudo env "PATH=$PATH" GITHUB_ACTIONS=true SSHGUARD_NATIVE_DB=${{ matrix.database }} SSHGUARD_NATIVE_PROXY=${{ matrix.proxy }} sh scripts/test-native-deploy.sh dist/sshguard-linux-amd64
+      - name: Verify all proxy templates and real HTTPS WebSockets
+        if: matrix.proxy == 'managed' && matrix.database == 'sqlite'
+        run: |
+          mkdir -p .local/proxy
+          openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj /CN=localhost -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1' -keyout .local/proxy/key.pem -out .local/proxy/cert.pem
+          NODE_EXTRA_CA_CERTS="$PWD/.local/proxy/cert.pem" node scripts/test-reverse-proxy.mjs dist/sshguard-linux-amd64/sshguard-api "$(command -v nginx)" .local/proxy/cert.pem .local/proxy/key.pem
   artifacts:
     name: Verified release assets
     needs: native

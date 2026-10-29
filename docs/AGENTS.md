@@ -4,7 +4,7 @@
 
 先更新中央平台，再在服务器列表点击「更新命令」。Linux 使用同一安装器的 `--update`，Windows 使用 `-Update`，不需要新的注册令牌。新程序下载和 SHA256 校验完成后才停止服务；更新会核对原配置 endpoint，服务启动/心跳检查失败恢复旧程序。同版本重复执行不会重新注册。后台 Agent 版本随心跳更新。
 
-凭证已撤销时更新会拒绝，必须由管理员重新生成安装命令。首次安装或重新注册会更换凭证，不能当作更新使用。Linux 凭证文件为 root 所有、服务组只读；Windows 凭证仅 Administrators/SYSTEM 可写，LocalService 只读。SHA256 是完整性检查，信任来源仍是平台 HTTPS。
+凭证已撤销时更新会拒绝，必须由管理员重新生成安装命令。首次安装或重新注册会更换凭证，不能当作更新使用。Linux 凭证文件为 root 所有、服务组只读；Windows 凭证仅 Administrators/SYSTEM 可写，LocalService 只读。SHA256 是完整性检查，HTTPS 部署的信任来源仍是平台证书；HTTP 直连的凭证、下载和上报均未加密，应使用可信网络。
 
 ## 平台触发更新与卸载
 
@@ -24,7 +24,7 @@
 
 ### 4. 登录与接入服务器
 
-访问 `https://guard.example.com`，用户名 `admin`，密码是你配置的 `ADMIN_PASSWORD`。**仅空用户表时初始化；修改环境变量不会重置现有密码。**
+通过主控 IP 和端口（如 `http://192.0.2.10:8080`）或已配置的 HTTPS 地址打开控制台。网页初始化的安装使用自己创建的管理员；配置文件安装使用 `ADMIN_USERNAME` / `ADMIN_PASSWORD`。**仅空用户表时初始化；修改环境变量不会重置现有密码。**
 
 进入「服务器管理」→「添加服务器」→「安装命令」，选择 Windows / Ubuntu / Debian / Alpine 后，在对应目标机器执行。所有选项共享同一条短期凭证，切换选项不会刷新有效期；仅在一台机器执行，不能用同一命令接入多台机器。API 返回 `commands.windows/ubuntu/debian/alpine`，保留 `command` 字段为 Ubuntu 命令兼容旧客户端。
 
@@ -50,7 +50,7 @@ apk add --no-cache curl ca-certificates
 
 Windows 使用自带 PowerShell 下载并校验 SHA-256，无需 NSSM、WinSW、Go 或 Docker。脚本的 ExecutionPolicy 参数仅用于当前安装子进程，不修改系统持久策略；受组织策略限制时按组织的签名/分发流程执行脚本。安装不创建防火墙入站规则。
 
-所有 Agent 主动出站访问平台，不需要开放入站端口，不保存 SSH 密码/私钥，也不执行中心下发命令。Linux 二进制使用 `CGO_ENABLED=0`，Ubuntu/Debian 的 glibc 与 Alpine 的 musl 共用静态二进制。所有下载和 API 请求验证 HTTPS 证书，不接受忽略证书验证。
+所有 Agent 主动出站访问平台，不需要开放入站端口，不保存 SSH 密码/私钥，也不执行中心下发命令。Linux 二进制使用 `CGO_ENABLED=0`，Ubuntu/Debian 的 glibc 与 Alpine 的 musl 共用静态二进制。HTTPS 下载和 API 请求严格校验证书，不接受忽略证书验证。原生默认安装也支持无域名 HTTP 直连，控制台生成的命令会显式附加 `--allow-insecure-http` / `-AllowInsecureHttp`，并在本地 Agent 配置保存 `allow_insecure_http=true`。未经显式授权的 HTTP 仍被拒绝；更新沿用原地址和授权，不自动切换协议。
 
 命令包含短期凭证，避免公开粘贴；长期令牌的存放与权限：
 
@@ -122,5 +122,11 @@ Linux 优先使用正在运行的 systemd journal（sshd / sshd-session），否
 - Windows 状态：%ProgramData%\SSHGuard\state\state.db，只给 SSHGuardAgent 服务 SID 修改权限；OpenSSH 通道仅追加该服务的读取权限，不授予通用 Event Log Readers。
 - 队列最多 10,000 个事件，满时暂停采集，不推进读取位置。服务端明确拒绝的记录单独隔离（上限 1,000），隔离满时保留剩余队列。磁盘满或状态文件不可写时会报告异常。
 - 更新保留队列和读取位置；卸载保留状态，重新注册为另一台服务器前须人工归档旧状态，不能让未确认事件归属错误服务器。
+
+### HTTP 地址迁移到 HTTPS
+
+队列身份绑定 `endpoint + server_id`。即使沿用同一条服务器记录，更改协议、IP、域名或端口后，Agent 也会拒绝直接使用原状态库。先让待传队列归零并备份，停止采集服务与更新定时器 / 计划任务，再把整个状态目录重命名归档（Linux：`/var/lib/sshguard-agent`；Windows：`%ProgramData%\SSHGuard\state`；使用新的归档名称，不能覆盖旧备份）。Alpine 需同时停止对应 OpenRC 服务。
+
+然后通过新 HTTPS 地址打开主控，在原服务器记录生成新安装命令并执行。安装器创建新的状态目录；检查上线和采集健康，验证真实登录。新状态从当前日志尾部开始，切换窗口可能有采集间隙，原日志和归档需保留。未上传队列应先完成恢复处理，不能靠删除旧状态绕过错误；不要把旧 state.db 复制到新身份目录。此操作不会由普通更新命令自动完成，详细步骤见 [反代与 HTTPS](REVERSE-PROXY.md)。
 
 默认每 2 秒检查日志和待传事件，30 秒心跳。WebSocket 重连采用退避与随机延迟；不可用时走 HTTPS。停机超过操作系统日志保留时间或积压超过 30 天可能产生不可恢复缺口，请监控队列深度与日志空间。

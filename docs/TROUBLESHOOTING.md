@@ -12,7 +12,10 @@
 | TLS / x509 错误 | 域名不匹配、证书链缺失、根证书未安装或时间错误 | 修复证书链、CA 包与系统时间；不使用跳过证书校验 |
 | Nginx 502 | API 未运行、端口/上游不匹配、SELinux 网络策略 | 检查 API 服务与 health；核对原生 127.0.0.1:8080 / Compose api:8080 |
 | 已有宝塔 / OpenResty，旧脚本又安装 Nginx 后失败 | 两套服务占用 80/443，系统包可能处于未配置状态 | 新向导选择独立或 external 模式；不要停止原网站。先确认实际 Web 服务路径和包归属，再修复包管理状态，不要直接卸载面板依赖 |
-| HTTP 面板能访问但无法生成 Agent 命令 | Agent 要求可信 HTTPS | 设置内置 TLS 证书或通过现有 HTTPS 站点反代，PUBLIC_URL 必须同步实际协议、域名与端口 |
+| HTTP 面板能访问但无法生成 Agent 命令 | 使用旧版本，或未显式启用 HTTP | v0.3.7 原生默认安装支持 IP 直连；旧安装可升级后显式配置 ALLOW_INSECURE_HTTP=true，或按需启用 HTTPS；HTTP 传输未加密 |
+| 反代初始化出现超时 / 504 | 前置代理超时偏短 | 主控模板使用 90 秒；同步检查 CDN / 负载均衡，响应丢失后页面会核对初始化状态 |
+| 自定义 HTTPS 端口下登录 403 / Agent 地址错误 | PUBLIC_URL 未包含外部端口 | 设置为浏览器完整 origin，例如 https://guard.example.com:8443；内部 proxy_pass 仍用主控端口；详见 [端口提示](REVERSE-PROXY.md#自定义端口提示) |
+| 切换 HTTPS 后 Agent 报 state belongs to a different server | endpoint 是队列身份的一部分 | 先上传待传队列，停服务并归档原状态，再按 [迁移说明](AGENTS.md#http-地址迁移到-https) 在原记录重新接入；不要删除未上传证据 |
 | 独立模式网页 404 | 缺少发布包中的 web 目录 | 保留程序旁的 web/index.html，或指定服务账号可读的 WEB_DIR；不要把 WEB_DIR 指向配置或数据目录 |
 | MySQL 扫描时间字段失败 | DSN 缺少 parseTime=true | 使用文档中的 DSN，设置 UTC 时区 |
 | 改数据库密码后无法启动 | 卷中的实际账号密码没变 | 在数据库管理会话修改密码，再同步 DATABASE_URL；环境变量不会重建已有库 |

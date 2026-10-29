@@ -112,7 +112,7 @@ func runAgent(ctx context.Context, cfg Config, stateDir string) {
 	uploadFailures := 0
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
-	log.Printf("SSHGuard %s: durable SSH collection and HTTPS/WSS reporting enabled", version)
+	log.Printf("SSHGuard %s: durable SSH collection and HTTP(S)/WebSocket reporting enabled", version)
 	for ctx.Err() == nil {
 		if time.Now().After(nextHeartbeat) {
 			if e := tr.send(ctx, "heartbeat", health.heartbeat(s), nil); e != nil && ctx.Err() == nil {

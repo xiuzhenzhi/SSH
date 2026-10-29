@@ -48,3 +48,31 @@ func TestUninstallCommands(t *testing.T) {
 		}
 	}
 }
+
+func TestIPCommandsMatchTransport(t *testing.T) {
+	for _, origin := range []string{"http://192.0.2.10:8080", "http://[2001:db8::1]:8080", "https://192.0.2.10:8443"} {
+		insecure := strings.HasPrefix(origin, "http://")
+		for _, commands := range []map[string]string{installCommands(origin, strings.Repeat("a", 64)), updateCommands(origin)} {
+			for platform, command := range commands {
+				if !strings.Contains(command, origin) {
+					t.Fatal("origin lost", platform)
+				}
+				option := "--allow-insecure-http"
+				if platform == "windows" {
+					option = "-AllowInsecureHttp"
+				}
+				if strings.Contains(command, option) != insecure {
+					t.Fatal("HTTP opt-in mismatch", platform, origin)
+				}
+				if platform != "windows" && !strings.Contains(command, "--proto '"+downloadProtocol(origin)+"'") {
+					t.Fatal("download transport mismatch")
+				}
+			}
+		}
+		for platform, command := range uninstallCommands(origin) {
+			if !strings.Contains(command, origin) || (platform != "windows" && !strings.Contains(command, "--proto '"+downloadProtocol(origin)+"'")) {
+				t.Fatal("invalid uninstall transport", platform)
+			}
+		}
+	}
+}

@@ -26,4 +26,9 @@ func TestFixedUpdateCommand(t *testing.T) {
 	if _, _, err := updateCommand(cfg, task); err == nil {
 		t.Fatal("HTTP update allowed")
 	}
+	cfg.AllowInsecureHTTP = true
+	_, args, err = updateCommand(cfg, task)
+	if err != nil || !strings.Contains(strings.ToLower(strings.Join(args, " ")), "insecure") {
+		t.Fatal("direct HTTP updater lost explicit opt-in", err)
+	}
 }

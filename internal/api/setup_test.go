@@ -100,3 +100,26 @@ func TestSetupRejectsExistingDatabase(t *testing.T) {
 		t.Fatal("existing database accepted")
 	}
 }
+
+func TestSetupDefaultsToSQLite(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "setup.json")
+	record, err := (setupInput{Username: "admin"}).connection(Config{SetupFile: path})
+	if err != nil || record.Driver != "sqlite" || record.DatabaseURL != "file:"+filepath.ToSlash(filepath.Join(filepath.Dir(path), "sshguard.db")) {
+		t.Fatal("default storage requires configuration", err)
+	}
+}
+
+func TestSetupRejectsTrailingJSON(t *testing.T) {
+	cfg := Config{PublicURL: "https://guard.example.com", SetupToken: strings.Repeat("a", 64)}
+	router := NewSetup(cfg).Router()
+	for _, body := range []string{`{} {}`, `{} garbage`, `{} null`, `null`} {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/setup/test", strings.NewReader(body))
+		req.Header.Set("Origin", cfg.PublicURL)
+		req.Header.Set("X-Setup-Token", cfg.SetupToken)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		if w.Code != 400 {
+			t.Fatalf("trailing data accepted: %s (%d)", body, w.Code)
+		}
+	}
+}

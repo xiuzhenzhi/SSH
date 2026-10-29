@@ -22,7 +22,7 @@ type App struct {
 	hub       *liveHub
 }
 
-var Version = "0.3.6"
+var Version = "0.3.7"
 
 func New(db *storage.DB, cfg Config) *gin.Engine {
 	return NewApp(db, cfg).Router()
@@ -35,7 +35,7 @@ func (a *App) Router() *gin.Engine {
 	// Pass c.Request.Context() to SQL and background-capable helpers. Gin pools
 	// its Context after the handler returns; driver cancellation goroutines may
 	// still be observing the context even after a query has completed.
-	db, cfg := a.db, a.cfg
+	db := a.db
 	r := gin.New()
 	r.ContextWithFallback = true
 	r.Use(gin.Recovery())
@@ -74,14 +74,18 @@ func (a *App) Router() *gin.Engine {
 	web.POST("/auth/logout", a.logout)
 	web.POST("/auth/password", authLimit, a.changePassword)
 	web.GET("/agent/update-commands", role("admin"), func(c *gin.Context) {
-		if !strings.HasPrefix(cfg.PublicURL, "https://") {
-			bad(c, 409, "请先配置 HTTPS 再更新 Agent")
+		origin, valid := a.agentOrigin(c)
+		if !valid {
 			return
 		}
-		ok(c, gin.H{"commands": updateCommands(cfg.PublicURL), "version": Version})
+		ok(c, gin.H{"commands": updateCommands(origin), "version": Version, "endpoint": origin, "insecure_http": strings.HasPrefix(origin, "http://")})
 	})
 	web.GET("/dashboard/summary", a.summary)
-	web.GET("/agent/uninstall-commands", role("admin"), func(c *gin.Context) { ok(c, gin.H{"commands": uninstallCommands(cfg.PublicURL)}) })
+	web.GET("/agent/uninstall-commands", role("admin"), func(c *gin.Context) {
+		if origin, valid := a.agentOrigin(c); valid {
+			ok(c, gin.H{"commands": uninstallCommands(origin)})
+		}
+	})
 	web.GET("/dashboard/overview", a.overview)
 	web.GET("/live", a.live)
 	web.GET("/rules", role("admin"), a.rules)

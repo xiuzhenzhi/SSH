@@ -1,6 +1,6 @@
-# HTTPS + WebSocket 上报协议
+# HTTP(S) + WebSocket 上报协议
 
-平台对外只有可信 HTTPS/WSS。Agent 使用 Authorization: Bearer 长期令牌；浏览器使用 HttpOnly 会话 Cookie，两种身份不能互换。Agent stream 拒绝浏览器 Origin，浏览器 live 要求 Origin 与 PUBLIC_URL 完全相等。
+平台支持 HTTPS/WSS，以及原生直连模式显式授权的 HTTP/WS。HTTP 不提供传输加密，HTTPS 仍严格校验证书。Agent 使用 Authorization: Bearer 长期令牌；浏览器使用 HttpOnly 会话 Cookie，两种身份不能互换。Agent stream 拒绝浏览器 Origin，浏览器 live 要求 Origin 与配置的 PUBLIC_URL 完全相等；未配置 PUBLIC_URL 的直连模式按实际请求地址检查，不信任转发头。
 
 ## 数据路径
 

@@ -68,16 +68,26 @@ func (a *App) saveServer(c *gin.Context) {
 }
 func shellQuote(s string) string      { return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'" }
 func powershellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
-func installCommands(origin, t string) map[string]string {
-	linux := func(privilege string) string {
-		return fmt.Sprintf(`(f=$(mktemp) && trap 'rm -f "$f"' EXIT && curl --proto '=https' --tlsv1.2 --connect-timeout 15 --max-time 60 -fsS %s -o "$f" && %ssh "$f" %s %s)`, shellQuote(origin+"/downloads/install-agent.sh"), privilege, shellQuote(origin), shellQuote(t))
+func downloadProtocol(origin string) string {
+	if strings.HasPrefix(origin, "http://") {
+		return "=http"
 	}
-	windows := fmt.Sprintf(`[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $f=Join-Path $env:TEMP ([guid]::NewGuid().ToString()+'.ps1'); try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 60 -MaximumRedirection 0 -Uri %s -OutFile $f; if (-not $?) { throw 'Installer download failed' }; & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $f -Endpoint %s -EnrollmentToken %s; if ($LASTEXITCODE -ne 0) { throw 'Agent installation/update failed' } } finally { if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f } }`, powershellQuote(origin+"/downloads/install-agent.ps1"), powershellQuote(origin), powershellQuote(t))
+	return "=https"
+}
+func installCommands(origin, t string) map[string]string {
+	linuxOption, windowsOption := "", ""
+	if strings.HasPrefix(origin, "http://") {
+		linuxOption, windowsOption = " --allow-insecure-http", " -AllowInsecureHttp"
+	}
+	linux := func(privilege string) string {
+		return fmt.Sprintf(`(f=$(mktemp) && trap 'rm -f "$f"' EXIT && curl --proto %s --tlsv1.2 --connect-timeout 15 --max-time 60 -fsS %s -o "$f" && %ssh "$f" %s %s%s)`, shellQuote(downloadProtocol(origin)), shellQuote(origin+"/downloads/install-agent.sh"), privilege, shellQuote(origin), shellQuote(t), linuxOption)
+	}
+	windows := fmt.Sprintf(`[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $f=Join-Path $env:TEMP ([guid]::NewGuid().ToString()+'.ps1'); try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 60 -MaximumRedirection 0 -Uri %s -OutFile $f; if (-not $?) { throw 'Installer download failed' }; & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $f -Endpoint %s -EnrollmentToken %s%s; if ($LASTEXITCODE -ne 0) { throw 'Agent installation/update failed' } } finally { if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f } }`, powershellQuote(origin+"/downloads/install-agent.ps1"), powershellQuote(origin), powershellQuote(t), windowsOption)
 	return map[string]string{"ubuntu": linux("sudo "), "debian": linux("sudo "), "alpine": linux(""), "windows": windows}
 }
 func (a *App) enrollment(c *gin.Context) {
-	if !strings.HasPrefix(a.cfg.PublicURL, "https://") {
-		bad(c, 409, "请先配置内置 HTTPS 或可信 HTTPS 反向代理，再安装 Agent")
+	origin, valid := a.agentOrigin(c)
+	if !valid {
 		return
 	}
 	id := c.Param("id")
@@ -98,8 +108,8 @@ func (a *App) enrollment(c *gin.Context) {
 		fail(c, e)
 		return
 	}
-	commands := installCommands(a.cfg.PublicURL, t)
-	ok(c, gin.H{"command": commands["ubuntu"], "commands": commands, "expires_at": expires, "phase": "registration-and-heartbeat-only"})
+	commands := installCommands(origin, t)
+	ok(c, gin.H{"command": commands["ubuntu"], "commands": commands, "expires_at": expires, "phase": "registration-and-heartbeat-only", "endpoint": origin, "insecure_http": strings.HasPrefix(origin, "http://")})
 }
 func updateCommands(origin string) map[string]string {
 	commands := installCommands(origin, "--update")
@@ -108,7 +118,7 @@ func updateCommands(origin string) map[string]string {
 }
 func uninstallCommands(origin string) map[string]string {
 	linux := func(privilege string) string {
-		return fmt.Sprintf(`(f=$(mktemp) && trap 'rm -f "$f"' EXIT && curl --proto '=https' --tlsv1.2 --connect-timeout 15 --max-time 60 -fsS %s -o "$f" && %ssh "$f")`, shellQuote(origin+"/downloads/uninstall-agent.sh"), privilege)
+		return fmt.Sprintf(`(f=$(mktemp) && trap 'rm -f "$f"' EXIT && curl --proto %s --tlsv1.2 --connect-timeout 15 --max-time 60 -fsS %s -o "$f" && %ssh "$f")`, shellQuote(downloadProtocol(origin)), shellQuote(origin+"/downloads/uninstall-agent.sh"), privilege)
 	}
 	windows := fmt.Sprintf(`[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $f=Join-Path $env:TEMP ([guid]::NewGuid().ToString()+'.ps1'); try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 60 -MaximumRedirection 0 -Uri %s -OutFile $f; & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $f; if ($LASTEXITCODE -ne 0) { throw 'Agent uninstall failed' } } finally { if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f } }`, powershellQuote(origin+"/downloads/uninstall-agent.ps1"))
 	return map[string]string{"ubuntu": linux("sudo "), "debian": linux("sudo "), "alpine": linux(""), "windows": windows}

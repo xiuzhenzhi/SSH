@@ -45,11 +45,32 @@ for(const host of ['127.0.0.1','localhost']) {
  const response=await fetch(origin+'/');if(!response.ok || !(await response.text()).includes('<html'))throw Error('Console unavailable');
 }
 JS
+export SSHGUARD_TEST_STATE="$tmp"
+export SSHGUARD_TEST_ORIGIN=http://127.0.0.1:8080
+export SSHGUARD_TEST_PASSWORD=Direct-install-test-987
+node scripts/test-native-api.mjs enroll
+token=$(cat "$tmp/enrollment")
+sh "$bundle/web/downloads/install-agent.sh" "$SSHGUARD_TEST_ORIGIN" "$token" --allow-insecure-http
+unset token
+systemctl is-active --quiet sshguard-agent
+grep -q '"allow_insecure_http":true' /etc/sshguard/agent.json
+logger -t sshd 'Accepted publickey for ci-fixture from 192.0.2.10 port 2222 ssh2'
+logger -t sshd 'Failed password for invalid user ci-fixture from 192.0.2.10 port 2223 ssh2'
+node scripts/test-native-api.mjs verify
+before_agent=$(sha256sum /etc/sshguard/agent.json)
+sh "$bundle/web/downloads/install-agent.sh" "$SSHGUARD_TEST_ORIGIN" --update --allow-insecure-http
+[ "$before_agent" = "$(sha256sum /etc/sshguard/agent.json)" ]
+systemctl stop sshguard-agent-update.timer
+node scripts/test-native-api.mjs queue-update
+systemctl start sshguard-agent-update.service
+node scripts/test-native-api.mjs verify-update
 before=$(sha256sum /etc/sshguard/api.env)
 PATH="$tmp/bin:$PATH" sh "$bundle/deploy.sh" --update
 [ "$before" = "$(sha256sum /etc/sshguard/api.env)" ]
 curl -fsS http://127.0.0.1:8080/api/v1/health >/dev/null
 test -s /var/lib/sshguard-api/setup.json
+node scripts/test-native-api.mjs verify
+sh /usr/local/lib/sshguard/uninstall-agent.sh
 sh "$bundle/uninstall.sh" --yes
 test ! -e /etc/systemd/system/sshguard-api.service
 test ! -e /opt/sshguard

@@ -3,7 +3,7 @@ import {readFileSync,writeFileSync} from 'node:fs';
 const state=process.env.SSHGUARD_TEST_STATE;
 if(process.env.GITHUB_ACTIONS!=='true' || !state) throw Error('Disposable CI only');
 const origin=process.env.SSHGUARD_TEST_ORIGIN || 'https://guard.sshguard.test';
-const password=JSON.parse(readFileSync('/etc/sshguard/api.env','utf8').split('\n').find(x=>x.startsWith('ADMIN_PASSWORD=')).slice('ADMIN_PASSWORD='.length));
+const password=process.env.SSHGUARD_TEST_PASSWORD || JSON.parse(readFileSync('/etc/sshguard/api.env','utf8').split('\n').find(x=>x.startsWith('ADMIN_PASSWORD=')).slice('ADMIN_PASSWORD='.length));
 let cookie='';
 async function api(path,method='GET',body){
  const res=await fetch(origin+'/api/v1'+path,{method,headers:{Origin:origin,Cookie:cookie,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});
@@ -29,8 +29,18 @@ if(process.argv[2]==='enroll'){
  await agent('heartbeat',{version:'0.0.0'});
  await api(`/servers/${cfg.server_id}/update`,'POST',{});
 }else if(process.argv[2]==='verify-update'){
- const server=await api('/servers/'+readFileSync(`${state}/server`,'utf8'));
- if(server.update_status!=='success')throw Error('Platform-triggered update did not succeed: '+server.update_status);
+ const id=readFileSync(`${state}/server`,'utf8');
+ const expected=readFileSync('VERSION','utf8').trim();
+ let confirmed=false;
+ for(let i=0;i<40;i++){
+  const server=await api('/servers/'+id);
+  if(server.update_status==='failed')throw Error('Platform-triggered update failed');
+  if(server.update_status==='success' && server.agent_version===expected){confirmed=true;break;}
+  // An idempotent update leaves the collector running; its next periodic
+  // heartbeat replaces the old-version fixture used to request this task.
+  await new Promise(resolve=>setTimeout(resolve,1000));
+ }
+ if(!confirmed)throw Error('Platform-triggered update or version confirmation timed out');
 }else{
  const server=await api('/servers/'+readFileSync(`${state}/server`,'utf8'));
  if(server.status!=='online' || server.agent_version!==readFileSync('VERSION','utf8').trim()) throw Error('Agent status/version incorrect');

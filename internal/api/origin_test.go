@@ -41,3 +41,53 @@ func TestDirectOriginWithoutDomain(t *testing.T) {
 		t.Fatal("implicit insecure mode allowed")
 	}
 }
+
+func TestAgentOriginDirectAndProxyModes(t *testing.T) {
+	for _, test := range []struct {
+		name, request, configured, want string
+		allowHTTP                       bool
+	}{
+		{"direct IPv4", "http://192.0.2.10:8080", "", "http://192.0.2.10:8080", true},
+		{"direct IPv6", "http://[2001:db8::1]:8080", "", "http://[2001:db8::1]:8080", true},
+		{"HTTP disabled", "http://192.0.2.10:8080", "", "", false},
+		{"configured HTTPS", "http://127.0.0.1:8080", "https://guard.example.com", "https://guard.example.com", false},
+		{"configured HTTP", "http://127.0.0.1:8080", "http://192.0.2.10:8081", "http://192.0.2.10:8081", true},
+		{"bad port", "http://192.0.2.10:65536", "", "", true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest("GET", test.request+"/api/v1/agent/update-commands", nil)
+			c.Request.Header.Set("X-Forwarded-Host", "attacker.example")
+			c.Request.Header.Set("X-Forwarded-Proto", "https")
+			a := &App{cfg: Config{PublicURL: test.configured, AllowInsecureHTTP: test.allowHTTP}}
+			got, valid := a.agentOrigin(c)
+			if got != test.want || valid != (test.want != "") {
+				t.Fatalf("origin %q, valid %v", got, valid)
+			}
+			if !valid && w.Code != 409 {
+				t.Fatal("invalid origin not rejected")
+			}
+		})
+	}
+}
+
+func TestConfiguredOriginMatchesBrowserSerialization(t *testing.T) {
+	t.Setenv("ENCRYPTION_KEY", strings.Repeat("ab", 32))
+	t.Setenv("DATABASE_URL", "file:test.db")
+	t.Setenv("DB_DRIVER", "sqlite")
+	t.Setenv("TLS_CERT_FILE", "")
+	t.Setenv("TLS_KEY_FILE", "")
+	t.Setenv("WEB_SETUP", "")
+	t.Setenv("PUBLIC_URL", "https://GUARD.example.com:443/")
+	cfg, err := LoadConfig()
+	if err != nil || cfg.PublicURL != "https://guard.example.com" || !cfg.SecureCookie {
+		t.Fatal("browser origin mismatch", err)
+	}
+	for _, raw := range []string{"https://guard.example.com:", "https://guard.example.com:65536", "https://guard.example.com?", "https://guard.example.com#"} {
+		t.Setenv("PUBLIC_URL", raw)
+		if _, err := LoadConfig(); err == nil {
+			t.Errorf("invalid PUBLIC_URL accepted: %s", raw)
+		}
+	}
+}

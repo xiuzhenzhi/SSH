@@ -39,7 +39,7 @@ func TestEnrollmentAndReplacement(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config", "agent.json")
 	for _, value := range []string{strings.Repeat("b", 64), strings.Repeat("c", 64)} {
 		credential = value
-		if e := enrollAgent(context.Background(), path, server.URL, strings.Repeat("a", 64)); e != nil {
+		if e := enrollAgent(context.Background(), path, server.URL, strings.Repeat("a", 64), false); e != nil {
 			t.Fatal(e)
 		}
 		cfg, e := loadConfig(path)
@@ -49,7 +49,7 @@ func TestEnrollmentAndReplacement(t *testing.T) {
 	}
 	before, _ := os.ReadFile(path)
 	fail = true
-	if e := enrollAgent(context.Background(), path, server.URL, strings.Repeat("a", 64)); e == nil {
+	if e := enrollAgent(context.Background(), path, server.URL, strings.Repeat("a", 64), false); e == nil {
 		t.Fatal("accepted rejected enrollment")
 	}
 	after, _ := os.ReadFile(path)
@@ -115,12 +115,43 @@ func TestPlatformsAndValidation(t *testing.T) {
 		}
 	}
 	for _, origin := range []string{"http://example.com", "https://example.com/path", "https://user:pass@example.com", "https://example.com?query=1"} {
-		if validEndpoint(origin) {
+		if validEndpoint(origin, false) {
 			t.Fatalf("accepted %s", origin)
 		}
 	}
-	if !validEndpoint("https://guard.example.com") || validToken(strings.Repeat("z", 64)) {
+	if !validEndpoint("https://guard.example.com", false) || validToken(strings.Repeat("z", 64)) {
 		t.Fatal("invalid origin/token validation")
+	}
+}
+
+func TestDirectHTTPEnrollmentRequiresExplicitOptIn(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"data": Config{ServerID: "direct-server", Token: strings.Repeat("b", 64)}})
+	}))
+	defer server.Close()
+	path := filepath.Join(t.TempDir(), "agent.json")
+	if err := enrollAgent(context.Background(), path, server.URL, strings.Repeat("a", 64), false); err == nil || calls != 0 {
+		t.Fatal("HTTP sent credentials without opt-in")
+	}
+	if err := enrollAgent(context.Background(), path, server.URL, strings.Repeat("a", 64), true); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := loadConfig(path)
+	if err != nil || !cfg.AllowInsecureHTTP || cfg.Endpoint != server.URL || cfg.ServerID != "direct-server" {
+		t.Fatal("HTTP opt-in did not survive configuration reload", err)
+	}
+	for _, origin := range []string{"http://192.0.2.10:8080", "http://[2001:db8::1]:8080", "https://192.0.2.10:8080"} {
+		if !validEndpoint(origin, true) {
+			t.Errorf("IP origin rejected: %s", origin)
+		}
+	}
+	for _, origin := range []string{"http://192.0.2.10:0", "http://192.0.2.10:65536", "ftp://192.0.2.10", "http://user:pass@192.0.2.10", "http://192.0.2.10/path", "http://192.0.2.10?"} {
+		if validEndpoint(origin, true) {
+			t.Errorf("invalid HTTP origin accepted: %s", origin)
+		}
 	}
 }
 func TestEnrollmentInputEncoding(t *testing.T) {

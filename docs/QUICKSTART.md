@@ -12,9 +12,13 @@ cd SSH
 sh scripts/quick-start.sh
 ```
 
-最后一条命令下载固定版本 `v0.3.6` 的对应架构发行包，校验 SHA256，再调用安装向导。下载使用当前用户的 GitHub 登录，只有安装时调用 sudo。不要把 GitHub Token 放进命令行或发给 Agent。
+最后一条命令下载固定版本 `v0.3.7` 的对应架构发行包，校验 SHA256，再调用安装向导。下载使用当前用户的 GitHub 登录，只有安装时调用 sudo。不要把 GitHub Token 放进命令行或发给 Agent。
 
-运行安装脚本后进入编号菜单，选择「1 安装 / 更新」，输入端口（回车使用 8080）即可。已有 Nginx / OpenResty 不影响此流程。首次交互安装显示初始化链接，打开后选择数据库、测试连接、创建管理员。SQLite 无需额外服务；MySQL / PostgreSQL 需预先创建专用空数据库。初始化口令通过链接片段传递，不进入 HTTP 访问日志；CI/重定向日志不显示口令，可用 sudo 查看 `/etc/sshguard/api.env` 中的 SETUP_TOKEN 并在网页填写。
+运行安装脚本后进入编号菜单，选择「1 安装 / 更新主控」，输入端口（回车使用 8080）即可；也可使用 `sh scripts/quick-start.sh --port 8081`。已有 Nginx / OpenResty 不影响此流程。首次交互安装显示初始化链接，打开后创建管理员，随后自动登录并进入服务器管理。默认使用 SQLite，无需额外数据库服务；仅在需要时展开「存储设置」选择 MySQL / PostgreSQL，并预先创建专用空数据库。初始化口令通过链接片段传递，不进入 HTTP 访问日志；同一标签页刷新时保留到初始化完成，完成后清除。
+
+忘记链接时，在主控终端执行 `sudo sh /opt/sshguard/deploy.sh --setup-link`，或菜单选择「8 查看初始化链接」。口令只在交互终端显示，CI/重定向日志不会包含。初始化已完成时不会重新开放入口。
+
+添加服务器后会自动显示安装命令。通过 Agent 能访问的主控 IP 和端口打开控制台，选择目标操作系统并复制命令，无需另填域名。放行主控端口（默认 TCP 8080）；NAT 环境需使用公网 IP 和映射端口，Agent 无需开放入站端口。
 
 网页初始化配置存放在 `/var/lib/sshguard-api/setup.json`，与数据库及 `/etc/sshguard/api.env` 一起备份。初始化完成后入口关闭；已有安装升级不会重新创建管理员或切换数据库。显式 `--config` 的无人值守安装仍按配置文件初始化数据库和管理员，无需网页操作。
 
@@ -29,13 +33,13 @@ sh scripts/quick-start.sh
 下面的接入方式与证书仅用于显式指定 `--proxy external` / `--proxy managed` 或配置文件中的 TLS 参数，不属于默认安装必填项：
 
 1. 默认独立运行。反向代理是可选的后续配置，不根据已有 Web 服务自动切换安装模式。
-2. 默认无需访问域名或 IPv4。内置 HTTPS 通过配置文件提供 DOMAIN、TLS_CERT 和 TLS_KEY。
+2. 默认无需填写域名或 IP；安装后使用实际 IP 和端口打开网页。内置 HTTPS 通过配置文件提供 DOMAIN、TLS_CERT 和 TLS_KEY。
 3. 数据库：默认 `sqlite`，无需 DSN；`local-postgres` 自动安装本机 PostgreSQL；`mysql` / `postgres` 连接已有数据库，DSN 隐藏输入。
 4. 只有托管 Nginx 模式才配置 Nginx 证书，支持已有证书或 Certbot/Let's Encrypt（接受 ACME 服务条款，公网 80 端口可达）。复用模式沿用现有站点证书。
 
 向导仅安装缺少的依赖、初始化数据库、创建低权限服务账号、配置 systemd，最后检查 API 健康状态。独立和复用模式不会安装或重载 Nginx / OpenResty。初始账号 `admin`，随机密码仅保存在 `/etc/sshguard/api.env`，不会输出到部署日志。登录后点右上角「修改密码」，旧会话会全部失效。
 
-独立模式访问 `http://服务器IP:8080`，或启用内置 TLS 后访问 `https://域名:端口`。HTTP 登录信息没有传输加密，仅用于受信任网络体验；Agent 注册与更新要求 HTTPS。程序直接提供发布包中的 `web/`，无需 Node.js 或单独的 Web 服务。
+独立模式访问 `http://服务器IP:8080`，也可按需启用内置 TLS。默认安装显式开启 `ALLOW_INSECURE_HTTP=true`，生成的 Agent 命令包含 HTTP 授权参数并在本地配置中保存，因此注册、心跳、事件与更新都能使用同一 IP 地址。HTTP 的登录、凭证、下载与上报未加密，应确保网络可信；SHA256 只能检查完整性。已有 HTTPS 部署继续校验证书，不会降级。程序直接提供发布包中的 `web/`，无需 Node.js 或单独的 Web 服务。
 
 复用 Nginx / OpenResty / 宝塔时选择 `--proxy external`，在已有 HTTPS 站点把整个应用反代到 `http://127.0.0.1:8080`（或自选 APP_PORT），并启用 WebSocket。参考生成的 `/etc/sshguard/nginx-existing.conf`，将 location 配置合并进现有 server 块，避免重复的 `location /`；由你自己的面板验证并重载配置。无需再配置静态网页目录。不要为了安装本项目停止已有网站或安装第二套 Nginx。
 
@@ -48,6 +52,8 @@ SQLite 从 v0.3.1 开始支持，安装前确认该版本的 Release 附件已�
 ## 离线包 / 不在服务器保存 GitHub 登录
 
 ### 可选：安装后使用 Nginx / OpenResty / 宝塔反代
+
+完整的接入、Agent 迁移和排查步骤见 [反代与 HTTPS](REVERSE-PROXY.md)。使用自定义外部端口时，手动同步 `PUBLIC_URL`、站点监听和安全组；例如 `https://guard.example.com:8443`。模板不会自动改端口，内部 `proxy_pass` 仍填写主控监听地址。
 
 先按默认方式安装，再在现有 HTTPS 网站中反代整个应用，无需设置网站根目录。宝塔用户进入「网站 → 对应站点 → 反向代理 → 配置文件」，将该反代条目的原内容整体替换为下面配置，再保存；不要包裹 `server {}`。直接管理 Nginx/OpenResty 配置时，放在已有 server 块内并替换重复的根 location。端口不为 8080 时同步修改 proxy_pass。
 
@@ -72,7 +78,7 @@ location ^~ / {
 #PROXY-END/
 ```
 
-然后在 `/etc/sshguard/api.env` 设置 `PUBLIC_URL="https://你的域名"`，可将 `LISTEN_ADDR` 改为 `127.0.0.1:8080` 限制直连；执行 `sudo systemctl restart sshguard-api`。证书与 Web 服务继续由原面板管理。通过自己的面板验证并加载反代配置后访问域名，Agent 安装和平台更新也会使用这个 HTTPS 地址。默认直连 HTTP 不填写 PUBLIC_URL，应用会按实际请求地址进行同源校验，不信任客户端伪造的转发头。
+然后在 `/etc/sshguard/api.env` 设置 `PUBLIC_URL="https://你的域名"`，同机反代时将 `LISTEN_ADDR` 改为 `127.0.0.1:8080` 限制直连，并将 `ALLOW_INSECURE_HTTP` 设为 `false`；迁移已有 HTTP Agent 前先阅读上面的迁移说明，再执行 `sudo systemctl restart sshguard-api`。证书与 Web 服务继续由原面板管理。通过自己的面板验证并加载反代配置后访问域名，Agent 安装和平台更新也会使用这个 HTTPS 地址。默认直连 HTTP 不填写 PUBLIC_URL，应用会按实际请求地址进行同源校验，并生成同一地址的 Agent 命令，不信任客户端伪造的转发头。
 
 ### 下载并校验离线包
 
@@ -84,7 +90,7 @@ tar -xzf sshguard-linux-amd64.tar.gz
 sudo sh sshguard-linux-amd64/deploy.sh
 ```
 
-ARM64 将文件名中的 `amd64` 换成 `arm64`。发行包包含 Web 和全部 Agent，目标 Agent 只访问你的平台域名。
+ARM64 将文件名中的 `amd64` 换成 `arm64`。发行包包含 Web 和全部 Agent，目标 Agent 只访问你的主控 IP 或域名。
 
 ## 无交互部署 / MySQL 5.6
 
@@ -101,7 +107,7 @@ GRANT ALL PRIVILEGES ON sshguard.* TO 'sshguard'@'127.0.0.1';
 ```sh
 cp sshguard-linux-amd64/deploy/deploy.conf.example deploy.conf
 chmod 600 deploy.conf
-# 编辑 DOMAIN、DB_DRIVER=mysql、DATABASE_URL、TLS_CERT/TLS_KEY。
+# 按需编辑 DB_DRIVER=mysql、DATABASE_URL；域名和 TLS 参数可选。
 # 原始 KEY=value，不加 shell 引号，不执行命令替换。
 sudo sh sshguard-linux-amd64/deploy.sh --config "$(pwd)/deploy.conf"
 ```
@@ -121,7 +127,7 @@ MySQL 5.6 已于 2021 年结束生命周期；应用兼容不能修复数据库�
 先备份数据库和 `/etc/sshguard`，阅读目标版本迁移说明，再下载新版本：
 
 ```sh
-SSHGUARD_VERSION=v0.3.6 sh scripts/quick-start.sh --update
+SSHGUARD_VERSION=v0.3.7 sh scripts/quick-start.sh --update
 # 或使用已解压的新包：
 sudo sh sshguard-linux-amd64/deploy.sh --update
 ```

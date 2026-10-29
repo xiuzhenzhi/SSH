@@ -3,9 +3,9 @@ package api
 import (
 	"encoding/hex"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
+	"sshguard/internal/originurl"
 	"strconv"
 	"strings"
 )
@@ -16,6 +16,7 @@ type Config struct {
 	SetupPending                                                         bool
 	Driver, DatabaseURL, PublicURL, Listen, AdminUsername, AdminPassword string
 	SecureCookie                                                         bool
+	AllowInsecureHTTP                                                    bool
 	EncryptionKey                                                        string
 	NotificationAllowedHosts                                             []string
 	EventRetentionDays, AlertRetentionDays, AuditRetentionDays           int
@@ -24,6 +25,7 @@ type Config struct {
 func LoadConfig() (Config, error) {
 	c := Config{Driver: os.Getenv("DB_DRIVER"), DatabaseURL: os.Getenv("DATABASE_URL"), PublicURL: strings.TrimRight(os.Getenv("PUBLIC_URL"), "/"), Listen: os.Getenv("LISTEN_ADDR"), AdminUsername: os.Getenv("ADMIN_USERNAME"), AdminPassword: os.Getenv("ADMIN_PASSWORD"), SecureCookie: true}
 	c.EncryptionKey = os.Getenv("ENCRYPTION_KEY")
+	c.AllowInsecureHTTP = os.Getenv("ALLOW_INSECURE_HTTP") == "true"
 	if os.Getenv("WEB_SETUP") == "true" {
 		c.SetupFile = os.Getenv("SETUP_CONFIG_FILE")
 		if c.SetupFile == "" {
@@ -90,19 +92,20 @@ func LoadConfig() (Config, error) {
 	if c.AdminUsername == "" {
 		c.AdminUsername = "admin"
 	}
-	if c.PublicURL == "" && os.Getenv("ALLOW_INSECURE_HTTP") == "true" && c.TLSCertFile == "" {
+	if c.PublicURL == "" && c.AllowInsecureHTTP && c.TLSCertFile == "" {
 		c.SecureCookie = false
 		if c.DatabaseURL == "" {
 			return c, fmt.Errorf("DATABASE_URL required")
 		}
 		return c, nil
 	}
-	u, e := url.Parse(c.PublicURL)
-	if e != nil || u.Host == "" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+	u, e := originurl.Parse(c.PublicURL)
+	if e != nil {
 		return c, fmt.Errorf("PUBLIC_URL must be an origin, e.g. https://guard.example.com")
 	}
+	c.PublicURL = originurl.Canonical(u)
 	if u.Scheme != "https" {
-		if u.Scheme != "http" || (u.Hostname() != "localhost" && u.Hostname() != "127.0.0.1" && os.Getenv("ALLOW_INSECURE_HTTP") != "true") {
+		if u.Scheme != "http" || (u.Hostname() != "localhost" && u.Hostname() != "127.0.0.1" && !c.AllowInsecureHTTP) {
 			return c, fmt.Errorf("public deployments require HTTPS")
 		}
 		c.SecureCookie = false

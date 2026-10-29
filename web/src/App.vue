@@ -19,6 +19,7 @@ import Overview from './Overview.vue';
 import AlertCenter from './AlertCenter.vue';
 import AgentMaintenance from './AgentMaintenance.vue';
 import SetupWizard from './SetupWizard.vue';
+import { copyText } from './clipboard';
 const setupRequired = ref(false);
 type Row = Record<string, any>;
 const user = ref<Row | null>(null), booting = ref(true), busy = ref(false), error = ref('');
@@ -32,6 +33,7 @@ const serverDialog = ref(false), userDialog = ref(false), commandDialog = ref(fa
 const passwordDialog = ref(false), updating = ref(false);
 const passwords = reactive({current_password: '', new_password: ''});
 const commands = ref<Record<string,string>>({}), platform = ref('ubuntu'), expires = ref('');
+const commandEndpoint = ref(''), commandInsecure = ref(false);
 const command = computed(() => commands.value[platform.value] || '');
 const platformHint = computed(() => platform.value === 'windows' ? '在目标 Windows 的管理员 PowerShell 中执行。服务以 LocalService 身份运行。' : platform.value === 'alpine' ? '在目标 Alpine 的 root shell 中执行；使用 OpenRC，不需要 Bash 或 sudo。先安装 curl、ca-certificates。' : '在目标 Ubuntu / Debian 终端执行，需要 sudo、systemd、curl 和 ca-certificates。');
 const server = reactive({id: '', name: '', group_name: '', notes: ''});
@@ -67,6 +69,16 @@ async function api(path: string, method = 'GET', body?: any, signal?: AbortSigna
 }
 async function perform(fn: () => Promise<void>) {busy.value = true; try {await fn();} catch(e) {ElMessage.error((e as Error).message);} finally {busy.value = false;}}
 async function signIn() {await perform(async () => {user.value = await api('/auth/login', 'POST', login); login.password = ''; await load(); startLive();});}
+async function finishSetup(credentials: {username:string;password:string}) {
+  setupRequired.value = false; login.username = credentials.username;
+  await perform(async () => {
+    try {
+      user.value = await api('/auth/login', 'POST', credentials);
+      active.value = 'servers'; await load(); startLive();
+      ElMessage.success('主控已就绪，添加第一台服务器开始采集');
+    } finally { credentials.password = ''; }
+  });
+}
 async function signOut() {controller?.abort(); generation++; await perform(async () => {await api('/auth/logout','POST');clearSession();});}
 async function load() {
   controller?.abort(); controller = new AbortController(); const signal = controller.signal;
@@ -85,13 +97,13 @@ async function load() {
 function navigate(id: string) {active.value = id;page.value = 1;rows.value = [];void load();}
 function filter() {page.value = 1;void load();}
 function editServer(row?: Row) {Object.assign(server, {id: row?.id || '',name: row?.name || '',group_name: row?.group_name || '',notes: row?.notes || ''});serverDialog.value = true;}
-async function saveServer() {await perform(async () => {await api('/servers' + (server.id ? '/' + server.id : ''),server.id ? 'PATCH' : 'POST',server);serverDialog.value = false;ElMessage.success('服务器已保存');await load();});}
-async function enrollment(row: Row) {updating.value = false; await perform(async () => {const result = await api(`/servers/${row.id}/enrollment`,'POST',{});commands.value = result.commands;platform.value = /windows/i.test(row.distribution) ? 'windows' : /alpine/i.test(row.distribution) ? 'alpine' : /debian/i.test(row.distribution) ? 'debian' : 'ubuntu';expires.value = result.expires_at;commandDialog.value = true;});}
-async function updateAgent(row: Row) {updating.value = true; await perform(async () => {const result = await api('/agent/update-commands'); commands.value = result.commands; platform.value = /windows/i.test(row.distribution) ? 'windows' : /alpine/i.test(row.distribution) ? 'alpine' : 'ubuntu'; commandDialog.value = true;});}
+async function saveServer() {await perform(async () => {const created = !server.id; const result = await api('/servers' + (server.id ? '/' + server.id : ''),server.id ? 'PATCH' : 'POST',server);serverDialog.value = false;ElMessage.success('服务器已保存');await load();if(created && admin.value) await enrollment({...server,id:result.id});});}
+async function enrollment(row: Row) {updating.value = false; await perform(async () => {const result = await api(`/servers/${row.id}/enrollment`,'POST',{});commands.value = result.commands;commandEndpoint.value = result.endpoint;commandInsecure.value = result.insecure_http;platform.value = /windows/i.test(row.distribution) ? 'windows' : /alpine/i.test(row.distribution) ? 'alpine' : /debian/i.test(row.distribution) ? 'debian' : 'ubuntu';expires.value = result.expires_at;commandDialog.value = true;});}
+async function updateAgent(row: Row) {updating.value = true; await perform(async () => {const result = await api('/agent/update-commands'); commands.value = result.commands;commandEndpoint.value = result.endpoint;commandInsecure.value = result.insecure_http;platform.value = /windows/i.test(row.distribution) ? 'windows' : /alpine/i.test(row.distribution) ? 'alpine' : 'ubuntu'; commandDialog.value = true;});}
 async function changePassword() {await perform(async () => {await api('/auth/password','POST',passwords); clearSession(); ElMessage.success('密码已修改，所有旧会话已失效，请重新登录');});}
 async function revoke(row: Row) {try {await ElMessageBox.confirm(`撤销 ${row.name} 的 Agent 凭证后将拒绝其后续上报。`, '撤销凭证', {type:'warning',confirmButtonText:'撤销',cancelButtonText:'取消'});}catch{return;}await perform(async () => {await api(`/servers/${row.id}/revoke`,'POST',{});await load();});}
 async function saveUser() {await perform(async () => {await api('/users','POST',newUser);userDialog.value = false;newUser.password = '';await load();});}
-async function copyCommand() {try {await navigator.clipboard.writeText(command.value);ElMessage.success('命令已复制');}catch{ElMessage.warning('请选中下方命令手动复制');}}
+async function copyCommand() {try {await copyText(command.value);ElMessage.success('命令已复制');}catch{ElMessage.warning('请选中下方命令手动复制');}}
 function history(row: Row) {serverID.value = row.id;navigate('events');}
 
 let socket: WebSocket | null = null;
@@ -126,13 +138,13 @@ onUnmounted(() => {stopLive();clearInterval(timer); controller?.abort();document
 
 <template>
   <div v-if="booting" class="loading">正在连接 SSHGuard…</div>
-  <SetupWizard v-else-if="setupRequired" @complete="setupRequired=false" />
+  <SetupWizard v-else-if="setupRequired" @complete="finishSetup" />
   <main v-else-if="!user" class="login-screen">
     <section class="login-intro"><div class="brand"><el-icon><Lock /></el-icon> SSHGuard <span>CONSOLE</span></div><div class="intro-copy"><div class="eyebrow">INFRASTRUCTURE SECURITY</div><h1>每一次连接，<br>都有迹可循。</h1><p>集中管理 Windows 与 Linux 服务器，<br>建立清晰、可追溯的 SSH 安全视图。</p><div class="intro-line"></div><small>SSH AUDIT · REAL-TIME ALERTS</small></div><footer>SSHGuard · 自托管服务器安全平台</footer></section>
     <section class="login-form"><div class="eyebrow">WELCOME BACK</div><h2>登录管理控制台</h2><p>使用管理员分配的账号继续</p><el-form label-position="top" @submit.prevent="signIn"><el-form-item label="用户名"><el-input v-model="login.username" autocomplete="username" size="large" /></el-form-item><el-form-item label="密码"><el-input v-model="login.password" type="password" show-password autocomplete="current-password" size="large" /></el-form-item><el-button type="primary" size="large" native-type="submit" :loading="busy">安全登录 <el-icon><ArrowRight /></el-icon></el-button></el-form><small>初始管理员密码见部署时生成的配置文件。</small></section>
   </main>
   <div v-else class="shell">
-    <aside><div class="brand"><el-icon><Lock /></el-icon> SSHGuard</div><div class="workspace-label">SECURITY WORKSPACE</div><nav><button v-for="item in nav" :key="item.id" :class="{selected: active === item.id}" @click="navigate(item.id)"><el-icon><component :is="item.icon" /></el-icon>{{ item.title }}</button></nav><div class="sidebar-bottom"><span class="dot"></span> {{ summary.version || 'SSHGuard' }}<p>自托管安全工作空间<br>HTTPS / WebSocket</p></div></aside>
+    <aside><div class="brand"><el-icon><Lock /></el-icon> SSHGuard</div><div class="workspace-label">SECURITY WORKSPACE</div><nav><button v-for="item in nav" :key="item.id" :class="{selected: active === item.id}" @click="navigate(item.id)"><el-icon><component :is="item.icon" /></el-icon>{{ item.title }}</button></nav><div class="sidebar-bottom"><span class="dot"></span> {{ summary.version || 'SSHGuard' }}<p>自托管安全工作空间<br>HTTP(S) / WebSocket</p></div></aside>
     <div class="main"><header><div>控制台 <span>/</span> {{ title }}</div><div class="account"><span class="avatar">{{ user.username.slice(0,1).toUpperCase() }}</span><b>{{ user.username }}</b><span>{{ user.role }}</span><el-button text @click="passwordDialog = true">修改密码</el-button><el-button text :icon="SwitchButton" aria-label="退出登录" @click="signOut" /></div></header>
     <section class="content"><div class="page-title"><div><div class="eyebrow">SSHGUARD / {{ active.toUpperCase() }}</div><h1>{{ title }}</h1><p>统一掌握服务器接入状态与安全事件。</p></div><div class="actions"><span class="refresh-label">{{ liveState }}</span><el-button :icon="Refresh" @click="load">刷新</el-button><el-button v-if="active === 'servers' && writer" type="primary" :icon="Plus" @click="editServer()">添加服务器</el-button><el-button v-if="active === 'users' && admin" type="primary" :icon="Plus" @click="userDialog = true">创建用户</el-button></div></div>
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="notice" />
@@ -149,9 +161,9 @@ onUnmounted(() => {stopLive();clearInterval(timer); controller?.abort();document
     <footer class="main-footer">SSHGuard / Security Workspace <span>数据库：{{ summary.database || '连接中' }} · 时间以浏览器本地时区显示</span></footer>
     </section></div>
   </div>
-  <el-dialog v-model="serverDialog" :title="server.id ? '编辑服务器' : '添加服务器'" width="min(520px, 94vw)"><el-form label-position="top" @submit.prevent="saveServer"><el-form-item label="服务器名称"><el-input v-model="server.name" maxlength="128"/></el-form-item><el-form-item label="分组"><el-input v-model="server.group_name" maxlength="64" placeholder="例如：生产环境 / 华东"/></el-form-item><el-form-item label="备注"><el-input v-model="server.notes" type="textarea" maxlength="1024"/></el-form-item><el-button type="primary" native-type="submit" :loading="busy">保存服务器</el-button></el-form></el-dialog>
+  <el-dialog v-model="serverDialog" :title="server.id ? '编辑服务器' : '添加服务器'" width="min(520px, 94vw)"><el-form label-position="top" @submit.prevent="saveServer"><el-form-item label="服务器名称"><el-input v-model="server.name" maxlength="128"/></el-form-item><el-form-item label="分组"><el-input v-model="server.group_name" maxlength="64" placeholder="例如：生产环境 / 华东"/></el-form-item><el-form-item label="备注"><el-input v-model="server.notes" type="textarea" maxlength="1024"/></el-form-item><el-button type="primary" native-type="submit" :loading="busy">{{!server.id && admin ? '保存并生成安装命令' : '保存服务器'}}</el-button></el-form></el-dialog>
   <el-dialog v-model="userDialog" title="创建用户" width="min(480px, 94vw)"><el-form label-position="top" @submit.prevent="saveUser"><el-form-item label="用户名（3–64 字符）"><el-input v-model="newUser.username"/></el-form-item><el-form-item label="密码（12–72 字节）"><el-input v-model="newUser.password" type="password" show-password/></el-form-item><el-form-item label="角色"><el-select v-model="newUser.role"><el-option label="Viewer · 只读" value="viewer"/><el-option label="Operator · 可编辑服务器" value="operator"/><el-option label="Admin · 用户和凭证管理" value="admin"/></el-select></el-form-item><el-button type="primary" native-type="submit" :loading="busy">创建用户</el-button></el-form></el-dialog>
-  <el-dialog v-model="commandDialog" :title="updating ? '更新 Agent' : '安装 Agent'" width="min(780px, 94vw)" @closed="commands = {}"><el-alert title="支持 Windows / Ubuntu / Debian / Alpine，amd64 / arm64。安装后请检查采集状态，并验证一次登录事件与通知送达。" type="info" :closable="false"/><el-form label-position="top" style="margin-top:20px"><el-form-item label="目标操作系统"><el-select v-model="platform"><el-option label="Windows · Windows 服务" value="windows"/><el-option label="Ubuntu · systemd" value="ubuntu"/><el-option label="Debian · systemd" value="debian"/><el-option label="Alpine · OpenRC" value="alpine"/></el-select></el-form-item></el-form><p>{{ platformHint }}</p><p v-if="!updating">凭证单次有效，过期时间：{{ time(expires) }}。切换系统使用同一个凭证，仅在一台目标服务器执行；重新生成会使旧安装命令失效。</p><el-input :model-value="command" readonly type="textarea" :rows="7"/><p v-if="!updating">命令含短期凭证，请勿公开转发。重装成功会替换该服务器的旧 Agent 凭证。</p><p v-else>更新到平台提供的版本，保留原凭证，不会重新注册。下载校验失败不停止服务；替换后启动或心跳检查失败会恢复旧二进制。请先升级平台，再更新 Agent。</p><el-button type="primary" @click="copyCommand">{{ updating ? '复制更新命令' : '复制安装命令' }}</el-button></el-dialog>
+  <el-dialog v-model="commandDialog" :title="updating ? '更新 Agent' : '安装 Agent'" width="min(780px, 94vw)" @closed="commands = {}"><el-alert title="支持 Windows / Ubuntu / Debian / Alpine，amd64 / arm64。安装后请检查采集状态，并验证一次登录事件与通知送达。" type="info" :closable="false"/><p>Agent 将连接：<strong>{{commandEndpoint}}</strong></p><p>请确认此地址可从目标服务器访问；跨机器接入时请通过主控实际 IP 或域名打开控制台后生成命令。</p><el-alert v-if="commandInsecure" title="当前使用 HTTP 直连，凭证、上报和下载未加密。请在可信网络使用，或按需启用 HTTPS。" type="warning" :closable="false" style="margin-top:12px"/><el-form label-position="top" style="margin-top:20px"><el-form-item label="目标操作系统"><el-select v-model="platform"><el-option label="Windows · Windows 服务" value="windows"/><el-option label="Ubuntu · systemd" value="ubuntu"/><el-option label="Debian · systemd" value="debian"/><el-option label="Alpine · OpenRC" value="alpine"/></el-select></el-form-item></el-form><p>{{ platformHint }}</p><p v-if="!updating">凭证单次有效，过期时间：{{ time(expires) }}。切换系统使用同一个凭证，仅在一台目标服务器执行；重新生成会使旧安装命令失效。</p><el-input :model-value="command" readonly type="textarea" :rows="7"/><p v-if="!updating">命令含短期凭证，请勿公开转发。重装成功会替换该服务器的旧 Agent 凭证。</p><p v-else>更新到平台提供的版本，保留原凭证，不会重新注册。下载校验失败不停止服务；替换后启动或心跳检查失败会恢复旧二进制。请先升级平台，再更新 Agent。</p><el-button type="primary" @click="copyCommand">{{ updating ? '复制更新命令' : '复制安装命令' }}</el-button></el-dialog>
   <el-dialog v-model="passwordDialog" title="修改密码" width="min(480px, 94vw)" @closed="passwords.current_password = ''; passwords.new_password = ''"><el-form label-position="top" @submit.prevent="changePassword"><el-form-item label="当前密码"><el-input v-model="passwords.current_password" type="password" autocomplete="current-password"/></el-form-item><el-form-item label="新密码（12–72 字节）"><el-input v-model="passwords.new_password" type="password" autocomplete="new-password" show-password/></el-form-item><p>修改后所有设备上的旧会话都会失效。</p><el-button type="primary" native-type="submit" :loading="busy">修改并重新登录</el-button></el-form></el-dialog>
   <el-dialog :model-value="!!detail" title="事件详情" width="min(700px, 94vw)" @close="detail = null"><pre class="detail">{{ JSON.stringify(detail,null,2) }}</pre></el-dialog>
 </template>

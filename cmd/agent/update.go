@@ -20,13 +20,21 @@ type updateTask struct {
 }
 
 func updateCommand(cfg Config, task updateTask) (string, []string, error) {
-	if !validEndpoint(cfg.Endpoint) || !updateIDPattern.MatchString(task.ID) || !updateVersionPattern.MatchString(task.Version) {
+	if !validEndpoint(cfg.Endpoint, cfg.AllowInsecureHTTP) || !updateIDPattern.MatchString(task.ID) || !updateVersionPattern.MatchString(task.Version) {
 		return "", nil, fmt.Errorf("invalid fixed update request")
 	}
 	if runtime.GOOS == "windows" {
-		return filepath.Join(os.Getenv("SystemRoot"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe"), []string{"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", filepath.Join(os.Getenv("ProgramFiles"), "SSHGuardAgent", "update-agent.ps1"), "-Endpoint", cfg.Endpoint, "-Update"}, nil
+		args := []string{"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", filepath.Join(os.Getenv("ProgramFiles"), "SSHGuardAgent", "update-agent.ps1"), "-Endpoint", cfg.Endpoint, "-Update"}
+		if cfg.AllowInsecureHTTP {
+			args = append(args, "-AllowInsecureHttp")
+		}
+		return filepath.Join(os.Getenv("SystemRoot"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe"), args, nil
 	}
-	return "/bin/sh", []string{"/usr/local/lib/sshguard/update-agent.sh", cfg.Endpoint, "--update"}, nil
+	args := []string{"/usr/local/lib/sshguard/update-agent.sh", cfg.Endpoint, "--update"}
+	if cfg.AllowInsecureHTTP {
+		args = append(args, "--allow-insecure-http")
+	}
+	return "/bin/sh", args, nil
 }
 
 // Invoked by a privileged local scheduler, never by the collector. The platform

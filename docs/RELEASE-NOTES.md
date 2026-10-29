@@ -1,36 +1,20 @@
-# SSHGuard v0.3.6
+# SSHGuard v0.3.7
 
-- fix: release Windows installer lock after staging cleanup
-- release: prepare SSHGuard v0.3.5
-- feat: add web setup and simplify platform and Agent uninstall
-- release: prepare SSHGuard v0.3.4
-- feat: simplify installer to a numbered menu and single port prompt
-- docs: add paste-ready Baota reverse proxy configuration
-- release: prepare SSHGuard v0.3.3
-- fix: make direct installation domain-free and move proxy setup to documentation
-- release: prepare SSHGuard v0.3.2
-- feat: add Agent uninstall commands and restricted administrator-triggered updates
-- fix: isolate API and Agent secrets under shared configuration directory
-- feat: standalone web service and optional OpenResty-compatible deployment
-- ci: add optional automatic versioning for one-click releases
-- ci: validate a single build across deployment matrices before publishing
-- release: prepare SSHGuard 0.3.1 with SQLite deployment support
-- fix: isolate SQL cancellation from pooled Gin request contexts
-- feat: support SQLite with secure deployment and permission regression tests
-- docs: record full production candidate validation and refresh console preview
-- fix: support MySQL 5.6 rule seeding and verify queue retention
-- feat: add durable SSH collection, reliable alerting and realtime console
-- test: start BusyBox syslog in the minimal Alpine fixture
-- fix: support atomic replacement on PowerShell 5.1 and clear stale sessions
-- fix: avoid validated PowerShell parameter reassignment after enrollment
-- fix: handle PowerShell enrollment encoding and bootstrap TLS
-- fix: harden update probes and Windows TLS test setup
-- fix: isolate service accounts and verify Windows and Alpine agent upgrades
-- feat: add one-command deployment and safe agent updates with MySQL 5.6 compatibility
-- chore(deps): bump the npm-compatible-updates group
-- chore(deps): bump the go-compatible-updates group with 3 updates
-- chore: refine dependency updates and document cloud verification
-- feat: publish SSHGuard preview with cross-platform agents and CI releases
-- Initial commit
+本版本打通无需域名的主控安装与 Agent 接入流程，并修复初始化、地址校验和反代配置中的问题。
 
-升级前备份数据库、配置和 ENCRYPTION_KEY。数据库类型不会自动切换或搬迁，程序回退不撤销数据库迁移。安装与升级见 [快速开始](QUICKSTART.md)。
+## 主要变化
+
+- 默认 IP + 端口、SQLite；打开初始化链接创建管理员后，自动进入服务器管理。
+- 添加服务器后直接生成安装命令，Windows / Linux Agent 支持显式授权的 HTTP 直连、WebSocket、事件上报和固定本地更新器。
+- 增加端口选择、初始化链接恢复入口；管理和卸载直接使用本机安装脚本。
+- 统一地址校验与浏览器 Origin 规范化；异常端口、带凭证/路径/查询/片段的地址被拒绝。
+- 初始化严格解析一个 JSON 对象，并处理成功响应丢失后的状态恢复。
+- 更新原生 Nginx、Docker、OpenResty / 宝塔模板及文档；反代超时、缓存、WebSocket 和文件访问边界纳入验证。自定义对外端口需手动同步 PUBLIC_URL，见 [反代说明](REVERSE-PROXY.md)。
+
+## 升级与传输
+
+升级前备份数据库、setup.json、api.env 和 ENCRYPTION_KEY。已有账号、数据库、端口、密钥及 Agent 身份保留；数据库迁移不随程序回退。先升级主控，再更新 Agent。
+
+无域名 HTTP 直连会明文传输账号、令牌、事件和下载内容；SHA256 不抵御中间人替换，应使用可信网络或配置 HTTPS。HTTPS 继续严格校验证书，不自动降级。主控切换到 HTTPS 不会自动修改已安装 Agent 的地址，请按 [迁移步骤](REVERSE-PROXY.md) 逐台重新接入。
+
+源码推送和版本标签不代表 Release 已可下载，需等待同一版本的完整 CI 和原生安装验收通过。安装入口见 [快速开始](QUICKSTART.md)，实际检查范围见 [验证记录](VALIDATION.md)。

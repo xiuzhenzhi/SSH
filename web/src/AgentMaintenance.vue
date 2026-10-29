@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { copyText } from './clipboard';
 import { ElButton, ElDialog, ElAlert, ElInput, ElSelect, ElOption, ElMessage, ElMessageBox } from 'element-plus';
 const props = defineProps<{server: Record<string, any>}>();
 const emit = defineEmits<{changed: []}>();
@@ -24,7 +25,7 @@ async function uninstall() {
   busy.value=true;
   try {commands.value=(await request('/agent/uninstall-commands')).commands;platform.value=/windows/i.test(props.server.distribution)?'windows':/alpine/i.test(props.server.distribution)?'alpine':'ubuntu';visible.value=true;}catch(e){ElMessage.error((e as Error).message);}finally{busy.value=false;}
 }
-async function copy() {try{await navigator.clipboard.writeText(commands.value[platform.value]||'');ElMessage.success('卸载命令已复制');}catch{ElMessage.warning('请手动复制命令');}}
+async function copy() {try{await copyText(commands.value[platform.value]||'');ElMessage.success('卸载命令已复制');}catch{ElMessage.warning('请手动复制命令');}}
 </script>
 <template>
   <el-button v-if="server.status !== 'revoked'" link type="primary" :disabled="busy || !ready || activeTask" @click="update">平台更新</el-button>

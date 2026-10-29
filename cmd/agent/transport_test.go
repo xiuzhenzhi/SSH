@@ -14,10 +14,14 @@ import (
 )
 
 func TestUploadCommitAckLossFallback(t *testing.T) {
+	t.Run("HTTPS", func(t *testing.T) { testUploadCommitAckLossFallback(t, true) })
+	t.Run("direct HTTP", func(t *testing.T) { testUploadCommitAckLossFallback(t, false) })
+}
+func testUploadCommitAckLossFallback(t *testing.T, useTLS bool) {
 	var mu sync.Mutex
 	seen := map[string]bool{}
 	wsCount, httpCount := 0, 0
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer test-token" {
 			t.Error("missing authorization")
 			w.WriteHeader(401)
@@ -64,6 +68,11 @@ func TestUploadCommitAckLossFallback(t *testing.T) {
 		mu.Unlock()
 		json.NewEncoder(w).Encode(map[string]any{"data": map[string]int{"accepted": len(body.Events), "inserted": len(body.Events) - duplicates, "duplicates": duplicates}})
 	}))
+	if useTLS {
+		server.StartTLS()
+	} else {
+		server.Start()
+	}
 	defer server.Close()
 	old := client
 	client = server.Client()
@@ -80,7 +89,7 @@ func TestUploadCommitAckLossFallback(t *testing.T) {
 	if e = queue.append([]SSHEvent{event}, cursor{}); e != nil {
 		t.Fatal(e)
 	}
-	tr := &transport{cfg: Config{Endpoint: server.URL, Token: "test-token"}}
+	tr := &transport{cfg: Config{Endpoint: server.URL, Token: "test-token", AllowInsecureHTTP: !useTLS}}
 	defer tr.close()
 	if _, e = uploadBatch(context.Background(), tr, queue); e != nil {
 		t.Fatal(e)

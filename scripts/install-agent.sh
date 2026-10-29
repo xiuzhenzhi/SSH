@@ -4,14 +4,23 @@ set -eu
 umask 077
 die() { echo "$*" >&2; exit 1; }
 case "${1:-}" in
-    --help|-h) printf '安装：sudo sh install-agent.sh HTTPS_ORIGIN ONE_TIME_TOKEN\n更新：sudo sh install-agent.sh HTTPS_ORIGIN --update\n离线卸载：sudo sh /usr/local/lib/sshguard/uninstall-agent.sh\n'; exit 0 ;;
+    --help|-h) printf '安装：sudo sh install-agent.sh ORIGIN ONE_TIME_TOKEN [--allow-insecure-http]\n更新：sudo sh install-agent.sh ORIGIN --update [--allow-insecure-http]\n离线卸载：sudo sh /usr/local/lib/sshguard/uninstall-agent.sh\n'; exit 0 ;;
 esac
 [ "$(id -u)" -eq 0 ] || die 'Run as root (sudo sh on Ubuntu/Debian).'
-[ "$#" -eq 2 ] || die 'Usage: install-agent.sh HTTPS_ORIGIN ONE_TIME_TOKEN|--update'
+[ "$#" -ge 2 ] && [ "$#" -le 3 ] || die 'Usage: install-agent.sh ORIGIN ONE_TIME_TOKEN|--update [--allow-insecure-http]'
 endpoint=${1%/}
 mode=install
 enrollment=$2
-printf '%s' "$endpoint" | grep -Eq '^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$' || die 'Expected an HTTPS DNS origin.'
+allow_http=false
+if [ "$#" -eq 3 ]; then
+    [ "$3" = --allow-insecure-http ] || die 'Unknown installer option.'
+    allow_http=true
+fi
+printf '%s' "$endpoint" | grep -Eq '^https?://([A-Za-z0-9.-]+|\[[A-Fa-f0-9:]+\])(:[0-9]{1,5})?$' || die 'Expected an HTTP(S) origin (IP or domain, optional port).'
+download_proto='=https'
+case "$endpoint" in
+    http://*) "$allow_http" || die 'HTTP requires --allow-insecure-http.'; download_proto='=http'; printf '直连 HTTP：传输未加密，请确保主控和 Agent 之间的网络可信。\n' ;;
+esac
 if [ "$enrollment" = --update ]; then mode=update
 else printf '%s' "$enrollment" | grep -Eq '^[a-f0-9]{64}$' || die 'Invalid enrollment token.'; fi
 if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then init=systemd
@@ -173,10 +182,10 @@ trap 'exit 1' HUP INT TERM
 mkdir -p /usr/local/bin
 tmp=$(mktemp -d /usr/local/bin/.sshguard-install.XXXXXX)
 printf '[2/4] 下载并校验 Agent…\n'
-curl --proto '=https' --tlsv1.2 --connect-timeout 15 --max-time 60 -fsS "$endpoint/downloads/uninstall-agent.sh" -o "$tmp/uninstall-agent.sh"
+curl --proto "$download_proto" --tlsv1.2 --connect-timeout 15 --max-time 60 -fsS "$endpoint/downloads/uninstall-agent.sh" -o "$tmp/uninstall-agent.sh"
 sh -n "$tmp/uninstall-agent.sh"
-curl --proto '=https' --tlsv1.2 --connect-timeout 15 --max-time 180 --retry 2 -fsS "$endpoint/downloads/sshguard-agent-linux-$arch" -o "$tmp/agent"
-curl --proto '=https' --tlsv1.2 --connect-timeout 15 --max-time 30 -fsS "$endpoint/downloads/sshguard-agent-linux-$arch.sha256" -o "$tmp/hash"
+curl --proto "$download_proto" --tlsv1.2 --connect-timeout 15 --max-time 180 --retry 2 -fsS "$endpoint/downloads/sshguard-agent-linux-$arch" -o "$tmp/agent"
+curl --proto "$download_proto" --tlsv1.2 --connect-timeout 15 --max-time 30 -fsS "$endpoint/downloads/sshguard-agent-linux-$arch.sha256" -o "$tmp/hash"
 expected=$(awk '{print $1}' "$tmp/hash")
 printf '%s' "$expected" | grep -Eq '^[a-f0-9]{64}$' || die 'Invalid checksum.'
 printf '%s  %s\n' "$expected" "$tmp/agent" | sha256sum -c -
@@ -224,7 +233,7 @@ mkdir -p /etc/sshguard
 # protected files/directories instead of assigning the parent to one service.
 chown root:root /etc/sshguard
 chmod 0711 /etc/sshguard
-printf '%s' "$enrollment" | "$tmp/agent" -enroll -endpoint "$endpoint" -config "$config"
+printf '%s' "$enrollment" | "$tmp/agent" -enroll -endpoint "$endpoint" -config "$config" -allow-insecure-http="$allow_http"
 unset enrollment
 chown root:sshguard "$config"
 chmod 0640 "$config"

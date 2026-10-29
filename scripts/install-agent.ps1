@@ -3,14 +3,16 @@
 param(
     [Parameter(Mandatory=$true)][string]$Endpoint,
     [ValidatePattern('^[a-f0-9]{64}$')][string]$EnrollmentToken,
-    [switch]$Update
+    [switch]$Update,
+    [switch]$AllowInsecureHttp
 )
 $ErrorActionPreference = 'Stop'
 if ($Update -and $EnrollmentToken) { throw 'Choose Update or EnrollmentToken, not both.' }
 if (-not $Update -and -not $EnrollmentToken) { throw 'EnrollmentToken is required for installation.' }
 $Endpoint = $Endpoint.TrimEnd('/')
 $origin = [Uri]$Endpoint
-if ($origin.Scheme -ne 'https' -or $origin.UserInfo -or $origin.Query -or $origin.Fragment -or $origin.AbsolutePath -ne '/') { throw 'Endpoint must be an HTTPS origin.' }
+if (($origin.Scheme -ne 'https' -and -not ($origin.Scheme -eq 'http' -and $AllowInsecureHttp)) -or -not $origin.Host -or $origin.UserInfo -or $origin.Query -or $origin.Fragment -or $origin.AbsolutePath -ne '/' -or $origin.Port -lt 1 -or $origin.Port -gt 65535) { throw 'Endpoint must be an HTTPS origin; HTTP requires -AllowInsecureHttp.' }
+if ($origin.Scheme -eq 'http') { Write-Output 'Direct HTTP: traffic is unencrypted. Use a trusted network or configure HTTPS.' }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $osArchitecture = $env:PROCESSOR_ARCHITEW6432
 if (-not $osArchitecture) { $osArchitecture = $env:PROCESSOR_ARCHITECTURE }
@@ -174,7 +176,8 @@ try {
         $previousEncoding = $OutputEncoding
         try {
             $OutputEncoding = New-Object Text.ASCIIEncoding
-            $EnrollmentToken | & $download -enroll -endpoint $Endpoint -config $config
+            $httpOption = '-allow-insecure-http=' + $AllowInsecureHttp.IsPresent.ToString().ToLowerInvariant()
+            $EnrollmentToken | & $download -enroll -endpoint $Endpoint -config $config $httpOption
         } finally { $OutputEncoding = $previousEncoding }
         if ($LASTEXITCODE -ne 0) { throw 'Enrollment failed. Generate a new installation command and retry.' }
         $enrolled = $true

@@ -1,5 +1,17 @@
 # 更新日志
 
+## 0.3.7
+
+- 主控默认使用 IP + 端口和 SQLite；网页只需创建管理员，完成后自动登录并进入服务器管理。
+- 打通无需域名的 Agent 安装、HTTP / WebSocket 上报、手动与平台触发更新；HTTP 显式授权随本地配置保留，HTTPS 继续严格验证证书。
+- 安装菜单新增初始化链接恢复入口，支持 `--port`，状态页显示可访问地址；本地管理和卸载不再重复下载发行包。
+- 增加 Windows / Linux 真实进程直连验证，扩展原生 CI 覆盖无域名 Agent 安装与升级。
+- 统一主控与 Agent 的地址校验，拒绝异常端口、空查询串和片段；PUBLIC_URL 规范化后与浏览器 Origin 保持一致。
+- 初始化只接受单个 JSON 对象；响应丢失时查询完成状态，避免重复初始化。
+- IP 直连 HTTP 页面缺少 Clipboard API 时，安装、更新和卸载命令提供点击复制回退。
+- 统一 Nginx / OpenResty / 宝塔反代示例，原生模式反代完整应用，延长初始化超时、禁用代理缓存并验证 WebSocket；自定义端口增加手动配置提示。
+- 修复预览构建版本覆盖后 VERSION 清单与程序不一致的问题；安装前验证显式证书输入。
+
 ## 0.3.6
 
 - fix: release Windows installer lock after staging cleanup

@@ -1,5 +1,21 @@
 # 验证记录
 
+## v0.3.7 安全与反代审查（2026-10-29）
+
+- 统一地址解析，新增非法地址、默认端口 / 主机大小写 / IPv6 规范化、严格单 JSON 初始化的回归覆盖。
+- Windows 本机运行真实 Nginx 1.30.6：原生托管、Compose HTTPS / HTTP 与面板片段均通过配置检查；真实 HTTPS 反代完成初始化、Secure Cookie 登录、错误 Origin 拒绝、浏览器 / Agent WebSocket 101、对外 PUBLIC_URL 与敏感文件 404 检查。自定义端口只增加提示，未加入自动适配。
+- 完整 Go 测试和 vet、真实 HTTP 主控 / Agent 直连验证通过；本次未操作生产服务器。
+- GitHub 版本发布仍由完整 CI、数据库矩阵及一次性 Linux VM 的原生安装验收把关；本地验证不替代发布结果。浏览器交互截图和本地 race 检查的限制见下节。
+
+## 无域名主控安装验收（2026-10-29，未发布）
+
+- Windows 本机 Go 1.26.10 / Node.js 24.15.0：`go test ./...`、`go vet ./...`、Vue 类型检查与生产构建通过。
+- Windows 与 Linux（WSL）真实 API / Agent 进程直连验证通过：默认 SQLite、初始化口令和 Origin 拒绝、管理员创建与登录、IP 命令生成、HTTP 显式授权及注册、心跳、事件写入、更新任务与重启后的账号/服务器/数据库保留。隔离脚本为 `scripts/test-direct-flow.mjs`，不安装系统服务。
+- HTTP / HTTPS 两种传输的 WebSocket 提交后确认丢失及 HTTP(S) 回退测试通过，IPv4 / IPv6 地址和 HTTP 授权持久化测试通过；原 HTTPS 不可信证书拒绝测试继续通过。
+- Linux 安装脚本语法、Windows PowerShell 5.1 脚本解析及 ACL 检查、文档链接、发布版本选择测试、Actions 工作流 actionlint 检查通过。
+- 已扩展 CI，覆盖 Windows / Linux 的真实进程直连，以及一次性 Linux VM 的 systemd Agent 直连安装、采集和更新。当前未运行该原生部署 CI，不将其配置视为通过记录。
+- 本地 Linux 竞态检测因缺少 C 编译器未能运行；浏览器访问服务不可用，未进行此次页面截图与交互验收。未改动生产服务器或发布 Release。
+
 ## SQLite 源码验收（2026-10-29，未发布）
 
 - Windows 本机：全部 Go 测试及 vet 通过，SQLite 集成测试启用并发 Agent 负载；覆盖迁移、持久化、外键、事务、认证、角色权限、伪造服务器归属、事件去重、告警与通知租约。

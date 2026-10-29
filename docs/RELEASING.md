@@ -28,14 +28,14 @@ Actions Artifact 是一次构建快照，保存 14 天；Release 是命名版本
 
 ## 创建版本
 
-1. 修改 `VERSION`、`scripts/quick-start.sh` 默认标签及版本文档，例如 `0.3.0`，版本长度不超过 32。
+1. 修改 `VERSION`、`scripts/quick-start.sh` 默认标签及版本文档，例如 `0.3.1`，版本长度不超过 32。
 2. 更新 CHANGELOG、docs/RELEASE-NOTES.md 和验收记录。
 3. 提交到 main，等待 CI 全部通过。
 4. 在对应提交创建并推送标签：
 
 ```bash
-git tag -a v0.3.0 -m "SSHGuard 0.3.0"
-git push origin v0.3.0
+git tag -a v0.3.1 -m "SSHGuard 0.3.1"
+git push origin v0.3.1
 ```
 
 Release 工作流检查标签与 VERSION 完全一致，再复用 CI、下载并校验产物，最后创建 Release。含连字符（例如 -rc.1）的标签标为 Prerelease，无连字符的标签发布普通版本。发布前须完成对应版本验收；目标生产环境仍需按生产清单分批上线。

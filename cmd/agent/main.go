@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-var version = "0.3.0"
+var version = "0.3.1"
 
 type Config struct {
 	Endpoint string `json:"endpoint"`

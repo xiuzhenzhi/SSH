@@ -12,7 +12,7 @@ cd SSH
 sh scripts/quick-start.sh
 ```
 
-最后一条命令下载固定版本 `v0.3.0` 的对应架构发行包，校验 SHA256，再调用安装向导。下载使用当前用户的 GitHub 登录，只有安装时调用 sudo。不要把 GitHub Token 放进命令行或发给 Agent。
+最后一条命令下载固定版本 `v0.3.1` 的对应架构发行包，校验 SHA256，再调用安装向导。下载使用当前用户的 GitHub 登录，只有安装时调用 sudo。不要把 GitHub Token 放进命令行或发给 Agent。
 
 向导询问：
 
@@ -25,7 +25,7 @@ sh scripts/quick-start.sh
 
 SHA256 用于检查下载完整性；发行包与校验文件来自同一个受信任仓库，它不等同于独立数字签名。
 
-SQLite 安装支持需要包含该功能的新发行包，固定版本下载不会使用源码目录中的未发布修改。向导将数据库放在 `/var/lib/sshguard-api/sshguard.db`，由 systemd 创建权限为 0700 的专用目录；升级保留数据库和加密密钥。无人值守部署设置 `DB_DRIVER=sqlite` 并省略 `DATABASE_URL`，其他域名和证书配置与下述示例相同。使用本机磁盘，备份前停止 API，同时保存数据库文件、存在的 WAL/SHM 文件和 `/etc/sshguard/api.env`。
+SQLite 从 v0.3.1 开始支持，安装前确认该版本的 Release 附件已构建完成。固定版本下载不会使用源码目录中的未发布修改。向导将数据库放在 `/var/lib/sshguard-api/sshguard.db`，由 systemd 创建权限为 0700 的专用目录；升级保留数据库和加密密钥。无人值守部署设置 `DB_DRIVER=sqlite` 并省略 `DATABASE_URL`，其他域名和证书配置与下述示例相同。使用本机磁盘，备份前停止 API，同时保存数据库文件、存在的 WAL/SHM 文件和 `/etc/sshguard/api.env`。
 
 ## 离线包 / 不在服务器保存 GitHub 登录
 
@@ -74,7 +74,7 @@ MySQL 5.6 已于 2021 年结束生命周期；应用兼容不能修复数据库�
 先备份数据库和 `/etc/sshguard`，阅读目标版本迁移说明，再下载新版本：
 
 ```sh
-SSHGUARD_VERSION=v0.3.0 sh scripts/quick-start.sh --update
+SSHGUARD_VERSION=v0.3.1 sh scripts/quick-start.sh --update
 # 或使用已解压的新包：
 sudo sh sshguard-linux-amd64/deploy.sh --update
 ```

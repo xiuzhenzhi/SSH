@@ -127,4 +127,4 @@ MySQL 5.6 已停止官方维护，兼容旧版本不等于修复数据库自身�
 | [开发](docs/DEVELOPMENT.md) / [发布](docs/RELEASING.md) | 本地构建、Actions、发布产物 |
 | [路线图](docs/ROADMAP.md) / [更新日志](CHANGELOG.md) | 产品范围与版本变化 |
 
-Actions 提供两个入口：**CI** 用于 PR、main 提交和手动验证；**构建与发布** 用于版本标签及手动重试发布。流程覆盖测试、竞态与漏洞检查、两个平台包和四个 Agent 构建、SQLite/PostgreSQL 原生安装升级验收及 SHA256SUMS 校验。同一份候选安装包通过全部验收后才保存为 `sshguard-release-assets`；版本标签通过完整流程后上传 Release。具体操作见 [构建与发布](docs/RELEASING.md)。不会自动操作你的生产服务器。提交规范见 [CONTRIBUTING.md](CONTRIBUTING.md)，安全问题见 [SECURITY.md](SECURITY.md)。
+Actions 提供两个入口：**CI** 用于 PR、main 提交和手动验证；**构建与发布** 用于版本标签和一键发布。手动选择分支，版本号留空即可自动递增补丁版本，也可指定正式版或预发布版本。流程覆盖测试、竞态与漏洞检查、两个平台包和四个 Agent 构建、SQLite/PostgreSQL 原生安装升级验收及 SHA256SUMS 校验。同一份候选安装包通过全部验收后才保存为 `sshguard-release-assets`，随后上传 Release。具体操作见 [构建与发布](docs/RELEASING.md)。不会自动操作你的生产服务器。提交规范见 [CONTRIBUTING.md](CONTRIBUTING.md)，安全问题见 [SECURITY.md](SECURITY.md)。

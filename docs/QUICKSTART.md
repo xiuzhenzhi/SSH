@@ -14,10 +14,12 @@ sh scripts/quick-start.sh
 
 最后一条命令下载固定版本 `v0.3.2` 的对应架构发行包，校验 SHA256，再调用安装向导。下载使用当前用户的 GitHub 登录，只有安装时调用 sudo。不要把 GitHub Token 放进命令行或发给 Agent。
 
-向导询问：
+默认安装只询问应用端口（回车使用 8080）和数据库（回车使用 SQLite），不询问域名或反向代理。直接访问 `http://服务器IP:8080`；已有 Nginx / OpenResty 不影响此流程。
 
-1. 接入方式：独立运行、复用已有 Web 服务、由脚本管理系统 Nginx。检测到 Nginx / OpenResty / 宝塔或 80/443 服务时推荐复用，否则默认独立运行。
-2. 访问域名或 IPv4。独立模式可选择端口、HTTP 或内置 HTTPS（提供已有证书与私钥）。
+下面的接入方式与证书仅用于显式指定 `--proxy external` / `--proxy managed` 或配置文件中的 TLS 参数，不属于默认安装必填项：
+
+1. 默认独立运行。反向代理是可选的后续配置，不根据已有 Web 服务自动切换安装模式。
+2. 默认无需访问域名或 IPv4。内置 HTTPS 通过配置文件提供 DOMAIN、TLS_CERT 和 TLS_KEY。
 3. 数据库：默认 `sqlite`，无需 DSN；`local-postgres` 自动安装本机 PostgreSQL；`mysql` / `postgres` 连接已有数据库，DSN 隐藏输入。
 4. 只有托管 Nginx 模式才配置 Nginx 证书，支持已有证书或 Certbot/Let's Encrypt（接受 ACME 服务条款，公网 80 端口可达）。复用模式沿用现有站点证书。
 
@@ -34,6 +36,26 @@ SHA256 用于检查下载完整性；发行包与校验文件来自同一个受�
 SQLite 从 v0.3.1 开始支持，安装前确认该版本的 Release 附件已构建完成。固定版本下载不会使用源码目录中的未发布修改。向导将数据库放在 `/var/lib/sshguard-api/sshguard.db`，由 systemd 创建权限为 0700 的专用目录；升级保留数据库和加密密钥。无人值守部署设置 `DB_DRIVER=sqlite` 并省略 `DATABASE_URL`，其他域名和证书配置与下述示例相同。使用本机磁盘，备份前停止 API，同时保存数据库文件、存在的 WAL/SHM 文件和 `/etc/sshguard/api.env`。
 
 ## 离线包 / 不在服务器保存 GitHub 登录
+
+### 可选：安装后使用 Nginx / OpenResty / 宝塔反代
+
+先按默认方式安装，再在现有 HTTPS 网站中反代整个应用，无需设置网站根目录。将以下配置合并到已有 server 块（替换重复的 location）：
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_read_timeout 90s;
+    proxy_buffering off;
+}
+```
+
+然后在 `/etc/sshguard/api.env` 设置 `PUBLIC_URL="https://你的域名"`，可将 `LISTEN_ADDR` 改为 `127.0.0.1:8080` 限制直连；执行 `sudo systemctl restart sshguard-api`。证书与 Web 服务继续由原面板管理。通过自己的面板验证并加载反代配置后访问域名，Agent 安装和平台更新也会使用这个 HTTPS 地址。默认直连 HTTP 不填写 PUBLIC_URL，应用会按实际请求地址进行同源校验，不信任客户端伪造的转发头。
+
+### 下载并校验离线包
 
 在有权限的机器下载发行包和 `SHA256SUMS`，传到中央服务器：
 

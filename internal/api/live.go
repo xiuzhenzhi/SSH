@@ -68,11 +68,12 @@ func (a *App) Shutdown() {
 	}
 }
 func (a *App) live(c *gin.Context) {
-	if c.GetHeader("Origin") != a.cfg.PublicURL {
+	origin := a.browserOrigin(c)
+	if c.GetHeader("Origin") != origin {
 		bad(c, 403, "WebSocket Origin 无效")
 		return
 	}
-	u, _ := url.Parse(a.cfg.PublicURL)
+	u, _ := url.Parse(origin)
 	conn, e := websocket.Accept(c.Writer, c.Request, &websocket.AcceptOptions{OriginPatterns: []string{u.Host}, CompressionMode: websocket.CompressionDisabled})
 	if e != nil {
 		return

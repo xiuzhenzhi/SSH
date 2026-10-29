@@ -3,6 +3,7 @@
 set -eu
 [ "${GITHUB_ACTIONS:-}" = true ] || { echo 'Disposable GitHub Actions VM only.' >&2; exit 1; }
 [ "$(id -u)" -eq 0 ] || exit 1
+if [ "${SSHGUARD_NATIVE_PROXY:-}" = standalone-http ]; then exec sh scripts/test-direct-install.sh "$1"; fi
 bundle=$(realpath "$1")
 tmp=$(mktemp -d)
 trap 'rm -rf -- "$tmp"' EXIT

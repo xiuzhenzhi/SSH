@@ -81,7 +81,7 @@ for web_binary in /www/server/nginx/sbin/nginx /usr/local/nginx/sbin/nginx /usr/
 done
 if command -v nginx >/dev/null 2>&1 || "$custom_web"; then existing_web=true; fi
 if command -v ss >/dev/null 2>&1 && ss -H -ltn '( sport = :80 or sport = :443 )' 2>/dev/null | grep -q .; then existing_web=true; fi
-if "$existing_web"; then printf '  已检测到 Nginx / OpenResty 或 80/443 监听服务，推荐复用现有站点。\n';
+if "$existing_web"; then printf '  已有 Web 服务保持原样，SSHGuard 使用独立端口。\n';
 else printf '  未检测到现有 Web 服务。\n'; fi
 [ -z "$proxy_arg" ] || proxy_mode=$proxy_arg
 if [ -f /etc/sshguard/api.env ] && [ -f /etc/sshguard/deploy-managed ]; then
@@ -90,17 +90,7 @@ if [ -f /etc/sshguard/api.env ] && [ -f /etc/sshguard/deploy-managed ]; then
     [ -z "$proxy_mode" ] || [ "$proxy_mode" = "$saved_proxy" ] || die 'Proxy mode changes require explicit migration; updates preserve the installed mode.'
     proxy_mode=$saved_proxy
 fi
-if [ -z "$proxy_mode" ]; then
-    if "$existing_web"; then proxy_mode=external; else proxy_mode=standalone; fi
-    if [ -z "$config_file" ]; then
-        printf '\n  1) 独立运行：程序直接提供网页和 API，无需 Nginx\n'
-        printf '  2) 复用 Nginx / OpenResty / 宝塔：反代整个应用到本机端口\n'
-        printf '  3) 由脚本管理系统 Nginx（兼容原部署方式）\n'
-        if [ "$proxy_mode" = external ]; then default_choice=2; else default_choice=1; fi
-        prompt "请选择 [1/2/3，默认 $default_choice]: "
-        case "${answer:-$default_choice}" in 1) proxy_mode=standalone ;; 2) proxy_mode=external ;; 3) proxy_mode=managed ;; *) die '请选择 1、2 或 3。' ;; esac
-    fi
-fi
+proxy_mode=${proxy_mode:-standalone}
 case "$proxy_mode" in standalone|external|managed) ;; *) die 'PROXY_MODE must be standalone, external or managed.' ;; esac
 if [ "$proxy_mode" = managed ]; then
     if "$custom_web"; then
@@ -159,7 +149,7 @@ if [ "$mode" = install ]; then
     if [ "$proxy_mode" = managed ] && [ ! -x /usr/sbin/nginx ]; then install_packages nginx; fi
 fi
 command -v curl >/dev/null 2>&1 || die 'curl is required.'
-printf '\n[2/5] 配置域名与数据库\n'
+printf '\n[2/5] 配置端口与数据库\n'
 if [ -f /etc/sshguard/api.env ]; then
     [ -f /etc/sshguard/deploy-managed ] || die 'Existing api.env is not wizard-managed; migrate explicitly, do not overwrite credentials.'
     public_origin=$(sed -n 's/^PUBLIC_URL="\([^"]*\)"$/\1/p' /etc/sshguard/api.env)
@@ -168,18 +158,11 @@ if [ -f /etc/sshguard/api.env ]; then
     if grep -q '^TLS_CERT_FILE=' /etc/sshguard/api.env; then builtin_tls=true; fi
 else
     [ "$mode" = install ] || die 'Missing /etc/sshguard/api.env.'
-    if [ -z "$domain" ] && [ -z "$config_file" ]; then prompt '访问地址（域名或 IPv4，例如 guard.example.com / 192.168.1.10，不含协议）: '; domain=$answer; fi
-    printf '%s' "$domain" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z0-9-]+$' || die 'Set DOMAIN to your public DNS name.'
+    if [ "$proxy_mode" != standalone ] || [ -n "$certificate" ]; then
+        if [ -z "$domain" ] && [ -z "$config_file" ]; then prompt 'HTTPS domain: '; domain=$answer; fi
+        printf '%s' "$domain" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z0-9-]+$' || die 'DOMAIN required for explicit HTTPS/proxy mode.'
+    fi
     if [ "$proxy_mode" = standalone ]; then
-        if [ -z "$config_file" ] && [ -z "$certificate" ]; then
-            printf '\n  1) HTTP：直接访问面板（登录信息明文传输，接入 Agent 前需配置 HTTPS）\n  2) 内置 HTTPS：填写已有可信证书，无需反向代理\n'
-            prompt '访问协议 [1/2，默认 1]: '
-            case "${answer:-1}" in
-                1) ;;
-                2) prompt '证书 fullchain 路径: '; certificate=$answer; prompt '证书私钥路径: '; private_key=$answer ;;
-                *) die '请选择 1 或 2。' ;;
-            esac
-        fi
         if [ -n "$certificate" ]; then builtin_tls=true; fi
         if [ -z "$app_port" ] && [ -z "$config_file" ]; then
             prompt '应用端口 [默认 8080，范围 1024–65535]: '; app_port=${answer:-8080}
@@ -195,6 +178,8 @@ else
         listen_address="0.0.0.0:$app_port"
         if "$builtin_tls"; then public_origin="https://$domain:$app_port"; else public_origin="http://$domain:$app_port"; fi
     fi
+    configured_origin=$public_origin
+    if [ "$proxy_mode" = standalone ] && ! "$builtin_tls" && [ -z "$domain" ]; then configured_origin=''; public_origin="http://SERVER_IP:$app_port"; fi
     if [ -z "$driver" ] && [ -z "$config_file" ]; then
         printf '\n  1) SQLite：单机部署，无需安装数据库（推荐）\n  2) 本机 PostgreSQL：自动安装\n  3) 已有 PostgreSQL\n  4) 已有 MySQL\n'
         prompt '请选择数据库 [1/2/3/4，默认 1]: '
@@ -237,7 +222,7 @@ else
     # systemd EnvironmentFile escaping, never interpreted by a shell.
     env_line() { printf '%s="' "$1"; printf '%s' "$2" | sed 's/\\/\\\\/g; s/"/\\"/g'; printf '"\n'; }
     {
-        env_line DB_DRIVER "$driver"; env_line DATABASE_URL "$dsn"; env_line PUBLIC_URL "$public_origin"
+        env_line DB_DRIVER "$driver"; env_line DATABASE_URL "$dsn"; env_line PUBLIC_URL "$configured_origin"
         env_line LISTEN_ADDR "$listen_address"; env_line ADMIN_USERNAME admin; env_line ADMIN_PASSWORD "$admin_password"; env_line GIN_MODE release
         if [ "$proxy_mode" = standalone ]; then
             if "$builtin_tls"; then
@@ -249,7 +234,10 @@ else
     touch /etc/sshguard/deploy-managed
     unset dsn admin_password
 fi
-printf '%s' "$domain" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z0-9-]+$' || die 'Invalid managed PUBLIC_URL.'
+if [ -n "$public_origin" ] && [ "$public_origin" != "http://SERVER_IP:$app_port" ]; then
+    printf '%s' "$domain" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z0-9-]+$' || die 'Invalid managed PUBLIC_URL.'
+fi
+[ -n "$public_origin" ] || public_origin="http://SERVER_IP:$app_port"
 printf '%s\n' "$proxy_mode" > /etc/sshguard/proxy-mode
 chmod 0600 /etc/sshguard/proxy-mode
 # Upgrade old wizard installations once, preserving the key on every future update.
@@ -375,13 +363,6 @@ if [ "$proxy_mode" = managed ]; then
     systemctl reload nginx
 fi
 switched=false
-if [ "$proxy_mode" = external ]; then
-    printf '\n应用已就绪：http://127.0.0.1:%s（网页和 API 共用入口，仅本机访问）\n' "$app_port"
-    printf '请在现有站点中完成以下设置，再访问 https://%s：\n' "$domain"
-    printf '  反代目标：http://127.0.0.1:%s\n  HTTPS：沿用现有证书\n  WebSocket：合并 /etc/sshguard/nginx-existing.conf 中的配置\n' "$app_port"
-    printf '无需设置网站根目录；面板中启用 WebSocket 支持。\n'
-else echo "SSHGuard $version ready: $public_origin"; fi
-if [ "$proxy_mode" = standalone ] && ! "$builtin_tls"; then printf 'HTTP 面板已可访问；安装 Agent 前请配置内置 HTTPS 或可信 HTTPS 反向代理。\n'; fi
-echo 'Username: admin. Initial password: ADMIN_PASSWORD in /etc/sshguard/api.env (sudo access required).'
-echo 'Change the password in the console after first login. No credentials were printed.'
-echo 'Previous releases are retained in /opt/sshguard-releases. Database migrations are never automatically reversed.'
+printf '\n安装完成 · SSHGuard %s\n访问地址：%s（SERVER_IP 替换为服务器 IP）\n' "$version" "$public_origin"
+printf '管理员：admin\n初始密码：查看 /etc/sshguard/api.env 中的 ADMIN_PASSWORD\n'
+printf '可选反代、HTTPS 与 Agent 接入见文档：\nhttps://github.com/xiuzhenzhi/SSH/blob/main/docs/QUICKSTART.md\n'

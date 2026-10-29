@@ -40,6 +40,8 @@ sh scripts/quick-start.sh
 
 更新平台：`sh scripts/quick-start.sh --update`。先备份数据库与 api.env，再更新平台、最后分批更新 Agent。自动回退恢复程序，**不逆向恢复数据库迁移**。离线包、无人值守配置、证书和迁移说明见 [快速开始](docs/QUICKSTART.md)。
 
+默认安装只选择端口和数据库，无需输入域名，也不会因为检测到 Nginx / OpenResty 自动要求反代。安装后直接访问 `http://服务器IP:8080`；反代与 HTTPS 按快速开始文档作为后续可选配置。
+
 ## Compose（可选）
 
 ```sh

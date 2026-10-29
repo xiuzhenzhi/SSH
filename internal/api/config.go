@@ -67,6 +67,13 @@ func LoadConfig() (Config, error) {
 	if c.AdminUsername == "" {
 		c.AdminUsername = "admin"
 	}
+	if c.PublicURL == "" && os.Getenv("ALLOW_INSECURE_HTTP") == "true" && c.TLSCertFile == "" {
+		c.SecureCookie = false
+		if c.DatabaseURL == "" {
+			return c, fmt.Errorf("DATABASE_URL required")
+		}
+		return c, nil
+	}
 	u, e := url.Parse(c.PublicURL)
 	if e != nil || u.Host == "" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
 		return c, fmt.Errorf("PUBLIC_URL must be an origin, e.g. https://guard.example.com")

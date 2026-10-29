@@ -70,8 +70,8 @@ Actions Artifact 是一次构建快照，保存 14 天；Release 是命名版本
 4. 在对应提交创建并推送标签：
 
 ```bash
-git tag -a v0.3.4 -m "SSHGuard 0.3.4"
-git push origin v0.3.4
+git tag -a v0.3.5 -m "SSHGuard 0.3.5"
+git push origin v0.3.5
 ```
 
 Release 工作流检查标签与 VERSION 完全一致，再复用 CI、下载并校验产物，最后创建 Release。含连字符（例如 -rc.1）的标签标为 Prerelease，无连字符的标签发布普通版本。发布前须完成对应版本验收；目标生产环境仍需按生产清单分批上线。

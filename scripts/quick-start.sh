@@ -19,7 +19,7 @@ case "${1:-}" in
         if [ "$(id -u)" -eq 0 ]; then exec sh /opt/sshguard/deploy.sh "$@";
         else exec sudo sh /opt/sshguard/deploy.sh "$@"; fi ;;
 esac
-version=${SSHGUARD_VERSION:-v0.3.3}
+version=${SSHGUARD_VERSION:-v0.3.4}
 printf '%s' "$version" | grep -Eq '^v[0-9][A-Za-z0-9.+_-]{0,31}$' || { echo 'Invalid SSHGUARD_VERSION' >&2; exit 1; }
 case "$(uname -m)" in x86_64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; *) echo 'Only Linux amd64/arm64 supported.' >&2; exit 1 ;; esac
 [ "$(uname -s)" = Linux ] || { echo 'Run on the Ubuntu/Debian central server.' >&2; exit 1; }

@@ -11,7 +11,7 @@
 在 GitHub Releases 下载对应架构发布包和 SHA256SUMS，或从成功 CI 的 sshguard-release-assets 获取。私有仓库需要有访问权限的账号。
 
 ```bash
-gh release download v0.3.3 --repo xiuzhenzhi/SSH --pattern sshguard-linux-amd64.tar.gz --pattern SHA256SUMS
+gh release download v0.3.4 --repo xiuzhenzhi/SSH --pattern sshguard-linux-amd64.tar.gz --pattern SHA256SUMS
 sha256sum --ignore-missing -c SHA256SUMS
 tar -xzf sshguard-linux-amd64.tar.gz
 cd sshguard-linux-amd64

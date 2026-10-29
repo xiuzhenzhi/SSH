@@ -22,7 +22,7 @@ type App struct {
 	hub       *liveHub
 }
 
-var Version = "0.3.3"
+var Version = "0.3.4"
 
 func New(db *storage.DB, cfg Config) *gin.Engine {
 	return NewApp(db, cfg).Router()

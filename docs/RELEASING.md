@@ -4,7 +4,7 @@
 
 | 工作流 | 触发方式 | 结果 |
 |---|---|---|
-| CI | PR、push 到 main、Run workflow | PR 执行检查；main / 手动运行还构建和验收安装包，通过后保存 14 天的产物 |
+| CI | PR、push 到 main、Run workflow | 按改动范围检查；手动勾选 full_validation 才打包并验收安装升级 |
 | 构建与发布 | push `v*` 标签；Run workflow 选择分支并可选填写版本 | 手动运行先准备版本提交与标签，再复用完整 CI，最后创建带附件的 GitHub Release |
 
 ```mermaid
@@ -18,16 +18,18 @@ flowchart TD
   Gate --> Release[版本标签流程发布 Release]
 ```
 
-构建前检查失败则不生成候选包；任一安装验收失败则不生成正式产物。候选包名 `sshguard-build-candidate`，仅用于排查、保存 3 天；通过验收的包名 `sshguard-release-assets`，保存 14 天。发布使用同一次工作流内验证过的文件，不重新编译。PR 跳过构建和安装验收，仍须通过所有适用检查。可将固定名称 `CI result` 设为分支保护所需检查；仓库权限规则不会由工作流自动修改。
+日常 CI 不重复执行完整发布矩阵。纯文档改动只检查链接与流程工具，纯前端改动增加前端构建，后端及部署相关改动执行跨平台、数据库和安全检查。发布或手动勾选 full_validation 时无论文件范围都运行完整检查。
+
+构建前检查失败则不生成候选包；任一安装验收失败则不生成正式产物。候选包名 `sshguard-build-candidate`，仅用于排查、保存 3 天；通过验收的包名 `sshguard-release-assets`，保存 14 天。发布使用同一次工作流内验证过的文件，不重新编译。可将固定名称 `CI result` 设为分支保护所需检查；它区分按范围跳过与失败，仓库权限规则不会由工作流自动修改。
 
 ## 日常 CI
 
 `.github/workflows/ci.yml` 在 main push、PR、workflow_dispatch 时运行，也被 Release 工作流复用：
 
-1. Ubuntu/Windows：Go 单元测试和 vet；Linux 额外执行 race 测试；Windows 执行安装器 ACL helper 测试。
+1. Ubuntu/Windows：Go 测试和 vet；Linux 一次执行全套 race 测试，不再先重复普通测试；Windows 执行 SCM 服务和安装器 ACL 检查。
 2. 三个独立服务容器：PostgreSQL 16、MySQL 5.6.51 / 8.4，执行真实数据库 API 集成测试。
 3. 前端：npm ci、TypeScript/Vite 构建、high 级别依赖漏洞检查。
-4. main、手动运行和版本标签的检查通过后，只构建一次两个 Linux API 架构、四个 Agent，检查 ELF/PE 架构、静态链接和 SHA-256。独立的 SQLite / PostgreSQL Ubuntu runner 下载并验收同一份候选包，运行 Nginx/TLS、原生部署与真实 systemd Agent 安装/更新/失败恢复测试；两种模式都通过后保存正式产物。PR 只执行检查，不上传安装包。
+4. 完整验证模式才构建两个 Linux API 架构与四个 Agent。前端复用本次前端任务的产物，四个 Agent 构建一次并复用于两个平台包；校验 ELF/PE、静态链接和 SHA-256。五组临时 Linux runner 验证 SQLite / PostgreSQL、直连 / 反代、systemd / Alpine OpenRC 安装、更新与失败恢复，通过后保存产物。PR 与普通 main 提交不上传安装包。
 5. `CI result` 汇总所有适用任务结果，避免上游失败后下游跳过被误认为整体成功；工作流本身也通过 actionlint 检查。
 
 流程没有生产凭证；CI 数据库密码只在临时测试容器内使用。不要把生产环境连接串放进 workflow。未通过检查不会发布安装产物。
@@ -76,7 +78,7 @@ git push origin v0.3.9
 
 Release 工作流检查标签与 VERSION 完全一致，再复用 CI、下载并校验产物，最后创建 Release。含连字符（例如 -rc.1）的标签标为 Prerelease，无连字符的标签发布普通版本。发布前须完成对应版本验收；目标生产环境仍需按生产清单分批上线。
 
-只构建快照而不发布：Actions → CI → Run workflow，选择目标分支。已有标签可在原运行中使用 Re-run failed jobs；包含手动入口的标签也可选择该标签运行，版本输入留空。相同分支/标签的发布串行运行，不会因重复触发取消正在进行的上传。仅版本准备和发布任务持有仓库内容写权限，测试与构建使用只读权限。
+只构建快照而不发布：Actions → CI → Run workflow，选择目标分支并勾选 full_validation；留空时只运行代码检查。已有标签可在原运行中使用 Re-run failed jobs；包含手动入口的标签也可选择该标签运行，版本输入留空。相同分支/标签的发布串行运行，不会因重复触发取消正在进行的上传。仅版本准备和发布任务持有仓库内容写权限，测试与构建使用只读权限。
 
 **不要移动已发布标签或覆盖同名二进制。** 修复使用新版本。发布任务因网络错误中断时先检查 Release 是否已经创建、附件是否完整；不要直接覆盖已有资产。不同源代码不得复用已发布的版本名。
 
@@ -84,12 +86,14 @@ Release 工作流检查标签与 VERSION 完全一致，再复用 CI、下载并
 
 ```bash
 node scripts/build-release.mjs amd64
-node scripts/build-release.mjs arm64 --reuse-web
+node scripts/build-release.mjs arm64 --reuse-web --reuse-agents
 node scripts/check-agent-artifacts.mjs
 node scripts/package-release.mjs
 ```
 
 输出为 dist/release。Agent 的 `-version` 和健康接口中的 version 可识别构建版本。VERSION 通过链接参数注入；源码直接 go run 使用代码内的开发默认值。
+
+--reuse-agents 仅用于同一次构建的 arm64 包，要求先生成同版本 amd64 包，期间不能改动 Agent 源码；复制前重新校验全部 Agent。独立构建任一架构时不要使用该选项。
 
 SHA-256 清单校验下载完整性，不是代码签名或独立的发布者身份认证。当前 Windows 程序未做 Authenticode 签名，按组织终端管理要求部署；不会关闭系统安全保护。
 

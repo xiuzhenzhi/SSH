@@ -89,6 +89,7 @@ jobs:
     uses: ./.github/workflows/ci.yml
     with:
       source_ref: ${{ needs.verify.outputs.sha }}
+      full_validation: true
   publish:
     name: Publish verified release
     needs: [verify, build]

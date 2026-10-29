@@ -66,3 +66,5 @@ TEST_DB_DRIVER=mysql TEST_DATABASE_URL='USER:PASS@tcp(127.0.0.1:3306)/sshguard_t
 Windows ACL helper 测试使用 scripts/test-windows-installer.ps1，只在工作区创建目录，不注册服务。测试局限见 [验证记录](VALIDATION.md)。
 
 CI 另有临时机器专用的完整安装测试：Windows 的 `scripts/test-windows-service.ps1` 注册真实 SCM 服务；Linux 的 `scripts/test-native-deploy.sh` 安装 PostgreSQL/Nginx/systemd 服务并启动 Alpine OpenRC 测试容器。这些脚本会修改固定系统路径，禁止在业务主机运行。工作流还执行固定工具版本的 govulncheck；不会自动忽略可达漏洞。
+
+日常 CI 按文档、前端和后端改动分流；完整 Linux 安装矩阵仅在发版或手动勾选 full_validation 时运行。完整构建复用本次检查过的前端，并让两个主控架构共用同一次构建的四个 Agent。见 [构建与发布](RELEASING.md)。

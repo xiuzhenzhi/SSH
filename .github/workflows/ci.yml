@@ -4,20 +4,57 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      full_validation:
+        description: Build packages and run the full installation/update matrix
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       source_ref:
         description: Exact commit selected by the release workflow
         required: false
         type: string
+      full_validation:
+        description: Include package and native installation validation
+        required: false
+        type: boolean
+        default: true
 permissions:
   contents: read
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ inputs.full_validation && 'full' || 'checks' }}
   cancel-in-progress: true
 jobs:
+  scope:
+    name: Changes and documentation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      go: ${{ steps.plan.outputs.go }}
+      web: ${{ steps.plan.outputs.web }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ inputs.source_ref || github.sha }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - id: plan
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          SOURCE_SHA: ${{ inputs.source_ref || github.sha }}
+          FULL_VALIDATION: ${{ inputs.full_validation == true }}
+        run: node scripts/ci-plan.mjs
+      - run: node scripts/check-docs.mjs
+      - run: node --test scripts/ci-plan.test.mjs scripts/release-version.test.mjs scripts/prepare-release.test.mjs
   go:
     name: Go / ${{ matrix.os }}
+    needs: scope
+    if: needs.scope.outputs.go == 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
@@ -35,7 +72,10 @@ jobs:
       - if: runner.os == 'Windows'
         shell: powershell
         run: ./scripts/test-windows-service.ps1
-      - run: go test ./...
+      - if: runner.os == 'Windows'
+        run: go test ./...
+      - if: runner.os == 'Linux'
+        run: go test -race ./...
       - run: go vet ./...
       - name: Verify domain-free setup and real Agent flow
         shell: bash
@@ -48,7 +88,6 @@ jobs:
           node scripts/test-direct-flow.mjs ".local/direct-flow/api$suffix" ".local/direct-flow/agent$suffix"
       - if: runner.os == 'Linux'
         run: |
-          go test -race ./cmd/agent ./internal/api ./internal/storage
           go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
           sh -n scripts/install-agent.sh
           sh -n scripts/uninstall-agent.sh
@@ -63,6 +102,8 @@ jobs:
         run: ./scripts/test-windows-installer.ps1
   postgres:
     name: PostgreSQL integration
+    needs: scope
+    if: needs.scope.outputs.go == 'true'
     timeout-minutes: 15
     runs-on: ubuntu-latest
     services:
@@ -92,6 +133,8 @@ jobs:
           GIN_MODE: release
   mysql:
     name: MySQL ${{ matrix.version }} / ${{ matrix.schema }}
+    needs: scope
+    if: needs.scope.outputs.go == 'true'
     timeout-minutes: 15
     runs-on: ubuntu-latest
     strategy:
@@ -128,6 +171,8 @@ jobs:
           GIN_MODE: release
   web:
     name: Vue build
+    needs: scope
+    if: needs.scope.outputs.web == 'true'
     timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
@@ -145,13 +190,17 @@ jobs:
           npm ci
           npm run build
           npm audit --audit-level=high
-      - run: node scripts/check-docs.mjs
-      - name: Test release version selection
-        run: node --test scripts/release-version.test.mjs scripts/prepare-release.test.mjs
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: inputs.full_validation == true
+        with:
+          name: sshguard-verified-web
+          path: web/dist
+          if-no-files-found: error
+          retention-days: 1
   build:
     name: Build release candidate
-    if: github.event_name != 'pull_request'
-    needs: [go, postgres, mysql, web]
+    if: inputs.full_validation == true && github.event_name != 'pull_request'
+    needs: [scope, go, postgres, mysql, web]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -167,9 +216,13 @@ jobs:
           node-version: '24'
           cache: npm
           cache-dependency-path: web/package-lock.json
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sshguard-verified-web
+          path: web/dist
       - run: |
-          node scripts/build-release.mjs amd64
-          node scripts/build-release.mjs arm64 --reuse-web
+          node scripts/build-release.mjs amd64 --reuse-web
+          node scripts/build-release.mjs arm64 --reuse-web --reuse-agents
           node scripts/check-agent-artifacts.mjs
           node scripts/check-agent-artifacts.mjs dist/sshguard-linux-arm64/web/downloads
           node scripts/package-release.mjs
@@ -246,23 +299,29 @@ jobs:
           compression-level: 0
   result:
     name: CI result
-    if: always()
-    needs: [go, postgres, mysql, web, build, native, artifacts]
+    if: always() && !cancelled()
+    needs: [scope, go, postgres, mysql, web, build, native, artifacts]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Require all applicable checks
         env:
           RESULTS: ${{ toJSON(needs) }}
-          EVENT_NAME: ${{ github.event_name }}
+          FULL_VALIDATION: ${{ inputs.full_validation == true && github.event_name != 'pull_request' }}
+          GO_REQUIRED: ${{ needs.scope.outputs.go }}
+          WEB_REQUIRED: ${{ needs.scope.outputs.web }}
         run: |
           node <<'NODE'
           const jobs = JSON.parse(process.env.RESULTS);
-          const pr = process.env.EVENT_NAME === 'pull_request';
-          const skippedOnPR = new Set(['build', 'native', 'artifacts']);
+          const full = process.env.FULL_VALIDATION === 'true';
+          const packageJobs = new Set(['build', 'native', 'artifacts']);
+          const backendJobs = new Set(['go', 'postgres', 'mysql']);
           let failed = false;
           for (const [name, job] of Object.entries(jobs)) {
-            const expected = pr && skippedOnPR.has(name) ? 'skipped' : 'success';
+            const skipped = (packageJobs.has(name) && !full) ||
+              (backendJobs.has(name) && process.env.GO_REQUIRED !== 'true') ||
+              (name === 'web' && process.env.WEB_REQUIRED !== 'true');
+            const expected = skipped ? 'skipped' : 'success';
             console.log(name + ': ' + job.result);
             if (job.result !== expected) failed = true;
           }

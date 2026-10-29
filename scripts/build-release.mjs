@@ -14,7 +14,17 @@ mkdirSync(`${out}/web/downloads`, {recursive:true});
 const version = process.env.SSHGUARD_VERSION || readFileSync('VERSION','utf8').trim();
 if (!/^[a-zA-Z0-9.+_-]{1,32}$/.test(version)) throw Error('Invalid version');
 execFileSync('go', ['build','-trimpath','-ldflags',`-s -w -X sshguard/internal/api.Version=${version}`,'-o',`${out}/sshguard-api`,'./cmd/api'], {stdio:'inherit',env:{...process.env,CGO_ENABLED:'0',GOOS:'linux',GOARCH:arch}});
-execFileSync(process.execPath,['scripts/build-agents.mjs',`${out}/web/downloads`],{stdio:'inherit'});
+if (process.argv.includes('--reuse-agents')) {
+  const source='dist/sshguard-linux-amd64';
+  if (arch!=='arm64' || readFileSync(`${source}/VERSION`,'utf8').trim()!==version) throw Error('Agent reuse requires the matching amd64 package built first');
+  execFileSync(process.execPath,['scripts/check-agent-artifacts.mjs',`${source}/web/downloads`],{stdio:'inherit'});
+  for(const os of ['linux','windows']) for(const cpu of ['amd64','arm64']) {
+    const name=`sshguard-agent-${os}-${cpu}${os==='windows'?'.exe':''}`;
+    for(const suffix of ['', '.sha256']) cpSync(`${source}/web/downloads/${name}${suffix}`,`${out}/web/downloads/${name}${suffix}`);
+  }
+} else {
+  execFileSync(process.execPath,['scripts/build-agents.mjs',`${out}/web/downloads`],{stdio:'inherit'});
+}
 // npm.cmd needs cmd.exe on Windows; arguments here are fixed literals.
 const npm = (args) => process.platform === 'win32' ? execFileSync('cmd.exe',['/d','/s','/c',`npm.cmd ${args.join(' ')}`],{cwd:'web',stdio:'inherit'}) : execFileSync('npm',args,{cwd:'web',stdio:'inherit'});
 if (!process.argv.includes('--reuse-web')) { npm(['ci','--no-audit','--no-fund']); npm(['run','build']); }

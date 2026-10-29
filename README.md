@@ -6,17 +6,17 @@
 
 在一个控制台查看谁在什么时间、从哪里登录了哪台服务器；对异常登录、连续认证失败和采集离线配置通知。适合需要集中审计多台 Windows / Linux 主机的运维团队。
 
-[一键部署](docs/QUICKSTART.md) · [Agent 安装更新](docs/AGENTS.md) · [告警配置](docs/ALERTING.md) · [生产验收](docs/PRODUCTION.md) · [Releases](https://github.com/xiuzhenzhi/SSH/releases) · [Actions](https://github.com/xiuzhenzhi/SSH/actions)
+[一键部署](docs/QUICKSTART.md) · [Agent 安装更新](docs/AGENTS.md) · [告警配置](docs/ALERTING.md) · [登录防护](docs/LOGIN-SECURITY.md) · [生产验收](docs/PRODUCTION.md) · [Releases](https://github.com/xiuzhenzhi/SSH/releases) · [Actions](https://github.com/xiuzhenzhi/SSH/actions)
 
 ## 功能
 
-- **安全概览**：在线资产、真实登录趋势、采集健康、待处理告警、通知投递状态；浅色响应式界面、实时刷新、减少动态效果偏好支持。
+- **安全概览**：在线资产、真实登录趋势、采集健康、待处理告警、通知投递状态；浅色 / 深色响应式界面、面积图过渡动画与时间范围、合并刷新、减少动态效果偏好支持。
 - **跨平台采集**：Windows OpenSSH/Operational，Ubuntu / Debian journal 或 auth.log，Alpine / Linux secure、messages；成功与失败认证、日志读取位置持久化。
-- **可靠上报**：HTTPS + WebSocket；先保存到本地队列，事务提交后确认；断线重连、HTTPS 回退、同一事件 ID 去重。
-- **检测与告警**：登录、root / Administrator 登录、认证失败阈值、Agent 离线、采集异常；分组、可信 CIDR、冷却时间、告警确认与健康恢复状态。
+- **可靠上报**：HTTPS + WebSocket；先保存到本地队列，事务提交后确认；安装时选择 1–30 秒上报、默认 5 秒，更新沿用原值；断线重连、HTTPS 回退、同一事件 ID 去重。
+- **检测与告警**：登录、root / Administrator 登录、认证失败阈值、Agent 离线、采集异常；分组、独立 IP 白名单与规则白名单、冷却时间、告警确认与健康恢复状态。
 - **全部六类渠道**：企业微信、钉钉、飞书、Telegram、SMTP、通用 Webhook；加密保存配置、测试通知、持久化投递队列、重试和失败记录。
 - **安装、更新和卸载**：后台生成安装/更新/卸载命令，支持管理员触发受限 Agent 更新；校验下载、保留身份、失败回退，无通用远程命令执行。中央平台支持原生部署向导或 Compose。
-- **权限与运维**：admin / operator / viewer、会话撤销、修改密码、操作审计、过期数据分批清理。
+- **权限与运维**：admin / operator / viewer、会话撤销、修改密码、含来源 IP / UA 的操作审计、过期数据分批清理。
 
 Agent 主动出站连接平台，不保存服务器 SSH 密码或私钥，不接收任意远程 Shell 指令。版本由仓库 VERSION 与 Release 标签控制；仅从成功的 Actions 构建或已发布 Release 安装。生产适用性须按 [验收清单](docs/PRODUCTION.md) 在自己的目标系统验证，验证范围见 [验证记录](docs/VALIDATION.md)。
 
@@ -28,7 +28,7 @@ Agent 主动出站连接平台，不保存服务器 SSH 密码或私钥，不接
 
 主控推荐 Ubuntu / Debian + systemd，默认直接通过 IP 和端口访问，无需域名、Docker 或 Nginx，Agent 也可使用同一 IP 地址接入。HTTPS、反代和外部数据库均为可选配置。私有仓库使用有权限的 GitHub 账号，先完成 gh auth login。
 
-**版本提示：SQLite 从 v0.3.1 开始支持。** 下方一键入口下载固定版本 `v0.3.8`，安装前确认 [Releases](https://github.com/xiuzhenzhi/SSH/releases) 中该版本已构建完成并包含安装包；也可按下方 Compose 步骤从源码构建。
+**版本提示：SQLite 从 v0.3.1 开始支持。** 下方一键入口下载固定版本 `v0.3.9`，安装前确认 [Releases](https://github.com/xiuzhenzhi/SSH/releases) 中该版本已构建完成并包含安装包；也可按下方 Compose 步骤从源码构建。
 
 ```sh
 git clone https://github.com/xiuzhenzhi/SSH.git

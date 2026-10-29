@@ -54,7 +54,15 @@ func testAgentStream(t *testing.T, handler http.Handler, db *storage.DB, serverI
 		t.Fatal("duplicate generated repeated alerts", count, e)
 	}
 	exchange("events", map[string]any{"events": []any{map[string]any{"event_id": "bad"}}}, 400)
-	exchange("heartbeat", map[string]any{"version": "stream-test"}, 200)
+	ack = exchange("heartbeat", map[string]any{"version": "stream-test"}, 200)
+	b, _ = json.Marshal(ack.Data)
+	var settings map[string]any
+	if e := json.Unmarshal(b, &settings); e != nil {
+		t.Fatal(e)
+	}
+	if _, found := settings["report_interval_seconds"]; found {
+		t.Fatal("WebSocket ACK must not reconfigure Agent")
+	}
 	// A browser origin must never bypass the native-only boundary.
 	rejected, resp, e := websocket.Dial(ctx, endpoint, &websocket.DialOptions{HTTPHeader: http.Header{"Authorization": []string{"Bearer " + credential}, "Origin": []string{"https://attacker.example"}}})
 	if rejected != nil {

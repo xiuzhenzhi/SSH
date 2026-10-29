@@ -15,6 +15,8 @@ test('manual release updates files and ignores releases from unrelated branches'
       VERSION: '0.3.1\n', 'cmd/agent/main.go': 'var version = "0.3.1"\n',
       'internal/api/routes.go': 'var Version = "0.3.1"\n',
       'scripts/quick-start.sh': 'version=${SSHGUARD_VERSION:-v0.3.1}\n',
+      'scripts/install-agent.sh': "RELEASE_VERSION='0.3.1'\n",
+      'scripts/install-agent.ps1': "$ReleaseVersion = '0.3.1'\n",
       'README.md': 'SQLite 从 v0.3.1 开始支持。固定版本 `v0.3.1`\n',
       'CHANGELOG.md': '# 更新日志\n\n## 0.3.1\n\n- SQLite\n',
       'docs/QUICKSTART.md': 'SSHGUARD_VERSION=v0.3.1 sh scripts/quick-start.sh\n',
@@ -43,6 +45,8 @@ const real = cp.execFileSync; cp.execFileSync = (cmd, args, options) => cmd === 
     assert.match(readFileSync(output, 'utf8'), /tag=v0\.3\.2/);
     assert.match(readFileSync(join(dir, 'README.md'), 'utf8'), /SQLite 从 v0\.3\.1.*固定版本 `v0\.3\.2`/);
     assert.match(readFileSync(join(dir, 'internal/api/routes.go'), 'utf8'), /"0\.3\.2"/);
+    assert.match(readFileSync(join(dir, 'scripts/install-agent.sh'), 'utf8'), /RELEASE_VERSION='0\.3\.2'/);
+    assert.match(readFileSync(join(dir, 'scripts/install-agent.ps1'), 'utf8'), /\$ReleaseVersion = '0\.3\.2'/);
     assert.match(readFileSync(join(dir, 'CHANGELOG.md'), 'utf8'), /## 0\.3\.2/);
     assert.match(readFileSync(join(dir, 'docs/RELEASE-NOTES.md'), 'utf8'), /^# SSHGuard v0\.3\.2/);
     assert.equal(git('tag', '--list', 'v0.3.2'), '', 'preparation alone must not push or create tags');

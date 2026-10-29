@@ -187,7 +187,18 @@ func Migrate(ctx context.Context, d *DB) error {
 		if e != nil {
 			return e
 		}
-		if d.Driver == "mysql" && (f.Name() == "004_alerting.sql" || f.Name() == "005_agent_updates.sql") {
+		if d.Driver == "mysql" && f.Name() == "009_install_interval.sql" {
+			var charset, collation string
+			if e = conn.QueryRowContext(ctx, `SELECT CHARACTER_SET_NAME,COLLATION_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='agent_enrollments' AND COLUMN_NAME='token_hash'`).Scan(&charset, &collation); e != nil {
+				return e
+			}
+			valid := regexp.MustCompile(`^[A-Za-z0-9_]+$`)
+			if !valid.MatchString(charset) || !valid.MatchString(collation) {
+				return fmt.Errorf("unsupported enrollment token collation")
+			}
+			b = []byte(strings.ReplaceAll(string(b), "token_hash varchar(64)", "token_hash varchar(64) CHARACTER SET "+charset+" COLLATE "+collation))
+		}
+		if d.Driver == "mysql" && (f.Name() == "004_alerting.sql" || f.Name() == "005_agent_updates.sql" || f.Name() == "006_agent_settings.sql") {
 			// Existing installs may use utf8mb4_bin or 0900 collations. Foreign
 			// key columns must match their actual referenced columns exactly.
 			for _, ref := range []struct{ table, column string }{{"servers", "server_id"}, {"users", "acknowledged_by"}} {
@@ -244,6 +255,10 @@ func Cleanup(ctx context.Context, d *DB) error {
 		{"sessions", "token_hash", "expires_at", now},
 		{"agent_enrollments", "token_hash", "expires_at", now},
 		{"login_attempts", "bucket_key", "window_start", now.Add(-24 * time.Hour)},
+		{"login_failures", "id", "occurred_at", now.Add(-5 * time.Minute)},
+		{"login_guards", "source_hash", "updated_at", now.Add(-25 * time.Hour)},
+		{"captcha_used", "token_hash", "expires_at", now},
+		{"agent_install_settings", "token_hash", "expires_at", now},
 	} {
 		rows, e := d.QueryContext(ctx, d.Bind("SELECT "+item.key+" FROM "+item.table+" WHERE "+item.predicate+"<? LIMIT 1000"), item.cutoff)
 		if e != nil {
@@ -267,7 +282,9 @@ func Cleanup(ctx context.Context, d *DB) error {
 			continue
 		}
 		marks := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
-		if _, e = d.Exec(ctx, "DELETE FROM "+item.table+" WHERE "+item.key+" IN ("+marks+")", ids...); e != nil {
+		// Recheck expiry: a concurrent login can refresh or block a selected source.
+		ids = append(ids, item.cutoff)
+		if _, e = d.Exec(ctx, "DELETE FROM "+item.table+" WHERE "+item.key+" IN ("+marks+") AND "+item.predicate+"<?", ids...); e != nil {
 			return e
 		}
 	}

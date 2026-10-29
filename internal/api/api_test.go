@@ -110,11 +110,15 @@ func TestIntegration(t *testing.T) {
 		t.Fatal(e)
 	}
 	handler := New(db, cfg)
+	remoteAddr := "192.0.2.1:1234"
 	call := func(method, path string, body any, cookie, agent string, origin bool, want int) (map[string]any, *httptest.ResponseRecorder) {
 		t.Helper()
 		b, _ := json.Marshal(body)
 		req := httptest.NewRequest(method, "http://localhost/api/v1"+path, bytes.NewReader(b))
+		req.RemoteAddr = remoteAddr
 		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("User-Agent", "SSHGuard integration browser")
+		req.Header.Set("X-Forwarded-For", "203.0.113.66")
 		if origin {
 			req.Header.Set("Origin", cfg.PublicURL)
 		}
@@ -223,6 +227,8 @@ func TestIntegration(t *testing.T) {
 	}
 	testAgentStream(t, handler, db, id, agent, event)
 	testDeliveryLeases(t, db)
+	testSettingsAndAllowlist(t, db, session, call)
+	testLoginProtection(t, db, cfg, session)
 	testHealthRecovery(t, db, id, agent)
 	channelBody := map[string]any{"name": "disabled local fixture", "kind": "webhook", "enabled": false, "config": map[string]string{"url": "https://127.0.0.1:1/fixture", "secret": "must-never-be-returned"}}
 	channelResult, _ := call("POST", "/channels", channelBody, session, "", true, 200)
@@ -260,6 +266,13 @@ func TestIntegration(t *testing.T) {
 		call("POST", "/servers/"+id+"/update", map[string]string{}, s, "", true, 403)
 		call("GET", "/channels", nil, s, "", false, 403)
 		call("GET", "/rules", nil, s, "", false, 403)
+		call("GET", "/ip-allowlist", nil, s, "", false, 403)
+		call("GET", "/auth/protection/settings", nil, s, "", false, 403)
+		call("PATCH", "/auth/protection/settings", map[string]any{}, s, "", true, 403)
+		call("GET", "/auth/blocked-ips", nil, s, "", false, 403)
+		call("DELETE", "/auth/blocked-ips/missing", nil, s, "", true, 403)
+		call("POST", "/ip-allowlist", map[string]any{"cidr": "192.0.2.1"}, s, "", true, 403)
+		call("DELETE", "/ip-allowlist/missing", nil, s, "", true, 403)
 		for _, route := range []struct{ method, path string }{
 			{"GET", "/users"}, {"POST", "/users"},
 			{"GET", "/channels/" + channelID}, {"POST", "/channels"}, {"PATCH", "/channels/" + channelID},
@@ -271,6 +284,7 @@ func TestIntegration(t *testing.T) {
 			call(route.method, route.path, map[string]any{}, s, "", true, 403)
 		}
 		if role == "viewer" {
+			call("PATCH", "/servers/"+id+"/settings", map[string]any{"report_interval_seconds": 1}, s, "", true, 404)
 			call("PATCH", "/servers/"+id, map[string]string{"name": "forbidden"}, s, "", true, 403)
 			call("POST", "/alerts/missing/acknowledge", map[string]any{}, s, "", true, 403)
 		}
@@ -313,6 +327,7 @@ func TestIntegration(t *testing.T) {
 	}
 	name := "missing" + uuid.NewString()
 	for i := 0; i < 11; i++ {
+		remoteAddr = fmt.Sprintf("198.51.100.%d:1234", i+1)
 		want := 401
 		if i == 10 {
 			want = 429

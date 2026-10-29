@@ -118,8 +118,7 @@ func (a *App) finishAgentUpdate(c *gin.Context) {
 		if n != 1 {
 			return errInvalidAgentMessage
 		}
-		_, e = tx.ExecContext(c.Request.Context(), a.db.Bind(`INSERT INTO audit_logs(actor_id,action,target) VALUES(NULL,?,?)`), "agent.update."+in.Status, c.GetString("server_id"))
-		return e
+		return a.writeAudit(c, tx, nil, "agent.update."+in.Status, c.GetString("server_id"))
 	})
 	if err != nil {
 		agentFailure(c, err)

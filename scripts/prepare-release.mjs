@@ -28,6 +28,8 @@ for (const [file, pattern, replacement] of [
   ['cmd/agent/main.go', /var version = "[^"]+"/, `var version = "${version}"`],
   ['internal/api/routes.go', /var Version = "[^"]+"/, `var Version = "${version}"`],
   ['scripts/quick-start.sh', /SSHGUARD_VERSION:-v[^}]+/, `SSHGUARD_VERSION:-${tag}`],
+  ['scripts/install-agent.sh', /RELEASE_VERSION='[^']+'/, `RELEASE_VERSION='${version}'`],
+  ['scripts/install-agent.ps1', /\$ReleaseVersion = '[^']+'/, `$$ReleaseVersion = '${version}'`],
 ]) {
   const source = readFileSync(file, 'utf8');
   if (!pattern.test(source)) throw Error('Missing version declaration: ' + file);

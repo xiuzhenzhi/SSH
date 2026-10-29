@@ -4,6 +4,9 @@ set -eu
 [ "${GITHUB_ACTIONS:-}" = true ] || { echo 'Disposable GitHub Actions VM only.' >&2; exit 1; }
 [ "$(id -u)" -eq 0 ] || exit 1
 if [ "${SSHGUARD_NATIVE_PROXY:-}" = standalone-http ]; then exec sh scripts/test-direct-install.sh "$1"; fi
+export SSHGUARD_TEST_DOWNLOADS=true
+mkdir -p /etc/systemd/system/sshguard-agent-update.service.d
+printf '[Service]\nEnvironment=GITHUB_ACTIONS=true\nEnvironment=SSHGUARD_TEST_DOWNLOADS=true\n' > /etc/systemd/system/sshguard-agent-update.service.d/ci-downloads.conf
 bundle=$(realpath "$1")
 tmp=$(mktemp -d)
 trap 'rm -rf -- "$tmp"' EXIT
@@ -104,7 +107,7 @@ node scripts/test-native-api.mjs verify-update
 download=/opt/sshguard/web/downloads/sshguard-agent-linux-amd64
 cp "$download" "$tmp/good-agent"
 cp "$download.sha256" "$tmp/good-hash"
-printf '#!/bin/sh\ncase "$1" in -version|-check) exit 0 ;; *) exit 1 ;; esac\n' > "$download"
+printf '#!/bin/sh\ncase "$1" in -version) echo "SSHGuard %s linux/amd64"; exit 0 ;; -check) exit 0 ;; *) exit 1 ;; esac\n' "$(cat "$bundle/VERSION")" > "$download"
 sha256sum "$download" > "$download.sha256"
 if sh "$bundle/web/downloads/install-agent.sh" "$origin" --update; then echo 'Broken Agent update unexpectedly succeeded' >&2; exit 1; fi
 systemctl is-active --quiet sshguard-agent
@@ -134,17 +137,19 @@ echo 'Native deploy, HTTPS, real systemd Agent install/update/idempotence/rollba
 SSHGUARD_TEST_SERVER_NAME=CI-Alpine-OpenRC node scripts/test-native-api.mjs enroll
 SSHGUARD_ENROLLMENT_TOKEN=$(cat "$tmp/enrollment")
 export SSHGUARD_ENROLLMENT_TOKEN
+alpine_image=alpine:3.21
+if [ "$proxy_mode" = standalone ]; then alpine_image=alpine:3.22; fi
 pulled=false
 for attempt in 1 2 3; do
-    if docker pull alpine:3.22; then pulled=true; break; fi
+  if docker pull "$alpine_image"; then pulled=true; break; fi
     sleep 5
 done
 "$pulled" || { echo 'Alpine test image download failed after retries' >&2; exit 1; }
 docker run --rm --network host --add-host guard.sshguard.test:127.0.0.1 \
-    -e SSHGUARD_ENROLLMENT_TOKEN -e SSHGUARD_TEST_ORIGIN \
+    -e SSHGUARD_ENROLLMENT_TOKEN -e SSHGUARD_TEST_ORIGIN -e GITHUB_ACTIONS=true -e SSHGUARD_TEST_DOWNLOADS=true \
     -v "$(pwd)/scripts:/ci:ro" \
     -v "$tmp/cert.pem:/usr/local/share/ca-certificates/sshguard-ci.crt:ro" \
-    alpine:3.22 sh /ci/test-alpine-agent.sh
+    "$alpine_image" sh /ci/test-alpine-agent.sh
 unset SSHGUARD_ENROLLMENT_TOKEN
 node scripts/test-native-api.mjs verify-alpine
 test -s /usr/local/lib/sshguard/uninstall-agent.sh

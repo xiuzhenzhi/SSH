@@ -72,6 +72,9 @@ try {
     assert(command.includes(origin));
     assert(command.includes(platform === 'windows' ? '-AllowInsecureHttp' : '--allow-insecure-http'));
     assert(!command.includes('attacker.example'));
+    assert(command.includes('https://github.com/xiuzhenzhi/SSH/releases/download/'));
+    assert(command.includes("--proto '=https'"));
+    assert(!command.includes(origin+'/downloads/'));
   }
   const enrollment = registration.commands.ubuntu.match(/'([a-f0-9]{64})'/)?.[1];
   assert(enrollment,'Generated enrollment token missing');

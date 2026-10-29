@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -50,28 +51,43 @@ func Bootstrap(ctx context.Context, d *storage.DB, c Config) error {
 }
 func (a *App) login(c *gin.Context) {
 	var in struct {
-		Username string `json:"username" binding:"required,max=64"`
-		Password string `json:"password" binding:"required,max=72"`
+		Username string        `json:"username" binding:"required,max=64"`
+		Password string        `json:"password" binding:"required,max=72"`
+		Captcha  CaptchaAnswer `json:"captcha"`
 	}
 	if !bind(c, &in) {
 		return
 	}
+	if len(in.Password) > 72 {
+		bad(c, 400, "密码不能超过 72 字节")
+		return
+	}
+	ip := sourceIP(c)
+	until, err := a.loginBlocked(c.Request.Context(), ip)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	if !until.IsZero() {
+		denyBlocked(c, until)
+		return
+	}
+	if err = a.checkCaptcha(c, in.Captcha, ip); err != nil {
+		if errors.Is(err, errCaptchaUnavailable) {
+			bad(c, 503, "人机验证暂时不可用，请稍后重试")
+			return
+		}
+		a.failedLogin(c, ip, "人机验证无效或已过期，请重新验证", 400)
+		return
+	}
 	// Fixed 15-minute account bucket is shared by replicas and independent of proxy headers.
 	key := hash(strings.ToLower(in.Username) + time.Now().UTC().Truncate(15*time.Minute).Format(time.RFC3339))
-	q := `INSERT INTO login_attempts(bucket_key,attempts,window_start) VALUES(?,1,?) ON CONFLICT(bucket_key) DO UPDATE SET attempts=login_attempts.attempts+1`
-	if a.db.Driver == "mysql" {
-		q = `INSERT INTO login_attempts(bucket_key,attempts,window_start) VALUES(?,1,?) ON DUPLICATE KEY UPDATE attempts=attempts+1`
-	}
-	if _, e := a.db.Exec(c.Request.Context(), q, key, time.Now().UTC()); e != nil {
-		fail(c, e)
-		return
-	}
 	var attempts int
-	if e := a.db.Row(c.Request.Context(), `SELECT attempts FROM login_attempts WHERE bucket_key=?`, key).Scan(&attempts); e != nil {
+	if e := a.db.Row(c.Request.Context(), `SELECT attempts FROM login_attempts WHERE bucket_key=?`, key).Scan(&attempts); e != nil && e != sql.ErrNoRows {
 		fail(c, e)
 		return
 	}
-	if attempts > 10 {
+	if attempts >= 10 {
 		c.Header("Retry-After", "900")
 		bad(c, 429, "登录尝试过多，请稍后再试")
 		return
@@ -88,11 +104,27 @@ func (a *App) login(c *gin.Context) {
 	}
 	match := bcrypt.CompareHashAndPassword([]byte(pw), []byte(in.Password))
 	if e == sql.ErrNoRows || match != nil {
-		bad(c, 401, "用户名或密码错误")
+		q := `INSERT INTO login_attempts(bucket_key,attempts,window_start) VALUES(?,1,?) ON CONFLICT(bucket_key) DO UPDATE SET attempts=login_attempts.attempts+1`
+		if a.db.Driver == "mysql" {
+			q = `INSERT INTO login_attempts(bucket_key,attempts,window_start) VALUES(?,1,?) ON DUPLICATE KEY UPDATE attempts=attempts+1`
+		}
+		if _, e := a.db.Exec(c.Request.Context(), q, key, time.Now().UTC()); e != nil {
+			fail(c, e)
+			return
+		}
+		a.failedLogin(c, ip, "用户名或密码错误", 401)
 		return
 	}
 	t := token()
 	if e = a.mutate(c, u.ID, "auth.login", u.ID, func(tx *sql.Tx) error {
+		blocked, e := a.lockLoginGuard(c.Request.Context(), tx, ip, time.Now().UTC())
+		if e != nil {
+			return e
+		}
+		if blocked.Valid && blocked.Time.After(time.Now()) {
+			until = blocked.Time
+			return errLoginBlocked
+		}
 		var current string
 		if e := tx.QueryRowContext(c.Request.Context(), a.db.Bind(`SELECT password_hash FROM users WHERE id=? FOR UPDATE`), u.ID).Scan(&current); e != nil {
 			return e
@@ -100,9 +132,13 @@ func (a *App) login(c *gin.Context) {
 		if current != pw {
 			return sql.ErrNoRows
 		}
-		_, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)`), hash(t), u.ID, time.Now().UTC().Add(12*time.Hour))
+		_, e = tx.ExecContext(c.Request.Context(), a.db.Bind(`INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)`), hash(t), u.ID, time.Now().UTC().Add(12*time.Hour))
 		return e
 	}); e != nil {
+		if errors.Is(e, errLoginBlocked) {
+			denyBlocked(c, until)
+			return
+		}
 		fail(c, e)
 		return
 	}
@@ -118,7 +154,7 @@ func (a *App) changePassword(c *gin.Context) {
 	if !bind(c, &in) {
 		return
 	}
-	if len(in.New) < 12 || len(in.New) > 72 {
+	if len(in.Current) > 72 || len(in.New) < 12 || len(in.New) > 72 {
 		bad(c, 400, "新密码必须为 12–72 字节")
 		return
 	}

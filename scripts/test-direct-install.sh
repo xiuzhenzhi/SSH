@@ -2,6 +2,9 @@
 # Only invoked on a disposable Actions VM.
 set -eu
 [ "${GITHUB_ACTIONS:-}" = true ] && [ "$(id -u)" -eq 0 ] || exit 1
+export SSHGUARD_TEST_DOWNLOADS=true
+mkdir -p /etc/systemd/system/sshguard-agent-update.service.d
+printf '[Service]\nEnvironment=GITHUB_ACTIONS=true\nEnvironment=SSHGUARD_TEST_DOWNLOADS=true\n' > /etc/systemd/system/sshguard-agent-update.service.d/ci-downloads.conf
 bundle=$(realpath "$1")
 tmp=$(mktemp -d)
 trap 'rm -rf -- "$tmp"' EXIT

@@ -65,3 +65,16 @@ GET /api/v1/health 返回 status、database、phase、version，不返回连接�
 - `POST /api/v1/auth/password`：已登录用户提交 `current_password`、`new_password`（12–72 字节），成功后全部旧会话失效，需重新登录。
 - 心跳接受可选 `version`（最多 32 字符），更新服务器 Agent 版本；旧版空对象仍兼容。
 - 统计摘要返回 `version`；请求上下文 20 秒超时。登录/改密共享每进程每分钟 60 次预算；登录另有数据库级账号窗口限速。
+
+## v0.3.9 配置、审计与趋势
+
+- `POST /servers/:id/enrollment`（admin）：可带 `{"report_interval_seconds":5}`，范围 1–30；设置绑定单次凭证，仅在注册安装时写入。服务器新增 / 编辑拒绝该字段，没有运行时间隔编辑接口。
+- 注册响应返回安装 `report_interval_seconds`；HTTP / WebSocket 心跳 ACK 只确认接收，不下发配置。心跳可带实际间隔（旧版省略或 0）及最多 16 个有效 `ip_addresses`；无效值拒绝整条心跳。
+- 服务器列表返回安装 / 实际间隔及 JSON 字符串 `ip_addresses`。Agent 不会推断 NAT 后的公网出口。
+- `GET /ip-allowlist`、`POST /ip-allowlist`、`DELETE /ip-allowlist/:id` 仅 admin；新增 body 为 `{"cidr":"192.0.2.1","notes":"运维出口"}`。支持 IP 或 CIDR，规范化重复 / 数量上限返回 409。白名单只抑制新 SSH 事件告警，不丢弃事件。
+- `GET /audit-logs` 增加 `source_ip`、`user_agent`，历史记录可能为空。后端保留稳定动作标识，前端显示中文。
+- `GET /dashboard/overview?range=24h|7d|14d|30d` 返回对应 24 个小时 / 7、14、30 个 UTC 日桶；不支持的范围返回 400。统计和摘要共享每进程最多 5 个键、5 秒缓存，不按用户或任意输入无限建缓存。
+
+- `GET /auth/protection` 公开返回验证码类型和站点标识；`GET/PATCH /auth/protection/settings` 仅 admin。保存提交 provider（none / turnstile / recaptcha / geetest）、site_key、secret、hostnames、current_password，密钥只写不回显。
+- 登录 body 增加可选 `captcha`：Turnstile / Google 为 `{token}`，极验为 `{lot_number,captcha_output,pass_token,gen_time}`；启用验证时服务端强制检查。
+- `GET /auth/blocked-ips` 与 `DELETE /auth/blocked-ips/:id` 仅 admin，解除会清空本轮失败计数并审计。第 5 次 60 秒窗口内登录错误返回 429；封禁 24 小时，Retry-After 为剩余秒数。第三方故障返回 503，不计入错误。

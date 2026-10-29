@@ -18,14 +18,15 @@ import (
 	"time"
 )
 
-var version = "0.3.8"
+var version = "0.3.9"
 
 type Config struct {
-	Endpoint          string `json:"endpoint"`
-	AllowInsecureHTTP bool   `json:"allow_insecure_http,omitempty"`
-	Token             string `json:"token"`
-	ServerID          string `json:"server_id"`
-	LogFile           string `json:"log_file,omitempty"`
+	Endpoint              string `json:"endpoint"`
+	AllowInsecureHTTP     bool   `json:"allow_insecure_http,omitempty"`
+	Token                 string `json:"token"`
+	ServerID              string `json:"server_id"`
+	LogFile               string `json:"log_file,omitempty"`
+	ReportIntervalSeconds int    `json:"report_interval_seconds,omitempty"`
 }
 
 var client = &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
@@ -141,7 +142,7 @@ func loadConfig(path string) (Config, error) {
 	if e = json.Unmarshal(b, &c); e != nil {
 		return c, e
 	}
-	if !validEndpoint(c.Endpoint, c.AllowInsecureHTTP) || !validToken(c.Token) || c.ServerID == "" {
+	if !validEndpoint(c.Endpoint, c.AllowInsecureHTTP) || !validToken(c.Token) || c.ServerID == "" || c.ReportIntervalSeconds < 0 || c.ReportIntervalSeconds > 30 {
 		return c, fmt.Errorf("invalid agent config: valid origin, explicit HTTP opt-in, server_id and token required")
 	}
 	return c, nil

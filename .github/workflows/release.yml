@@ -46,7 +46,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add VERSION cmd/agent/main.go internal/api/routes.go scripts/quick-start.sh README.md CHANGELOG.md docs/QUICKSTART.md docs/INSTALL-NATIVE.md docs/RELEASING.md docs/RELEASE-NOTES.md
+          git add VERSION cmd/agent/main.go internal/api/routes.go scripts/quick-start.sh scripts/install-agent.sh scripts/install-agent.ps1 README.md CHANGELOG.md docs/QUICKSTART.md docs/INSTALL-NATIVE.md docs/RELEASING.md docs/RELEASE-NOTES.md
           git diff --cached --check
           git commit -m "release: prepare SSHGuard $RELEASE_TAG"
           git tag -a "$RELEASE_TAG" -m "SSHGuard $RELEASE_TAG"

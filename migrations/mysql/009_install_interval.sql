@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS agent_install_settings (token_hash varchar(64) PRIMARY KEY, report_interval_seconds integer NOT NULL, expires_at datetime(6) NOT NULL, INDEX agent_install_expiry(expires_at)) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

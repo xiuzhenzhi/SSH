@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/hex"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"sshguard/internal/originurl"
@@ -19,6 +20,7 @@ type Config struct {
 	AllowInsecureHTTP                                                    bool
 	EncryptionKey                                                        string
 	NotificationAllowedHosts                                             []string
+	TrustedProxyCIDRs                                                    []string
 	EventRetentionDays, AlertRetentionDays, AuditRetentionDays           int
 }
 
@@ -26,6 +28,23 @@ func LoadConfig() (Config, error) {
 	c := Config{Driver: os.Getenv("DB_DRIVER"), DatabaseURL: os.Getenv("DATABASE_URL"), PublicURL: strings.TrimRight(os.Getenv("PUBLIC_URL"), "/"), Listen: os.Getenv("LISTEN_ADDR"), AdminUsername: os.Getenv("ADMIN_USERNAME"), AdminPassword: os.Getenv("ADMIN_PASSWORD"), SecureCookie: true}
 	c.EncryptionKey = os.Getenv("ENCRYPTION_KEY")
 	c.AllowInsecureHTTP = os.Getenv("ALLOW_INSECURE_HTTP") == "true"
+	c.TrustedProxyCIDRs = []string{"127.0.0.1/32", "::1/128"}
+	if raw := os.Getenv("TRUSTED_PROXY_CIDRS"); raw != "" {
+		c.TrustedProxyCIDRs = nil
+		if raw != "none" {
+			for _, value := range strings.Split(raw, ",") {
+				value = strings.TrimSpace(value)
+				_, network, err := net.ParseCIDR(value)
+				if err != nil {
+					return c, fmt.Errorf("TRUSTED_PROXY_CIDRS must contain IP CIDR ranges")
+				}
+				if ones, _ := network.Mask.Size(); ones == 0 {
+					return c, fmt.Errorf("TRUSTED_PROXY_CIDRS must not trust the entire Internet")
+				}
+				c.TrustedProxyCIDRs = append(c.TrustedProxyCIDRs, value)
+			}
+		}
+	}
 	if os.Getenv("WEB_SETUP") == "true" {
 		c.SetupFile = os.Getenv("SETUP_CONFIG_FILE")
 		if c.SetupFile == "" {

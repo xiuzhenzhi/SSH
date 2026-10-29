@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS audit_context (audit_id bigint PRIMARY KEY REFERENCES audit_logs(id) ON DELETE CASCADE, source_ip varchar(45) NOT NULL DEFAULT '', user_agent varchar(512) NOT NULL DEFAULT '');

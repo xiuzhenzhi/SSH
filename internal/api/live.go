@@ -89,6 +89,8 @@ func (a *App) live(c *gin.Context) {
 	session, _ := c.Cookie("sshguard_session")
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
+	refresh := time.NewTicker(5 * time.Second)
+	defer refresh.Stop()
 	write := func() error {
 		writeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
@@ -101,9 +103,14 @@ func (a *App) live(c *gin.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-updates:
-			if write() != nil {
-				return
+		case <-refresh.C:
+			// Keep one buffered invalidation per browser, independent of Agent count.
+			select {
+			case <-updates:
+				if write() != nil {
+					return
+				}
+			default:
 			}
 		case <-ticker.C:
 			checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)

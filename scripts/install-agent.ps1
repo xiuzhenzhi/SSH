@@ -6,6 +6,7 @@ param(
     [switch]$Update,
     [switch]$AllowInsecureHttp
 )
+$ReleaseVersion = '0.3.9'
 $ErrorActionPreference = 'Stop'
 if ($Update -and $EnrollmentToken) { throw 'Choose Update or EnrollmentToken, not both.' }
 if (-not $Update -and -not $EnrollmentToken) { throw 'EnrollmentToken is required for installation.' }
@@ -14,6 +15,21 @@ $origin = [Uri]$Endpoint
 if (($origin.Scheme -ne 'https' -and -not ($origin.Scheme -eq 'http' -and $AllowInsecureHttp)) -or -not $origin.Host -or $origin.UserInfo -or $origin.Query -or $origin.Fragment -or $origin.AbsolutePath -ne '/' -or $origin.Port -lt 1 -or $origin.Port -gt 65535) { throw 'Endpoint must be an HTTPS origin; HTTP requires -AllowInsecureHttp.' }
 if ($origin.Scheme -eq 'http') { Write-Output 'Direct HTTP: traffic is unencrypted. Use a trusted network or configure HTTPS.' }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$targetVersion = if ($env:SSHGUARD_EXPECTED_VERSION) { $env:SSHGUARD_EXPECTED_VERSION } else { $ReleaseVersion }
+if ($targetVersion.Length -gt 32 -or $targetVersion -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$') { throw 'Invalid release version.' }
+$artifactBase = "https://github.com/xiuzhenzhi/SSH/releases/download/v$targetVersion"
+$artifactProtocol = '=https'
+if ($env:SSHGUARD_TEST_DOWNLOADS -eq 'true') {
+    if ($env:GITHUB_ACTIONS -ne 'true' -or $origin.Host -notin @('localhost','127.0.0.1','guard.sshguard.test')) { throw 'Test download source requires the disposable CI environment.' }
+    $artifactBase = "$Endpoint/downloads"
+    if ($origin.Scheme -eq 'http') { $artifactProtocol = '=http' }
+}
+$curlExe = Join-Path ([Environment]::SystemDirectory) 'curl.exe'
+if (-not (Test-Path -LiteralPath $curlExe)) { throw 'Windows system curl.exe is required. Use a supported Windows 10/11 or Server 2019+ installation.' }
+function Get-ReleaseAsset([string]$Name,[string]$OutFile,[int]$MaxBytes,[int]$Timeout) {
+    & $curlExe --proto $artifactProtocol --proto-redir '=https' --tlsv1.2 --connect-timeout 15 --max-time $Timeout --max-redirs 5 --max-filesize $MaxBytes -fLsS "$artifactBase/$Name" -o $OutFile
+    if ($LASTEXITCODE -ne 0) { throw 'GitHub release download failed; service has not been replaced.' }
+}
 $osArchitecture = $env:PROCESSOR_ARCHITEW6432
 if (-not $osArchitecture) { $osArchitecture = $env:PROCESSOR_ARCHITECTURE }
 switch ($osArchitecture) { 'AMD64' { $arch='amd64' } 'ARM64' { $arch='arm64' } default { throw 'Windows amd64 / arm64 only.' } }
@@ -139,14 +155,14 @@ $replaceBackup = Join-Path $staging 'replaced.exe'
 $keepBackup = $false
 try {
     if ($Update -and (-not $service -or -not (Test-Path -LiteralPath $config) -or -not (Test-Path -LiteralPath $exe))) { throw 'Agent not installed; generate an installation command.' }
-    Invoke-WebRequest -UseBasicParsing -TimeoutSec 60 -MaximumRedirection 0 -Uri "$Endpoint/downloads/uninstall-agent.ps1" -OutFile (Join-Path $staging 'uninstall-agent.ps1')
-    Invoke-WebRequest -UseBasicParsing -TimeoutSec 180 -MaximumRedirection 0 -Uri "$Endpoint/downloads/sshguard-agent-windows-$arch.exe" -OutFile $download
-    Invoke-WebRequest -UseBasicParsing -TimeoutSec 30 -MaximumRedirection 0 -Uri "$Endpoint/downloads/sshguard-agent-windows-$arch.exe.sha256" -OutFile $checksum
+    Get-ReleaseAsset 'uninstall-agent.ps1' (Join-Path $staging 'uninstall-agent.ps1') 1048576 60
+    Get-ReleaseAsset "sshguard-agent-windows-$arch.exe" $download 134217728 180
+    Get-ReleaseAsset "sshguard-agent-windows-$arch.exe.sha256" $checksum 4096 30
     $expected = ((Get-Content -LiteralPath $checksum -Raw).Trim() -split '\s+')[0]
     if ($expected -notmatch '^[a-f0-9]{64}$' -or (Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash -ne $expected) { throw 'Agent checksum mismatch.' }
     & $download -version
     if ($LASTEXITCODE -ne 0) { throw 'Downloaded Agent cannot run on this machine.' }
-    if ($env:SSHGUARD_EXPECTED_VERSION -and ((& $download -version) -ne "SSHGuard $env:SSHGUARD_EXPECTED_VERSION windows/$arch")) { throw 'Platform version changed; refusing mismatched update.' }
+    if ((& $download -version) -ne "SSHGuard $targetVersion windows/$arch") { throw 'Release version differs; refusing mismatched update.' }
     if ($Update) {
         & $download -check -endpoint $Endpoint -config $config
         if ($LASTEXITCODE -ne 0) { throw 'Existing credentials or endpoint check failed; service unchanged.' }

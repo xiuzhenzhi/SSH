@@ -60,7 +60,7 @@ func (a *App) serveWeb(c *gin.Context) {
 	}
 	c.Header("X-Frame-Options", "DENY")
 	c.Header("Referrer-Policy", "same-origin")
-	c.Header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
+	c.Header("Content-Security-Policy", "default-src 'self'; script-src 'self' https://challenges.cloudflare.com/turnstile/ https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/ https://static.geetest.com/ https://static.geevisit.com/ https://gcaptcha4.geetest.com/ https://gcaptcha4.geevisit.com/; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://static.geetest.com https://static.geevisit.com https://gcaptcha4.geetest.com; connect-src 'self' https://challenges.cloudflare.com https://www.google.com/recaptcha/ https://gcaptcha4.geetest.com https://gcaptcha4.geevisit.com; frame-src 'self' https://challenges.cloudflare.com https://www.google.com/recaptcha/ https://recaptcha.google.com/recaptcha/ https://static.geetest.com https://static.geevisit.com; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
 	if strings.HasPrefix(name, "downloads/") {
 		c.Header("Content-Type", "application/octet-stream")
 	}

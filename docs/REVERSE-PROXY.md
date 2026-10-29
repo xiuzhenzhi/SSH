@@ -44,3 +44,11 @@ Nginx 的 `$host` 不带客户端端口；主控使用显式 `PUBLIC_URL` 做同
 新服务器可显式选择 `--proxy managed`，使用 [完整原生模板](../deploy/native/nginx.conf)。升级不会覆盖你已有的托管站点配置，模板变化需手动合并、验证并重载。Compose 使用 [HTTPS 模板](../deploy/nginx.conf) 或 [本机 HTTP 模板](../deploy/nginx.local.conf)，配置见 [Compose 安装](INSTALL-COMPOSE.md)。
 
 参考：[Nginx WebSocket 代理](https://nginx.org/en/docs/http/websocket.html)、[proxy_set_header](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_set_header)、[proxy_read_timeout](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_read_timeout)。
+
+## 审计来源 IP 与可信代理
+
+新审计记录包含 `source_ip` 和 `user_agent`，UA 最多保留 512 个字符，历史记录显示空值。直连使用连接来源；默认只信任 `127.0.0.1/32,::1/128` 的转发头，因此本机原生 Nginx 可记录真实客户端 IP。其他地址发来的伪造 `X-Forwarded-For` 不被信任。
+
+跨机器代理 / Docker Compose 请在 API 环境设置 `TRUSTED_PROXY_CIDRS`，例如准确代理 IP 的 `172.28.0.2/32`，不要直接信任所有互联网地址。Compose 已透传此变量；容器重建后地址可能变化，建议为专用代理设置固定地址，或仅信任隔离代理网络的准确 CIDR，同时限制 API 的可访问范围。Nginx 模板以实际连接来源覆盖转发头；多层代理需在边缘可信地解析原始地址，再按真实链路配置。
+
+默认回环信任意味着本机其他进程可提交转发头；需要禁用此信任时设置 `TRUSTED_PROXY_CIDRS=none`，此时记录连接来源。代理信任不影响 PUBLIC_URL / Origin 的独立校验。

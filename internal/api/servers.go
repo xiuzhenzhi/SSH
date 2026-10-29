@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"net/url"
 	"strings"
 	"time"
 )
 
-const serverColumns = `id,name,hostname,distribution,group_name,notes,agent_version,last_seen_at,created_at,CASE WHEN revoked=true THEN 'revoked' WHEN last_seen_at IS NULL THEN 'pending' WHEN last_seen_at>? THEN 'online' ELSE 'offline' END AS status,(SELECT collector_state FROM agent_health WHERE server_id=servers.id) AS collector_state,(SELECT collector_message FROM agent_health WHERE server_id=servers.id) AS collector_message,(SELECT queue_depth FROM agent_health WHERE server_id=servers.id) AS queue_depth,(SELECT rejected_events FROM agent_health WHERE server_id=servers.id) AS rejected_events,(SELECT status FROM agent_updates WHERE server_id=servers.id) AS update_status,(SELECT updater_seen_at FROM agent_updates WHERE server_id=servers.id) AS updater_seen_at,(SELECT target_version FROM agent_updates WHERE server_id=servers.id) AS update_target,(SELECT expires_at FROM agent_updates WHERE server_id=servers.id) AS update_expires_at`
+const serverColumns = `id,name,hostname,distribution,group_name,notes,agent_version,last_seen_at,created_at,CASE WHEN revoked=true THEN 'revoked' WHEN last_seen_at IS NULL THEN 'pending' WHEN last_seen_at>? THEN 'online' ELSE 'offline' END AS status,(SELECT collector_state FROM agent_health WHERE server_id=servers.id) AS collector_state,(SELECT collector_message FROM agent_health WHERE server_id=servers.id) AS collector_message,(SELECT queue_depth FROM agent_health WHERE server_id=servers.id) AS queue_depth,(SELECT rejected_events FROM agent_health WHERE server_id=servers.id) AS rejected_events,(SELECT status FROM agent_updates WHERE server_id=servers.id) AS update_status,(SELECT updater_seen_at FROM agent_updates WHERE server_id=servers.id) AS updater_seen_at,(SELECT target_version FROM agent_updates WHERE server_id=servers.id) AS update_target,(SELECT expires_at FROM agent_updates WHERE server_id=servers.id) AS update_expires_at,COALESCE((SELECT report_interval_seconds FROM server_settings WHERE server_id=servers.id),5) AS report_interval_seconds,COALESCE((SELECT reported_interval_seconds FROM server_settings WHERE server_id=servers.id),0) AS reported_interval_seconds,(SELECT ip_addresses FROM server_settings WHERE server_id=servers.id) AS ip_addresses`
 
 func (a *App) servers(c *gin.Context) {
 	q := "%" + c.Query("q") + "%"
@@ -29,11 +30,16 @@ func (a *App) server(c *gin.Context) {
 }
 func (a *App) saveServer(c *gin.Context) {
 	var in struct {
-		Name  string `json:"name" binding:"required,max=128"`
-		Group string `json:"group_name" binding:"max=64"`
-		Notes string `json:"notes" binding:"max=1024"`
+		Name     string `json:"name" binding:"required,max=128"`
+		Group    string `json:"group_name" binding:"max=64"`
+		Notes    string `json:"notes" binding:"max=1024"`
+		Interval *int   `json:"report_interval_seconds" binding:"omitempty,min=1,max=30"`
 	}
 	if !bind(c, &in) {
+		return
+	}
+	if in.Interval != nil {
+		bad(c, 400, "上报间隔只能在安装时设置")
 		return
 	}
 	in.Name = strings.TrimSpace(in.Name)
@@ -51,14 +57,19 @@ func (a *App) saveServer(c *gin.Context) {
 	e := a.mutate(c, c.MustGet("user").(User).ID, action, id, func(tx *sql.Tx) error {
 		if create {
 			_, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`INSERT INTO servers(id,name,group_name,notes) VALUES(?,?,?,?)`), id, in.Name, in.Group, in.Notes)
-			return e
+			if e != nil {
+				return e
+			}
+		} else {
+			var exists string
+			if e := tx.QueryRowContext(c.Request.Context(), a.db.Bind(`SELECT id FROM servers WHERE id=? FOR UPDATE`), id).Scan(&exists); e != nil {
+				return e
+			}
+			if _, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`UPDATE servers SET name=?,group_name=?,notes=? WHERE id=?`), in.Name, in.Group, in.Notes, id); e != nil {
+				return e
+			}
 		}
-		var exists string
-		if e := tx.QueryRowContext(c.Request.Context(), a.db.Bind(`SELECT id FROM servers WHERE id=? FOR UPDATE`), id).Scan(&exists); e != nil {
-			return e
-		}
-		_, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`UPDATE servers SET name=?,group_name=?,notes=? WHERE id=?`), in.Name, in.Group, in.Notes, id)
-		return e
+		return nil
 	})
 	if e != nil {
 		fail(c, e)
@@ -68,11 +79,9 @@ func (a *App) saveServer(c *gin.Context) {
 }
 func shellQuote(s string) string      { return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'" }
 func powershellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
-func downloadProtocol(origin string) string {
-	if strings.HasPrefix(origin, "http://") {
-		return "=http"
-	}
-	return "=https"
+
+func agentAsset(name string) string {
+	return "https://github.com/xiuzhenzhi/SSH/releases/download/" + url.PathEscape("v"+Version) + "/" + url.PathEscape(name)
 }
 func installCommands(origin, t string) map[string]string {
 	linuxOption, windowsOption := "", ""
@@ -80,12 +89,22 @@ func installCommands(origin, t string) map[string]string {
 		linuxOption, windowsOption = " --allow-insecure-http", " -AllowInsecureHttp"
 	}
 	linux := func(privilege string) string {
-		return fmt.Sprintf(`(f=$(mktemp) && trap 'rm -f "$f"' EXIT && curl --proto %s --tlsv1.2 --connect-timeout 15 --max-time 60 -fsS %s -o "$f" && %ssh "$f" %s %s%s)`, shellQuote(downloadProtocol(origin)), shellQuote(origin+"/downloads/install-agent.sh"), privilege, shellQuote(origin), shellQuote(t), linuxOption)
+		return fmt.Sprintf(`(f=$(mktemp) && trap 'rm -f "$f"' EXIT && curl --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 15 --max-time 60 --max-redirs 5 --max-filesize 1048576 -fLsS %s -o "$f" && %ssh "$f" %s %s%s)`, shellQuote(agentAsset("install-agent.sh")), privilege, shellQuote(origin), shellQuote(t), linuxOption)
 	}
-	windows := fmt.Sprintf(`[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $f=Join-Path $env:TEMP ([guid]::NewGuid().ToString()+'.ps1'); try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 60 -MaximumRedirection 0 -Uri %s -OutFile $f; if (-not $?) { throw 'Installer download failed' }; & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $f -Endpoint %s -EnrollmentToken %s%s; if ($LASTEXITCODE -ne 0) { throw 'Agent installation/update failed' } } finally { if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f } }`, powershellQuote(origin+"/downloads/install-agent.ps1"), powershellQuote(origin), powershellQuote(t), windowsOption)
+	windows := fmt.Sprintf(`$f=Join-Path $env:TEMP ([guid]::NewGuid().ToString()+'.ps1'); $curl=Join-Path ([Environment]::SystemDirectory) 'curl.exe'; $shell=Join-Path ([Environment]::SystemDirectory) 'WindowsPowerShell\v1.0\powershell.exe'; try { & $curl --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 15 --max-time 60 --max-redirs 5 --max-filesize 1048576 -fLsS %s -o $f; if ($LASTEXITCODE -ne 0) { throw 'GitHub installer download failed' }; & $shell -NoProfile -File $f -Endpoint %s -EnrollmentToken %s%s; if ($LASTEXITCODE -ne 0) { throw 'Agent installation/update failed' } } finally { if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f } }`, powershellQuote(agentAsset("install-agent.ps1")), powershellQuote(origin), powershellQuote(t), windowsOption)
 	return map[string]string{"ubuntu": linux("sudo "), "debian": linux("sudo "), "alpine": linux(""), "windows": windows}
 }
 func (a *App) enrollment(c *gin.Context) {
+	var in struct {
+		Interval *int `json:"report_interval_seconds" binding:"omitempty,min=1,max=30"`
+	}
+	if c.Request.ContentLength != 0 && !bind(c, &in) {
+		return
+	}
+	interval := 5
+	if in.Interval != nil {
+		interval = *in.Interval
+	}
 	origin, valid := a.agentOrigin(c)
 	if !valid {
 		return
@@ -98,10 +117,16 @@ func (a *App) enrollment(c *gin.Context) {
 		if e := tx.QueryRowContext(c.Request.Context(), a.db.Bind(`SELECT id FROM servers WHERE id=? FOR UPDATE`), id).Scan(&existing); e != nil {
 			return e
 		}
+		if _, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`DELETE FROM agent_install_settings WHERE token_hash IN (SELECT token_hash FROM agent_enrollments WHERE server_id=?)`), id); e != nil {
+			return e
+		}
 		if _, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`DELETE FROM agent_enrollments WHERE server_id=?`), id); e != nil {
 			return e
 		}
-		_, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`INSERT INTO agent_enrollments(token_hash,server_id,expires_at) VALUES(?,?,?)`), hash(t), id, expires)
+		if _, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`INSERT INTO agent_enrollments(token_hash,server_id,expires_at) VALUES(?,?,?)`), hash(t), id, expires); e != nil {
+			return e
+		}
+		_, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`INSERT INTO agent_install_settings(token_hash,report_interval_seconds,expires_at) VALUES(?,?,?)`), hash(t), interval, expires)
 		return e
 	})
 	if e != nil {
@@ -118,9 +143,9 @@ func updateCommands(origin string) map[string]string {
 }
 func uninstallCommands(origin string) map[string]string {
 	linux := func(privilege string) string {
-		return fmt.Sprintf(`(f=$(mktemp) && trap 'rm -f "$f"' EXIT && curl --proto %s --tlsv1.2 --connect-timeout 15 --max-time 60 -fsS %s -o "$f" && %ssh "$f")`, shellQuote(downloadProtocol(origin)), shellQuote(origin+"/downloads/uninstall-agent.sh"), privilege)
+		return fmt.Sprintf(`(f=$(mktemp) && trap 'rm -f "$f"' EXIT && curl --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 15 --max-time 60 --max-redirs 5 --max-filesize 1048576 -fLsS %s -o "$f" && %ssh "$f")`, shellQuote(agentAsset("uninstall-agent.sh")), privilege)
 	}
-	windows := fmt.Sprintf(`[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $f=Join-Path $env:TEMP ([guid]::NewGuid().ToString()+'.ps1'); try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 60 -MaximumRedirection 0 -Uri %s -OutFile $f; & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $f; if ($LASTEXITCODE -ne 0) { throw 'Agent uninstall failed' } } finally { if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f } }`, powershellQuote(origin+"/downloads/uninstall-agent.ps1"))
+	windows := fmt.Sprintf(`$f=Join-Path $env:TEMP ([guid]::NewGuid().ToString()+'.ps1'); $curl=Join-Path ([Environment]::SystemDirectory) 'curl.exe'; $shell=Join-Path ([Environment]::SystemDirectory) 'WindowsPowerShell\v1.0\powershell.exe'; try { & $curl --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 15 --max-time 60 --max-redirs 5 --max-filesize 1048576 -fLsS %s -o $f; if ($LASTEXITCODE -ne 0) { throw 'GitHub uninstaller download failed' }; & $shell -NoProfile -File $f; if ($LASTEXITCODE -ne 0) { throw 'Agent uninstall failed' } } finally { if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f } }`, powershellQuote(agentAsset("uninstall-agent.ps1")))
 	return map[string]string{"ubuntu": linux("sudo "), "debian": linux("sudo "), "alpine": linux(""), "windows": windows}
 }
 func (a *App) revoke(c *gin.Context) {

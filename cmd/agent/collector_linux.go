@@ -36,10 +36,23 @@ func collectPlatform(ctx context.Context, s *spool, explicit string) (time.Time,
 			return collectJournal(ctx, s)
 		}
 	}
-	for _, path := range []string{"/var/log/auth.log", "/var/log/secure", "/var/log/messages"} {
-		if _, e := os.Stat(path); e == nil {
+	var unreadable string
+	for _, path := range []string{"/var/log/sshguard/auth.log", "/var/log/auth.log", "/var/log/secure", "/var/log/messages"} {
+		info, err := os.Stat(path)
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		file, err := os.Open(path)
+		if err == nil {
+			file.Close()
 			return collectFile(ctx, s, path)
 		}
+		if unreadable == "" {
+			unreadable = path
+		}
+	}
+	if unreadable != "" {
+		return time.Time{}, fmt.Errorf("SSH log is missing or unreadable: %s; check log source and permissions", unreadable)
 	}
 	if _, e := exec.LookPath("journalctl"); e == nil {
 		return collectJournal(ctx, s)

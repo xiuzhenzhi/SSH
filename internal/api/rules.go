@@ -72,11 +72,13 @@ func (a *App) saveRule(c *gin.Context) {
 		bad(c, 400, "规则名称不能为空")
 		return
 	}
-	for _, cidr := range in.Trusted {
-		if _, _, e := net.ParseCIDR(cidr); e != nil {
-			bad(c, 400, "可信地址必须使用 CIDR，例如 192.0.2.1/32")
+	for i, cidr := range in.Trusted {
+		prefix, e := normalizePrefix(cidr)
+		if e != nil {
+			bad(c, 400, "白名单必须是 IP 或 CIDR 网段")
 			return
 		}
+		in.Trusted[i] = prefix
 	}
 	id := c.Param("id")
 	create := id == ""

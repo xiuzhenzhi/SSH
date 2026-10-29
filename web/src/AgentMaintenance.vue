@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { copyText } from './clipboard';
-import { ElButton, ElDialog, ElAlert, ElInput, ElSelect, ElOption, ElMessage, ElMessageBox } from 'element-plus';
+import { ElButton, ElDialog, ElAlert, ElInput, ElSelect, ElOption, ElMessage, ElMessageBox, ElDropdown, ElDropdownMenu, ElDropdownItem } from 'element-plus';
+import { MoreFilled } from '@element-plus/icons-vue';
+import 'element-plus/es/components/dropdown/style/css';
+import 'element-plus/es/components/dropdown-menu/style/css';
+import 'element-plus/es/components/dropdown-item/style/css';
 const props = defineProps<{server: Record<string, any>}>();
-const emit = defineEmits<{changed: []}>();
+const emit = defineEmits<{changed: [], manual: [], revoke: []}>();
 const busy = ref(false), visible = ref(false), platform = ref('ubuntu');
 const commands = ref<Record<string,string>>({});
 const activeTask = computed(() => ['pending','running'].includes(props.server.update_status) && new Date(props.server.update_expires_at).getTime()>Date.now());
@@ -28,9 +32,16 @@ async function uninstall() {
 async function copy() {try{await copyText(commands.value[platform.value]||'');ElMessage.success('卸载命令已复制');}catch{ElMessage.warning('请手动复制命令');}}
 </script>
 <template>
-  <el-button v-if="server.status !== 'revoked'" link type="primary" :disabled="busy || !ready || activeTask" @click="update">平台更新</el-button>
-  <el-button link type="danger" :disabled="busy" @click="uninstall">卸载命令</el-button>
-  <small class="collector-detail">{{ state }}</small>
+  <el-dropdown trigger="click" @command="(key:string)=>key==='update'?update():key==='manual'?emit('manual'):key==='revoke'?emit('revoke'):uninstall()">
+   <el-button text :icon="MoreFilled" aria-label="更多维护操作" :disabled="busy"/>
+   <template #dropdown><el-dropdown-menu>
+    <el-dropdown-item disabled>{{state}}</el-dropdown-item>
+    <el-dropdown-item command="update" :disabled="server.status==='revoked'||!ready||activeTask">平台更新</el-dropdown-item>
+    <el-dropdown-item command="manual">更新命令</el-dropdown-item>
+    <el-dropdown-item command="uninstall" divided>卸载命令</el-dropdown-item>
+    <el-dropdown-item command="revoke" :disabled="server.status==='revoked'">撤销凭证</el-dropdown-item>
+   </el-dropdown-menu></template>
+  </el-dropdown>
   <el-dialog v-model="visible" title="卸载 Agent" width="min(780px, 94vw)" append-to-body @closed="commands = {}">
     <el-alert title="只生成命令，不会远程卸载。请在目标机器以管理员身份执行。" type="warning" :closable="false"/>
     <p>停止并移除 Agent 和更新维护服务，保留配置、采集队列与历史数据。卸载后请在平台撤销该机器的凭证；不会删除中央平台或其他机器。</p>

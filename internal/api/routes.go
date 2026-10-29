@@ -16,13 +16,15 @@ import (
 )
 
 type App struct {
-	db        *storage.DB
-	cfg       Config
-	dummyHash string
-	hub       *liveHub
+	db             *storage.DB
+	cfg            Config
+	dummyHash      string
+	hub            *liveHub
+	dashboardMu    sync.Mutex
+	dashboardCache map[string]dashboardSnapshot
 }
 
-var Version = "0.3.8"
+var Version = "0.3.9"
 
 func New(db *storage.DB, cfg Config) *gin.Engine {
 	return NewApp(db, cfg).Router()
@@ -39,7 +41,9 @@ func (a *App) Router() *gin.Engine {
 	r := gin.New()
 	r.ContextWithFallback = true
 	r.Use(gin.Recovery())
-	_ = r.SetTrustedProxies(nil)
+	if err := r.SetTrustedProxies(a.cfg.TrustedProxyCIDRs); err != nil {
+		_ = r.SetTrustedProxies(nil)
+	}
 	r.Use(func(c *gin.Context) {
 		if c.Request.URL.Path != "/api/v1/live" && c.Request.URL.Path != "/api/v1/agent/stream" {
 			ctx, cancel := context.WithTimeout(c.Request.Context(), 20*time.Second)
@@ -69,8 +73,13 @@ func (a *App) Router() *gin.Engine {
 	}
 	authLimit := authThrottle()
 	r.POST("/api/v1/auth/login", origin, authLimit, a.login)
+	r.GET("/api/v1/auth/protection", a.loginProtection)
 	web := r.Group("/api/v1", origin, a.session)
 	web.GET("/auth/me", func(c *gin.Context) { ok(c, c.MustGet("user")) })
+	web.GET("/auth/protection/settings", role("admin"), a.captchaSettings)
+	web.PATCH("/auth/protection/settings", role("admin"), authLimit, a.saveCaptchaSettings)
+	web.GET("/auth/blocked-ips", role("admin"), a.blockedIPs)
+	web.DELETE("/auth/blocked-ips/:id", role("admin"), a.unblockIP)
 	web.POST("/auth/logout", a.logout)
 	web.POST("/auth/password", authLimit, a.changePassword)
 	web.GET("/agent/update-commands", role("admin"), func(c *gin.Context) {
@@ -89,6 +98,9 @@ func (a *App) Router() *gin.Engine {
 	web.GET("/dashboard/overview", a.overview)
 	web.GET("/live", a.live)
 	web.GET("/rules", role("admin"), a.rules)
+	web.GET("/ip-allowlist", role("admin"), a.allowlist)
+	web.POST("/ip-allowlist", role("admin"), a.saveAllowlist)
+	web.DELETE("/ip-allowlist/:id", role("admin"), a.deleteAllowlist)
 	web.POST("/rules", role("admin"), a.saveRule)
 	web.PATCH("/rules/:id", role("admin"), a.saveRule)
 	web.GET("/alerts", a.alerts)
@@ -110,7 +122,7 @@ func (a *App) Router() *gin.Engine {
 	web.GET("/events", a.events)
 	web.GET("/events/:id", a.event)
 	web.GET("/audit-logs", role("admin"), func(c *gin.Context) {
-		a.list(c, `SELECT a.id,u.username AS actor,a.action,a.target,a.created_at FROM audit_logs a LEFT JOIN users u ON a.actor_id=u.id ORDER BY a.id DESC LIMIT ? OFFSET ?`)
+		a.list(c, `SELECT a.id,u.username AS actor,a.action,a.target,a.created_at,x.source_ip,x.user_agent FROM audit_logs a LEFT JOIN users u ON a.actor_id=u.id LEFT JOIN audit_context x ON x.audit_id=a.id ORDER BY a.id DESC LIMIT ? OFFSET ?`)
 	})
 	web.GET("/users", role("admin"), func(c *gin.Context) {
 		a.list(c, `SELECT id,username,role,created_at FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?`)
@@ -211,12 +223,18 @@ func (a *App) mutate(c *gin.Context, actor, action, target string, fn func(*sql.
 	if actor != "" {
 		who = actor
 	}
-	if _, e = tx.ExecContext(c.Request.Context(), a.db.Bind(`INSERT INTO audit_logs(actor_id,action,target) VALUES(?,?,?)`), who, action, target); e != nil {
+	if e = a.writeAudit(c, tx, who, action, target); e != nil {
 		return e
 	}
 	return tx.Commit()
 }
 func (a *App) summary(c *gin.Context) {
+	a.dashboardMu.Lock()
+	defer a.dashboardMu.Unlock()
+	if data, valid := a.cachedDashboard("summary"); valid {
+		ok(c, data)
+		return
+	}
 	since := time.Now().UTC().Add(-24 * time.Hour)
 	online := time.Now().UTC().Add(-90 * time.Second)
 	var total, on, rev, events, success int64
@@ -228,5 +246,7 @@ func (a *App) summary(c *gin.Context) {
 		fail(c, e)
 		return
 	}
-	ok(c, gin.H{"version": Version, "servers": total, "online": on, "offline_or_pending": total - on - rev, "revoked": rev, "events_24h": events, "success_24h": success, "failure_24h": events - success, "database": a.db.Driver})
+	data := gin.H{"version": Version, "servers": total, "online": on, "offline_or_pending": total - on - rev, "revoked": rev, "events_24h": events, "success_24h": success, "failure_24h": events - success, "database": a.db.Driver}
+	a.saveDashboard("summary", data)
+	ok(c, data)
 }

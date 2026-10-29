@@ -1,0 +1,2 @@
+CREATE TABLE IF NOT EXISTS server_settings (server_id varchar(36) PRIMARY KEY REFERENCES servers(id), report_interval_seconds integer NOT NULL DEFAULT 5, reported_interval_seconds integer NOT NULL DEFAULT 0, ip_addresses varchar(1024) NOT NULL DEFAULT '[]');
+CREATE TABLE IF NOT EXISTS ip_allowlist (id varchar(36) PRIMARY KEY, cidr varchar(64) NOT NULL UNIQUE, notes varchar(256) NOT NULL DEFAULT '', created_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP);

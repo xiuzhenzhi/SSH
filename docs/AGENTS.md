@@ -48,7 +48,11 @@ sudo apt-get install -y curl ca-certificates
 apk add --no-cache curl ca-certificates
 ```
 
-Windows 使用自带 PowerShell 下载并校验 SHA-256，无需 NSSM、WinSW、Go 或 Docker。脚本的 ExecutionPolicy 参数仅用于当前安装子进程，不修改系统持久策略；受组织策略限制时按组织的签名/分发流程执行脚本。安装不创建防火墙入站规则。
+Windows 使用系统自带 curl.exe 下载、PowerShell 校验 SHA-256，无需 NSSM、WinSW、Go 或 Docker。控制台生成的 Windows 命令不主动指定 ExecutionPolicy，也不修改系统策略；受组织策略限制时按组织批准的签名/分发流程执行脚本。固定维护任务保留既有的本地执行机制。安装不创建防火墙入站规则。
+
+从 v0.3.9 开始，控制台生成的安装脚本和 Agent 二进制直接下载自本项目 GitHub Release，固定到主控版本对应的 `v版本号`，不使用 latest 或主控的下载目录。下载通过 HTTPS，限制重定向、文件大小与超时；二进制的 SHA-256 和版本号均通过后才替换服务。目标机器须能访问 GitHub 及其 Release 资源域名，下载失败不切换运行中的程序。主控 IP / 域名仅用于注册、上报与领取固定版本更新任务。
+
+已有节点先手动执行一次新版「更新命令」，保存新版固定更新器，之后控制台远程更新才使用 GitHub 下载；旧本地更新器不会随主控升级自动改写。更新沿用已安装的上报间隔与凭证。发行包仍保留下载资产供旧客户端兼容；一次性 CI 的受限本地下载夹具不属于生产下载配置。
 
 所有 Agent 主动出站访问平台，不需要开放入站端口，不保存 SSH 密码/私钥，也不执行中心下发命令。Linux 二进制使用 `CGO_ENABLED=0`，Ubuntu/Debian 的 glibc 与 Alpine 的 musl 共用静态二进制。HTTPS 下载和 API 请求严格校验证书，不接受忽略证书验证。原生默认安装也支持无域名 HTTP 直连，控制台生成的命令会显式附加 `--allow-insecure-http` / `-AllowInsecureHttp`，并在本地 Agent 配置保存 `allow_insecure_http=true`。未经显式授权的 HTTP 仍被拒绝；更新沿用原地址和授权，不自动切换协议。
 
@@ -112,7 +116,7 @@ sudo sh /usr/local/lib/sshguard/uninstall-agent.sh
 
 ## 采集源与持久化
 
-Linux 优先使用正在运行的 systemd journal（sshd / sshd-session），否则选择 auth.log、secure、messages。Windows 使用 OpenSSH/Operational，需先安装并运行 Windows OpenSSH Server。仅监控 OpenSSH 登录，不采集 Windows RDP、图形登录或通用安全日志。
+Linux 优先使用正在运行的 systemd journal（sshd / sshd-session），否则依次选择专用 sshguard/auth.log、auth.log、secure、messages 中可读的普通文件。Windows 使用 OpenSSH/Operational，需先安装并运行 Windows OpenSSH Server。仅监控 OpenSSH 登录，不采集 Windows RDP、图形登录或通用安全日志。
 
 首次启动从当前日志尾部开始；后续按 journal cursor、Windows EventRecordID 或文件身份+字节偏移恢复。文件改名轮转会先读取旧文件；旧文件已删除、压缩或日志清空时报告采集缺口，不能恢复操作系统已删除的日志。复制截断与写入同时发生仍可能丢失源日志，应优先使用 journal 或改名轮转。
 
@@ -136,3 +140,19 @@ Linux 优先使用正在运行的 systemd journal（sshd / sshd-session），否
 事件存储在本地持久队列，上限 10,000 条，隔离区上限 1,000 条；每次最多读取 100 条上报。文件 / journal 采集每轮最多处理 500 行，单行最大 64 KiB；Windows 事件输出最多 4 MiB、每轮最多 100 条。v0.3.8 将 journal 诊断输出保留量限制为 4 KiB，轮转目录每批扫描 128 个条目。
 
 WebSocket 失败与退出会关闭连接，HTTP 响应体均关闭；采集轮询显式停止 ticker、取消上下文并等待采集 goroutine，之后关闭状态库。资源回收测试覆盖重复断线和启动停止，不能把 Go 的堆保留、操作系统工作集或 bbolt 的文件映射高水位直接当成泄漏。持续增长应同时核对队列深度、GC 后存活堆、goroutine / 文件句柄和日志源异常。
+
+## 上报设置与 IP 地址
+
+上报间隔仅能在安装窗口选择，`report_interval_seconds` 为 1–30，默认 5 秒；生成命令的单次凭证绑定选定值，注册成功时写入本地配置。它控制心跳及正常事件批量上传间隔，采集源仍以至多 2 秒的间隔检查（设为 1 秒时同步加快）。失败上传使用退避，最多每轮处理 10 批，不承诺繁忙或离线时仍固定按时到达。
+
+编辑服务器与更新窗口不提供此设置，API 拒绝运行时修改。Agent 只从注册响应固化安装间隔，心跳确认不下发配置或其他命令，更新保留原配置。旧主控未返回安装间隔时使用默认 5 秒。Agent 运行期保留 SSH 采集上报和控制台请求的固定版本更新，安装 / 卸载由本机维护脚本负责。IP 地址由 Agent 枚举本机网卡，最多 16 个，不向外部服务查询公网 IP；经过 NAT 时不等于公网出口地址。
+
+### Alpine 采集异常修复
+
+Alpine 标准 BusyBox syslog 服务使用 wheel 组和 027 掩码，旧 Agent 账号可能无法读 `/var/log/messages`。新版安装器在 `/etc/syslog.conf` 中追加认证设施的专用目的地 `/var/log/sshguard/auth.log`；目录 root:sshguard、2750，日志 root:sshguard、0640，轮转后新文件继承组。保留原 syslog 规则，Agent 不加入管理员 wheel 组。其他日志设施不会进入专用文件。
+
+已有节点先在主控「更多 → 更新命令」取得并手动执行最新命令。平台触发更新运行的是安装时保存的本地固定脚本，无法自动取得本次日志配置修复。同版本重新执行最新版安装器也会修复权限。自定义 `SYSLOGD_OPTS` 的文件 / 网络 / 缓冲选项会保留并提示人工配置；syslog-ng 等其他日志服务需自行为 sshguard 提供可读的认证日志。显式 `log_file` 优先，不会被专用路径覆盖。
+
+无新增文件内容时不写入状态库；事件、游标仍在同一 fsync 事务中持久化。心跳持续失败时诊断最多每分钟一条，恢复时记录一次。连接、定时器、日志子进程及状态库在取消时释放，不以丢弃队列换取低写入。
+
+浏览器的实时刷新提示按每个会话 5 秒合并，总览共享 5 秒统计缓存；不会为每个 Agent 心跳重复查询总览。页面显示延迟与网络和缓存有关，上报设置不代表浏览器逐秒刷新。

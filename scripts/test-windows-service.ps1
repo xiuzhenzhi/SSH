@@ -2,6 +2,7 @@
 #Requires -RunAsAdministrator
 # Real SCM/LocalService test: disposable GitHub Windows runner ONLY.
 $ErrorActionPreference = 'Stop'
+$env:SSHGUARD_TEST_DOWNLOADS='true'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 if ($env:GITHUB_ACTIONS -ne 'true') { throw 'Disposable GitHub Actions VM only.' }
 if (Get-Service SSHGuardAgent -ErrorAction SilentlyContinue) { throw 'Refusing to replace an existing service.' }
@@ -41,6 +42,7 @@ try {
     if (-not $ready) { Get-Content (Join-Path $temp 'server-error.log'); throw "HTTPS fixture failed: $lastError" }
     & "$PSScriptRoot/install-agent.ps1" -Endpoint https://localhost:9443 -EnrollmentToken ('a'*64)
     if ((Get-Service SSHGuardAgent).Status -ne 'Running') { throw 'Service not running' }
+    Disable-ScheduledTask -TaskName SSHGuardAgentUpdate | Out-Null
     $service = Get-CimInstance Win32_Service -Filter "Name='SSHGuardAgent'"
     if ($service.StartName -ne 'NT AUTHORITY\LocalService') { throw 'Unexpected service identity' }
     Start-Sleep -Seconds 3
@@ -72,7 +74,7 @@ try {
     if (-not $rejected -or (Get-Service SSHGuardAgent).Status -ne 'Running') { throw 'Checksum failure interrupted running service' }
     # This signed-by-checksum test payload runs version/check but cannot register a service.
     $broken = Join-Path $temp 'broken.go'
-    [IO.File]::WriteAllText($broken,'package main; import "os"; func main(){if len(os.Args)>1 && (os.Args[1]=="-version" || os.Args[1]=="-check"){return}; os.Exit(1)}')
+    [IO.File]::WriteAllText($broken,('package main; import ("os";"fmt"); func main(){if len(os.Args)>1 && os.Args[1]=="-version"{fmt.Println("SSHGuard __VERSION__ windows/amd64");return};if len(os.Args)>1 && os.Args[1]=="-check"{return};os.Exit(1)}').Replace('__VERSION__',([IO.File]::ReadAllText((Join-Path $root 'VERSION')).Trim())))
     go build -o $download $broken
     if ($LASTEXITCODE -ne 0) { throw 'Fixture build failed' }
     Write-Checksum

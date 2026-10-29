@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
@@ -24,6 +25,7 @@ func (a *App) enroll(c *gin.Context) {
 	}
 	t := token()
 	var id string
+	interval := 5
 	// Lock server first for a consistent lock order with revocation and token replacement.
 	if e := a.db.Row(c.Request.Context(), `SELECT server_id FROM agent_enrollments WHERE token_hash=?`, hash(in.Token)).Scan(&id); e != nil {
 		if e == sql.ErrNoRows {
@@ -42,6 +44,12 @@ func (a *App) enroll(c *gin.Context) {
 		if e := tx.QueryRowContext(c.Request.Context(), a.db.Bind(`SELECT server_id FROM agent_enrollments WHERE token_hash=? AND used_at IS NULL AND expires_at>? FOR UPDATE`), hash(in.Token), time.Now().UTC()).Scan(&enrolled); e != nil {
 			return e
 		}
+		if e := tx.QueryRowContext(c.Request.Context(), a.db.Bind(`SELECT report_interval_seconds FROM agent_install_settings WHERE token_hash=?`), hash(in.Token)).Scan(&interval); e != nil && e != sql.ErrNoRows {
+			return e
+		}
+		if interval < 1 || interval > 30 {
+			return errInvalidAgentMessage
+		}
 		if _, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`UPDATE agent_enrollments SET used_at=? WHERE token_hash=?`), time.Now().UTC(), hash(in.Token)); e != nil {
 			return e
 		}
@@ -51,7 +59,13 @@ func (a *App) enroll(c *gin.Context) {
 		if _, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`INSERT INTO agent_credentials(token_hash,server_id) VALUES(?,?)`), hash(t), id); e != nil {
 			return e
 		}
-		_, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`UPDATE servers SET hostname=?,distribution=?,agent_version=?,last_seen_at=?,revoked=false WHERE id=?`), in.Hostname, in.Distribution, in.Version, time.Now().UTC(), id)
+		if _, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`UPDATE servers SET hostname=?,distribution=?,agent_version=?,last_seen_at=?,revoked=false WHERE id=?`), in.Hostname, in.Distribution, in.Version, time.Now().UTC(), id); e != nil {
+			return e
+		}
+		if e := a.ensureServerSettings(c.Request.Context(), tx, id); e != nil {
+			return e
+		}
+		_, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`UPDATE server_settings SET report_interval_seconds=?,reported_interval_seconds=0,ip_addresses='[]' WHERE server_id=?`), interval, id)
 		return e
 	})
 	if e != nil {
@@ -62,7 +76,7 @@ func (a *App) enroll(c *gin.Context) {
 		}
 		return
 	}
-	ok(c, gin.H{"server_id": id, "token": t})
+	ok(c, gin.H{"server_id": id, "token": t, "report_interval_seconds": interval})
 }
 func (a *App) agentAuth(c *gin.Context) {
 	auth := c.GetHeader("Authorization")
@@ -110,6 +124,8 @@ func (a *App) agentTransaction(ctx context.Context, serverID, credentialHash str
 }
 
 type Heartbeat struct {
+	Interval   int        `json:"report_interval_seconds" binding:"min=0,max=30"`
+	Addresses  []string   `json:"ip_addresses" binding:"max=16,dive,ip"`
 	Version    string     `json:"version" binding:"max=32"`
 	State      string     `json:"collector_state" binding:"omitempty,oneof=starting healthy error"`
 	Message    string     `json:"collector_message" binding:"max=256"`
@@ -124,6 +140,28 @@ func (a *App) recordHeartbeat(ctx context.Context, serverID, credentialHash stri
 		return errInvalidAgentMessage
 	}
 	e := a.agentTransaction(ctx, serverID, credentialHash, func(tx *sql.Tx) error {
+		if in.Interval > 0 {
+			if e := a.ensureServerSettings(ctx, tx, serverID); e != nil {
+				return e
+			}
+			addresses := []string{}
+			seen := map[string]bool{}
+			for _, value := range in.Addresses {
+				ip := net.ParseIP(value)
+				if ip == nil || ip.IsLoopback() || ip.IsUnspecified() || ip.IsMulticast() || ip.IsLinkLocalUnicast() {
+					continue
+				}
+				value = ip.String()
+				if !seen[value] {
+					addresses = append(addresses, value)
+					seen[value] = true
+				}
+			}
+			raw, _ := json.Marshal(addresses)
+			if _, e := tx.ExecContext(ctx, a.db.Bind(`UPDATE server_settings SET reported_interval_seconds=?,ip_addresses=? WHERE server_id=? AND (reported_interval_seconds<>? OR ip_addresses<>?)`), in.Interval, string(raw), serverID, in.Interval, string(raw)); e != nil {
+				return e
+			}
+		}
 		if in.State != "" {
 			now := time.Now().UTC()
 			for _, at := range []*time.Time{in.LastPoll, in.LastEvent} {
@@ -233,6 +271,24 @@ func (a *App) ingest(ctx context.Context, serverID, credentialHash string, in Ev
 		return result, e
 	}
 	e = a.agentTransaction(ctx, serverID, credentialHash, func(tx *sql.Tx) error {
+		rows, e := tx.QueryContext(ctx, `SELECT cidr FROM ip_allowlist`)
+		if e != nil {
+			return e
+		}
+		allowed := Rule{}
+		for rows.Next() {
+			var prefix string
+			if e = rows.Scan(&prefix); e != nil {
+				rows.Close()
+				return e
+			}
+			allowed.Trusted = append(allowed.Trusted, prefix)
+		}
+		e = rows.Err()
+		rows.Close()
+		if e != nil {
+			return e
+		}
 		var name, group string
 		if e := tx.QueryRowContext(ctx, a.db.Bind(`SELECT name,group_name FROM servers WHERE id=?`), serverID).Scan(&name, &group); e != nil {
 			return e
@@ -248,8 +304,10 @@ func (a *App) ingest(ctx context.Context, serverID, credentialHash string, in Ev
 			if _, e := tx.ExecContext(ctx, a.db.Bind(`INSERT INTO ssh_events(event_id,server_id,event_type,username,source_ip,source_port,auth_method,outcome,occurred_at) VALUES(?,?,?,?,?,?,?,?,?)`), event.ID, serverID, event.Type, event.Username, event.IP, event.Port, event.Method, event.Outcome, event.At); e != nil {
 				return e
 			}
-			if e := a.evaluateEvent(ctx, tx, rules, serverID, name, group, event); e != nil {
-				return e
+			if !trusted(allowed, event.IP) {
+				if e := a.evaluateEvent(ctx, tx, rules, serverID, name, group, event); e != nil {
+					return e
+				}
 			}
 			result.Inserted++
 		}

@@ -19,8 +19,11 @@ func TestInstallCommandsPlatforms(t *testing.T) {
 	if !strings.Contains(commands["windows"], "powershell.exe") || !strings.Contains(commands["windows"], "install-agent.ps1") {
 		t.Fatal("Windows installer unavailable")
 	}
-	if !strings.Contains(commands["windows"], "::Tls12") || !strings.Contains(commands["windows"], "$LASTEXITCODE -ne 0") {
+	if !strings.Contains(commands["windows"], "--tlsv1.2") || !strings.Contains(commands["windows"], "$LASTEXITCODE -ne 0") {
 		t.Fatal("Windows bootstrap must enable TLS and propagate failure")
+	}
+	if strings.Contains(commands["windows"], "ExecutionPolicy") {
+		t.Fatal("generated command must respect the current execution policy")
 	}
 	if powershellQuote("a'b") != "'a''b'" {
 		t.Fatal("PowerShell quote escaping")
@@ -64,13 +67,13 @@ func TestIPCommandsMatchTransport(t *testing.T) {
 				if strings.Contains(command, option) != insecure {
 					t.Fatal("HTTP opt-in mismatch", platform, origin)
 				}
-				if platform != "windows" && !strings.Contains(command, "--proto '"+downloadProtocol(origin)+"'") {
+				if !strings.Contains(command, "--proto '=https'") || !strings.Contains(command, "--proto-redir '=https'") || !strings.Contains(command, "https://github.com/xiuzhenzhi/SSH/releases/download/v"+Version+"/install-agent.") || strings.Contains(command, origin+"/downloads/") {
 					t.Fatal("download transport mismatch")
 				}
 			}
 		}
 		for platform, command := range uninstallCommands(origin) {
-			if !strings.Contains(command, origin) || (platform != "windows" && !strings.Contains(command, "--proto '"+downloadProtocol(origin)+"'")) {
+			if !strings.Contains(command, agentAsset("uninstall-agent.")) && !strings.Contains(command, "https://github.com/xiuzhenzhi/SSH/releases/download/v"+Version+"/uninstall-agent.") {
 				t.Fatal("invalid uninstall transport", platform)
 			}
 		}

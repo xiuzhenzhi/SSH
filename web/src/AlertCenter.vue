@@ -37,8 +37,8 @@ async function retry(row:Row){await perform(async()=>{await props.api(`/notifica
 </script>
 <template>
  <section class="panel management-panel">
-  <div class="panel-heading"><div><h3>{{ mode==='channels'?'通知渠道':mode==='rules'?'检测规则':mode==='alerts'?'安全告警':'通知投递记录' }}</h3><p>{{ mode==='channels'?'连接你常用的工具，保存后测试实际送达。':mode==='rules'?'可信来源、服务器分组与冷却时间，减少重复打扰。':mode==='alerts'?'检查事件、确认处理；服务恢复后自动标记健康告警。':'失败会自动重试，连续 8 次失败后等待人工处理。' }}</p></div><button v-if="admin && ['channels','rules'].includes(mode)" class="primary-action" :disabled="saving" @click="edit()">＋ {{ mode==='channels'?'添加渠道':'新建规则' }}</button></div>
-  <div v-if="!rows.length" class="empty-state"><div class="empty-symbol">◇</div><b>{{ mode==='channels'?'尚未配置通知渠道':mode==='notifications'?'暂无投递记录':mode==='rules'?'暂无检测规则':'暂无告警记录' }}</b><p>{{ mode==='channels'?'支持企业微信、钉钉、飞书、Telegram、邮件和 Webhook。':mode==='notifications'?'在通知渠道中发送测试，或等待规则命中后生成通知。':'配置完成后，这里将展示真实的检测结果。' }}</p></div>
+  <div class="panel-heading"><div><h3>{{ mode==='channels'?'通知渠道':mode==='rules'?'检测规则':mode==='alerts'?'安全告警':'通知投递记录' }}</h3></div><button v-if="admin && ['channels','rules'].includes(mode)" class="primary-action" :disabled="saving" @click="edit()">＋ {{ mode==='channels'?'添加渠道':'新建规则' }}</button></div>
+  <div v-if="!rows.length" class="empty-state"><div class="empty-symbol">◇</div><b>{{ mode==='channels'?'尚未配置通知渠道':mode==='notifications'?'暂无投递记录':mode==='rules'?'暂无检测规则':'暂无告警记录' }}</b></div>
   <div v-else class="table-scroll"><table class="data-table">
    <thead><tr v-if="mode==='channels'"><th>渠道名称</th><th>类型</th><th>状态</th><th>更新于</th><th>操作</th></tr><tr v-else-if="mode==='rules'"><th>规则名称</th><th>检测条件</th><th>作用范围</th><th>冷却时间</th><th>操作</th></tr><tr v-else-if="mode==='alerts'"><th>告警</th><th>服务器</th><th>级别</th><th>发生时间</th><th>状态 / 操作</th></tr><tr v-else><th>告警 / 渠道</th><th>投递状态</th><th>已尝试</th><th>下次尝试 / 送达时间</th><th>操作</th></tr></thead>
    <tbody><tr v-for="row in rows" :key="row.id">
@@ -62,7 +62,7 @@ async function retry(row:Row){await perform(async()=>{await props.api(`/notifica
    <template v-else>
     <label>服务器分组<input v-model="form.server_group" maxlength="64" placeholder="留空表示全部服务器；填写时须与服务器分组一致"/></label>
     <div class="form-grid"><label>阈值{{ ['agent_offline','collector_error'].includes(form.kind)?'（秒）':'（次数）' }}<input v-model.number="form.threshold_count" type="number" min="1" max="10000" required/></label><label>统计窗口（秒）<input v-model.number="form.window_seconds" type="number" min="30" max="86400" required/></label><label>冷却时间（秒）<input v-model.number="form.cooldown_seconds" type="number" min="30" max="86400" required/></label></div>
-    <label>可信来源（不触发此规则）<textarea v-model="trusted" rows="3" placeholder="每行一个 CIDR，例如 192.0.2.1/32 或 2001:db8::/32"/></label>
+    <label>规则 IP 白名单<textarea v-model="trusted" rows="3" placeholder="每行一个 IP 或网段，例如 192.0.2.1 或 2001:db8::/32"/></label>
     <label>投递渠道<select v-model="form.channel_ids" multiple size="4"><option v-for="channel in available" :key="channel.id" :value="channel.id">{{ channel.name }}{{ channel.enabled?'':'（已停用）' }}</option></select><small>未选择时使用所有已启用渠道。按 Ctrl / Command 多选。</small></label>
    </template>
    <div class="dialog-actions"><button type="button" class="secondary-action" @click="dialog=false">取消</button><button class="primary-action" type="submit" :disabled="saving">{{ saving?'保存中…':'保存配置' }}</button></div>

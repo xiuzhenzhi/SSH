@@ -1,6 +1,7 @@
 package api
 
 import (
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -13,11 +14,31 @@ type trendBucket struct {
 }
 
 func (a *App) overview(c *gin.Context) {
+	rangeName := c.DefaultQuery("range", "24h")
+	count, step := 24, time.Hour
+	switch rangeName {
+	case "24h":
+	case "7d":
+		count, step = 7, 24*time.Hour
+	case "14d":
+		count, step = 14, 24*time.Hour
+	case "30d":
+		count, step = 30, 24*time.Hour
+	default:
+		bad(c, 400, "不支持的时间范围")
+		return
+	}
+	a.dashboardMu.Lock()
+	defer a.dashboardMu.Unlock()
+	if data, valid := a.cachedDashboard(rangeName); valid {
+		ok(c, data)
+		return
+	}
 	now := time.Now().UTC()
-	since := now.Truncate(time.Hour).Add(-23 * time.Hour)
-	buckets := make([]trendBucket, 24)
+	since := now.Truncate(step).Add(-time.Duration(count-1) * step)
+	buckets := make([]trendBucket, count)
 	for i := range buckets {
-		buckets[i].At = since.Add(time.Duration(i) * time.Hour)
+		buckets[i].At = since.Add(time.Duration(i) * step)
 	}
 	expression := `FLOOR(EXTRACT(EPOCH FROM occurred_at)/3600)`
 	if a.db.Driver == "mysql" {
@@ -25,6 +46,9 @@ func (a *App) overview(c *gin.Context) {
 	}
 	if a.db.Driver == "sqlite" {
 		expression = `CAST(strftime('%s',substr(occurred_at,1,19)) AS INTEGER)/3600`
+	}
+	if step == 24*time.Hour {
+		expression = strings.ReplaceAll(expression, "3600", "86400")
 	}
 	rows, e := a.db.QueryContext(c.Request.Context(), a.db.Bind(`SELECT `+expression+`,SUM(CASE WHEN outcome='success' THEN 1 ELSE 0 END),SUM(CASE WHEN outcome='failure' THEN 1 ELSE 0 END) FROM ssh_events WHERE occurred_at>=? AND occurred_at<=? GROUP BY `+expression+` ORDER BY 1`), since, now)
 	if e != nil {
@@ -38,8 +62,8 @@ func (a *App) overview(c *gin.Context) {
 			fail(c, e)
 			return
 		}
-		i := hour - since.Unix()/3600
-		if i >= 0 && i < 24 {
+		i := hour - since.Unix()/int64(step/time.Second)
+		if i >= 0 && i < int64(count) {
 			buckets[i].Success = success
 			buckets[i].Failure = failure
 		}
@@ -72,5 +96,7 @@ func (a *App) overview(c *gin.Context) {
 		fail(c, e)
 		return
 	}
-	ok(c, gin.H{"trend": buckets, "healthy_collectors": healthy, "unacknowledged_alerts": attention, "pending_deliveries": pending, "failed_deliveries": dead, "enabled_channels": channels, "recent_alerts": alerts, "as_of": now})
+	data := gin.H{"trend": buckets, "range": rangeName, "healthy_collectors": healthy, "unacknowledged_alerts": attention, "pending_deliveries": pending, "failed_deliveries": dead, "enabled_channels": channels, "recent_alerts": alerts, "as_of": now}
+	a.saveDashboard(rangeName, data)
+	ok(c, data)
 }

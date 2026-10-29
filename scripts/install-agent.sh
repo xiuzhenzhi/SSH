@@ -2,6 +2,7 @@
 # Ubuntu/Debian: systemd. Alpine: OpenRC. No bash, Python, Node or container.
 set -eu
 umask 077
+RELEASE_VERSION='0.3.9'
 die() { echo "$*" >&2; exit 1; }
 case "${1:-}" in
     --help|-h) printf '安装：sudo sh install-agent.sh ORIGIN ONE_TIME_TOKEN [--allow-insecure-http]\n更新：sudo sh install-agent.sh ORIGIN --update [--allow-insecure-http]\n离线卸载：sudo sh /usr/local/lib/sshguard/uninstall-agent.sh\n'; exit 0 ;;
@@ -21,6 +22,16 @@ download_proto='=https'
 case "$endpoint" in
     http://*) "$allow_http" || die 'HTTP requires --allow-insecure-http.'; download_proto='=http'; printf '直连 HTTP：传输未加密，请确保主控和 Agent 之间的网络可信。\n' ;;
 esac
+release_version=${SSHGUARD_EXPECTED_VERSION:-$RELEASE_VERSION}
+[ "${#release_version}" -le 32 ] && printf '%s' "$release_version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$' || die 'Invalid release version.'
+artifact_base="https://github.com/xiuzhenzhi/SSH/releases/download/v$release_version"
+artifact_proto='=https'
+if [ "${SSHGUARD_TEST_DOWNLOADS:-}" = true ]; then
+    [ "${GITHUB_ACTIONS:-}" = true ] || die 'Test download source requires the disposable CI environment.'
+    case "$endpoint" in https://localhost:*|https://guard.sshguard.test|https://guard.sshguard.test:*|http://127.0.0.1:*) ;; *) die 'Unsupported test download origin.' ;; esac
+    artifact_base="$endpoint/downloads"
+    artifact_proto=$download_proto
+fi
 if [ "$enrollment" = --update ]; then mode=update
 else printf '%s' "$enrollment" | grep -Eq '^[a-f0-9]{64}$' || die 'Invalid enrollment token.'; fi
 if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then init=systemd
@@ -159,6 +170,44 @@ prepare_collection() {
             else addgroup sshguard "$group"; fi
         fi
     done
+    # Alpine's syslog runs with wheel/027. Do not grant the Agent wheel access.
+    # A setgid directory keeps new/rotated auth files in the dedicated group.
+    if [ "$init" = openrc ] && [ -f /etc/alpine-release ] && [ -x /etc/init.d/syslog ] && [ "$(readlink -f /sbin/syslogd)" = /bin/busybox ]; then
+        if [ -f /etc/conf.d/syslog ] && grep '^SYSLOGD_OPTS=' /etc/conf.d/syslog | grep -Eq -- '-[fOCR]'; then
+            echo 'Custom Alpine syslog options detected; configure auth/authpriv logging readable by sshguard manually.' >&2
+            return
+        fi
+        for path in /etc/syslog.conf /var/log/sshguard /var/log/sshguard/auth.log; do
+            [ ! -L "$path" ] || die "Refusing symlink: $path"
+        done
+        mkdir -p /var/log/sshguard
+        chown root:sshguard /var/log/sshguard
+        chmod 2750 /var/log/sshguard
+        touch /var/log/sshguard/auth.log
+        chown root:sshguard /var/log/sshguard/auth.log
+        chmod 0640 /var/log/sshguard/auth.log
+        changed=false
+        if [ ! -f /etc/syslog.conf ]; then
+            printf '*.* /var/log/messages\n' > "$tmp/syslog.conf"
+        else
+            cp /etc/syslog.conf "$tmp/syslog.conf"
+        fi
+        if ! grep -Fxq 'auth,authpriv.* /var/log/sshguard/auth.log' "$tmp/syslog.conf"; then
+            printf '\nauth,authpriv.* /var/log/sshguard/auth.log\n' >> "$tmp/syslog.conf"
+        fi
+        if ! cmp -s "$tmp/syslog.conf" /etc/syslog.conf; then
+            chown root:root "$tmp/syslog.conf"
+            chmod 0644 "$tmp/syslog.conf"
+            mv -f "$tmp/syslog.conf" /etc/syslog.conf
+            changed=true
+        fi
+        rc-update add syslog default
+        if rc-service syslog status >/dev/null 2>&1; then
+            if "$changed"; then rc-service syslog restart; fi
+        else
+            rc-service syslog start
+        fi
+    fi
 }
 cleanup() {
     status=$?
@@ -181,30 +230,28 @@ trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 mkdir -p /usr/local/bin
 tmp=$(mktemp -d /usr/local/bin/.sshguard-install.XXXXXX)
-printf '[2/4] 下载并校验 Agent…\n'
-curl --proto "$download_proto" --tlsv1.2 --connect-timeout 15 --max-time 60 -fsS "$endpoint/downloads/uninstall-agent.sh" -o "$tmp/uninstall-agent.sh"
+printf '[2/4] 从 GitHub Releases 下载并校验 Agent…\n'
+curl --proto "$artifact_proto" --proto-redir '=https' --tlsv1.2 --connect-timeout 15 --max-time 60 --max-redirs 5 --max-filesize 1048576 -fLsS "$artifact_base/uninstall-agent.sh" -o "$tmp/uninstall-agent.sh"
 sh -n "$tmp/uninstall-agent.sh"
-curl --proto "$download_proto" --tlsv1.2 --connect-timeout 15 --max-time 180 --retry 2 -fsS "$endpoint/downloads/sshguard-agent-linux-$arch" -o "$tmp/agent"
-curl --proto "$download_proto" --tlsv1.2 --connect-timeout 15 --max-time 30 -fsS "$endpoint/downloads/sshguard-agent-linux-$arch.sha256" -o "$tmp/hash"
+curl --proto "$artifact_proto" --proto-redir '=https' --tlsv1.2 --connect-timeout 15 --max-time 150 --max-redirs 5 --max-filesize 134217728 --retry 1 -fLsS "$artifact_base/sshguard-agent-linux-$arch" -o "$tmp/agent"
+curl --proto "$artifact_proto" --proto-redir '=https' --tlsv1.2 --connect-timeout 15 --max-time 30 --max-redirs 5 --max-filesize 4096 -fLsS "$artifact_base/sshguard-agent-linux-$arch.sha256" -o "$tmp/hash"
 expected=$(awk '{print $1}' "$tmp/hash")
 printf '%s' "$expected" | grep -Eq '^[a-f0-9]{64}$' || die 'Invalid checksum.'
 printf '%s  %s\n' "$expected" "$tmp/agent" | sha256sum -c -
 chmod 0755 "$tmp/agent"
 "$tmp/agent" -version
-if [ -n "${SSHGUARD_EXPECTED_VERSION:-}" ]; then
-    [ "$("$tmp/agent" -version)" = "SSHGuard $SSHGUARD_EXPECTED_VERSION linux/$arch" ] || die 'Platform version changed; refusing mismatched update.'
-fi
+[ "$("$tmp/agent" -version)" = "SSHGuard $release_version linux/$arch" ] || die 'Release version differs; refusing mismatched update.'
 if [ "$mode" = update ]; then
     printf '[3/4] 更新程序，保留服务器身份与配置…\n'
     chown root:sshguard "$config"
     chmod 0640 "$config"
     "$tmp/agent" -check -endpoint "$endpoint" -config "$config"
+    prepare_collection
     if cmp -s "$tmp/agent" "$exe"; then
         if ! service_active; then service_start; sleep 2; service_active; fi
         configure_updater
         echo 'Already up to date; credentials verified and service running.'; exit 0
     fi
-    prepare_collection
     if [ "$init" = systemd ]; then service_file=/etc/systemd/system/sshguard-agent.service; else service_file=/etc/init.d/sshguard-agent; fi
     cp -p "$service_file" "$tmp/previous-service"
     cp -p "$exe" "$tmp/previous"

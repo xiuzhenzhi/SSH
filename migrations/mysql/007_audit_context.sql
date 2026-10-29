@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS audit_context (audit_id bigint PRIMARY KEY, source_ip varchar(45) NOT NULL DEFAULT '', user_agent varchar(512) NOT NULL DEFAULT '', FOREIGN KEY(audit_id) REFERENCES audit_logs(id) ON DELETE CASCADE) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

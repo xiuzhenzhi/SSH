@@ -61,6 +61,7 @@ func (h *collectorHealth) heartbeat(s *spool) map[string]any {
 	return payload
 }
 func runAgent(ctx context.Context, cfg Config, stateDir string) {
+	interval := reportInterval(cfg.ReportIntervalSeconds)
 	s, e := openSpool(stateDir)
 	stateMessage := "cannot open durable state; check directory permissions and free disk space"
 	if e == nil {
@@ -86,16 +87,20 @@ func runAgent(ctx context.Context, cfg Config, stateDir string) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ticker := time.NewTicker(2 * time.Second)
+			ticker := time.NewTicker(time.Second)
 			defer ticker.Stop()
+			nextPoll := time.Time{}
 			for {
-				pollCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-				at, err := collectPlatform(pollCtx, s, cfg.LogFile)
-				cancel()
-				if ctx.Err() != nil {
-					return
+				if !time.Now().Before(nextPoll) {
+					pollCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+					at, err := collectPlatform(pollCtx, s, cfg.LogFile)
+					cancel()
+					if ctx.Err() != nil {
+						return
+					}
+					health.update(err, at)
+					nextPoll = time.Now().Add(min(interval, 2*time.Second))
 				}
-				health.update(err, at)
 				select {
 				case <-ctx.Done():
 					return
@@ -110,15 +115,22 @@ func runAgent(ctx context.Context, cfg Config, stateDir string) {
 	nextHeartbeat := time.Time{}
 	nextUpload := time.Time{}
 	uploadFailures := 0
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
+	lastHeartbeatError := time.Time{}
+	wakeup := time.NewTimer(time.Hour)
+	wakeup.Stop()
+	defer wakeup.Stop()
 	log.Printf("SSHGuard %s: durable SSH collection and HTTP(S)/WebSocket reporting enabled", version)
 	for ctx.Err() == nil {
 		if time.Now().After(nextHeartbeat) {
-			if e := tr.send(ctx, "heartbeat", health.heartbeat(s), nil); e != nil && ctx.Err() == nil {
+			err := sendHeartbeat(ctx, tr, health.heartbeat(s), interval)
+			if err != nil && ctx.Err() == nil && (lastHeartbeatError.IsZero() || time.Since(lastHeartbeatError) >= time.Minute) {
 				log.Print("Heartbeat unavailable; retrying without discarding queued events")
+				lastHeartbeatError = time.Now()
+			} else if err == nil && !lastHeartbeatError.IsZero() {
+				log.Print("Heartbeat connection restored")
+				lastHeartbeatError = time.Time{}
 			}
-			nextHeartbeat = time.Now().Add(30 * time.Second)
+			nextHeartbeat = time.Now().Add(interval)
 		}
 		if s != nil && !time.Now().Before(nextUpload) {
 			// Bounded drain avoids starving heartbeats and shutdown during a backlog.
@@ -134,15 +146,21 @@ func runAgent(ctx context.Context, cfg Config, stateDir string) {
 					break
 				}
 				uploadFailures = 0
+				nextUpload = time.Now().Add(interval)
 				if !sent || time.Now().After(nextHeartbeat) {
 					break
 				}
 			}
 		}
+		next := nextHeartbeat
+		if s != nil && nextUpload.Before(next) {
+			next = nextUpload
+		}
+		wakeup.Reset(max(10*time.Millisecond, time.Until(next)))
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-wakeup.C:
 		}
 	}
 }
@@ -174,7 +192,7 @@ func collectFile(ctx context.Context, s *spool, path string) (time.Time, error) 
 	}
 	f, e := os.Open(path)
 	if e != nil {
-		return time.Time{}, errors.New("SSH log is missing or unreadable; check log source and permissions")
+		return time.Time{}, fmt.Errorf("SSH log is missing or unreadable: %s; check log source and permissions", path)
 	}
 	defer func() { f.Close() }()
 	info, e := f.Stat()
@@ -187,6 +205,9 @@ func collectFile(ctx context.Context, s *spool, path string) (time.Time, error) 
 	}
 	if previous.Kind != "file:"+path {
 		return time.Time{}, s.append(nil, cursor{Kind: "file:" + path, FileID: id, Offset: info.Size(), At: time.Now().UTC()})
+	}
+	if previous.FileID == id && previous.Offset == info.Size() {
+		return time.Time{}, nil
 	}
 	rotated := false
 	if previous.FileID != id {

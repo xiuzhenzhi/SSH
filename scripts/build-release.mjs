@@ -19,7 +19,11 @@ execFileSync(process.execPath,['scripts/build-agents.mjs',`${out}/web/downloads`
 const npm = (args) => process.platform === 'win32' ? execFileSync('cmd.exe',['/d','/s','/c',`npm.cmd ${args.join(' ')}`],{cwd:'web',stdio:'inherit'}) : execFileSync('npm',args,{cwd:'web',stdio:'inherit'});
 if (!process.argv.includes('--reuse-web')) { npm(['ci','--no-audit','--no-fund']); npm(['run','build']); }
 cpSync('web/dist',`${out}/web`,{recursive:true});
-for (const name of ['install-agent.sh','install-agent.ps1','uninstall-agent.sh','uninstall-agent.ps1']) cpSync(`scripts/${name}`,`${out}/web/downloads/${name}`);
+for (const name of ['install-agent.sh','install-agent.ps1','uninstall-agent.sh','uninstall-agent.ps1']) {
+  let source=readFileSync(`scripts/${name}`,'utf8');
+  source=source.replace(/RELEASE_VERSION='[^']+'/,()=>`RELEASE_VERSION='${version}'`).replace(/\$ReleaseVersion = '[^']+'/,()=>`$ReleaseVersion = '${version}'`);
+  writeFileSync(`${out}/web/downloads/${name}`,source);
+}
 cpSync('deploy/native',`${out}/deploy`,{recursive:true});
 cpSync('README.md',`${out}/README.md`);
 cpSync('docs',`${out}/docs`,{recursive:true});

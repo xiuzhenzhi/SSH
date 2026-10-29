@@ -12,15 +12,16 @@ fi
 if [ "$#" -eq 0 ] && [ -t 0 ]; then
     printf '\n============== SSHGuard 管理菜单 ==============\n'
     if [ -f /etc/sshguard/deploy-managed ]; then printf '状态：已安装\n'; else printf '状态：未安装\n'; fi
-    printf '  1) 安装 / 更新\n  2) 查看状态\n  3) 查看日志\n  4) 重启\n  5) 启动\n  6) 停止\n  0) 退出\n请选择 [默认 1]: '
+    printf '  1) 安装 / 更新\n  2) 查看状态\n  3) 查看日志\n  4) 重启\n  5) 启动\n  6) 停止\n  7) 卸载中央平台（保留数据）\n  0) 退出\n请选择 [默认 1]: '
     IFS= read -r choice
     case "${choice:-1}" in
-        1) if [ -f /etc/sshguard/deploy-managed ]; then set -- --update; fi ;;
+        1) if [ -L /opt/sshguard ] && [ -f /etc/sshguard/deploy-managed ]; then set -- --update; fi ;;
         2) set -- --status ;; 3) set -- --logs ;; 4) set -- --restart ;;
-        5) set -- --start ;; 6) set -- --stop ;; 0) exit 0 ;; *) die '无效选项。' ;;
+        5) set -- --start ;; 6) set -- --stop ;; 7) set -- --uninstall ;; 0) exit 0 ;; *) die '无效选项。' ;;
     esac
 fi
 case "${1:-}" in
+    --uninstall) shift; exec sh "$(dirname "$0")/uninstall.sh" "$@" ;;
     --status|--logs|--restart|--start|--stop)
         [ "$#" -eq 1 ] && [ -f /etc/sshguard/deploy-managed ] || die '未找到向导管理的安装，或参数无效。'
         case "$1" in
@@ -228,6 +229,10 @@ else
     {
         env_line DB_DRIVER "$driver"; env_line DATABASE_URL "$dsn"; env_line PUBLIC_URL "$configured_origin"
         env_line LISTEN_ADDR "$listen_address"; env_line ADMIN_USERNAME admin; env_line ADMIN_PASSWORD "$admin_password"; env_line GIN_MODE release
+        if [ -z "$config_file" ]; then
+            env_line WEB_SETUP true; env_line SETUP_TOKEN "$(openssl rand -hex 32)"
+            env_line SETUP_CONFIG_FILE /var/lib/sshguard-api/setup.json
+        fi
         if [ "$proxy_mode" = standalone ]; then
             if "$builtin_tls"; then
                 env_line TLS_CERT_FILE /etc/sshguard/tls/fullchain.pem; env_line TLS_KEY_FILE /etc/sshguard/tls/privkey.pem
@@ -268,7 +273,7 @@ stage=$(mktemp -d "/opt/sshguard-releases/$version.XXXXXX")
 # A bundle may be extracted inside an existing panel website. Copy only release
 # payloads, never unrelated site files, deploy.conf or certificate private keys.
 for item in sshguard-api web deploy VERSION; do cp -R "$bundle/$item" "$stage/$item"; done
-for item in deploy.sh README.md CHANGELOG.md CONTRIBUTING.md SECURITY.md docs; do
+for item in deploy.sh uninstall.sh README.md CHANGELOG.md CONTRIBUTING.md SECURITY.md docs; do
     [ ! -e "$bundle/$item" ] || cp -R "$bundle/$item" "$stage/$item"
 done
 # Public binaries/assets must be readable; configuration stays in /etc with 600.
@@ -372,8 +377,21 @@ if [ "$public_origin" = "http://SERVER_IP:$app_port" ]; then
     public_origin="http://${detected_ip:-127.0.0.1}:$app_port"
 fi
 printf '\n安装完成 · SSHGuard %s\n访问地址：%s\n' "$version" "$public_origin"
-printf '管理员：admin\n'
-if "$initial_setup" && [ -t 1 ] && [ -w /dev/tty ]; then
+if grep -Fq '"status":"setup_required"' <<EOF
+$health
+EOF
+then
+    printf '请打开网页选择数据库并创建管理员。\n'
+    if [ -t 1 ] && [ -w /dev/tty ]; then
+        setup_token=$(sed -n 's/^SETUP_TOKEN="\([^"]*\)"$/\1/p' /etc/sshguard/api.env)
+        printf '初始化链接：%s/#setup=%s\n' "$public_origin" "$setup_token" > /dev/tty
+        unset setup_token
+    else
+        printf '初始化口令：/etc/sshguard/api.env 中的 SETUP_TOKEN（需 sudo 权限查看）。\n'
+    fi
+elif grep -Fq 'WEB_SETUP="true"' /etc/sshguard/api.env; then
+    printf '请使用网页初始化时创建的管理员账号登录。\n'
+elif "$initial_setup" && [ -t 1 ] && [ -w /dev/tty ]; then
     # Only show the first-install password on the operator's terminal, never CI/redirected logs.
     initial_password=$(sed -n 's/^ADMIN_PASSWORD="\([^"]*\)"$/\1/p' /etc/sshguard/api.env)
     printf '初始密码：%s\n首次登录后请修改密码。\n' "$initial_password" > /dev/tty

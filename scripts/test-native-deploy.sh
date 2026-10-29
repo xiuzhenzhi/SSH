@@ -147,7 +147,8 @@ docker run --rm --network host --add-host guard.sshguard.test:127.0.0.1 \
     alpine:3.22 sh /ci/test-alpine-agent.sh
 unset SSHGUARD_ENROLLMENT_TOKEN
 node scripts/test-native-api.mjs verify-alpine
-sh "$bundle/web/downloads/uninstall-agent.sh"
+test -s /usr/local/lib/sshguard/uninstall-agent.sh
+sh /usr/local/lib/sshguard/uninstall-agent.sh
 if systemctl is-active --quiet sshguard-agent; then echo 'Agent still running after uninstall' >&2; exit 1; fi
 [ ! -e /usr/local/bin/sshguard-agent ]
 [ ! -e /etc/systemd/system/sshguard-agent-update.timer ]

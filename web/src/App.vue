@@ -18,6 +18,8 @@ import { Monitor, Grid, List, Lock, Setting, Plus, Refresh, Search, ArrowRight, 
 import Overview from './Overview.vue';
 import AlertCenter from './AlertCenter.vue';
 import AgentMaintenance from './AgentMaintenance.vue';
+import SetupWizard from './SetupWizard.vue';
+const setupRequired = ref(false);
 type Row = Record<string, any>;
 const user = ref<Row | null>(null), booting = ref(true), busy = ref(false), error = ref('');
 const active = ref('dashboard'), rows = ref<Row[]>([]), summary = ref<Row>({}), page = ref(1), more = ref(false);
@@ -118,12 +120,13 @@ function onVisible(){if(!document.hidden && user.value)scheduleRefresh();}
 document.addEventListener('visibilitychange',onVisible);
 
 let timer: ReturnType<typeof setInterval>;
-onMounted(async () => {try {user.value = await api('/auth/me');await load();startLive();}catch{}finally{booting.value = false;}timer = setInterval(() => {if (user.value && !document.hidden && !busy.value && !loading && ['dashboard','servers','events','alerts','notifications'].includes(active.value)) void load();},30000);});
+onMounted(async () => {try {setupRequired.value = (await api('/setup/status')).required;if(!setupRequired.value){user.value = await api('/auth/me');await load();startLive();}}catch{}finally{booting.value = false;}timer = setInterval(() => {if (user.value && !document.hidden && !busy.value && !loading && ['dashboard','servers','events','alerts','notifications'].includes(active.value)) void load();},30000);});
 onUnmounted(() => {stopLive();clearInterval(timer); controller?.abort();document.removeEventListener('visibilitychange',onVisible);});
 </script>
 
 <template>
   <div v-if="booting" class="loading">正在连接 SSHGuard…</div>
+  <SetupWizard v-else-if="setupRequired" @complete="setupRequired=false" />
   <main v-else-if="!user" class="login-screen">
     <section class="login-intro"><div class="brand"><el-icon><Lock /></el-icon> SSHGuard <span>CONSOLE</span></div><div class="intro-copy"><div class="eyebrow">INFRASTRUCTURE SECURITY</div><h1>每一次连接，<br>都有迹可循。</h1><p>集中管理 Windows 与 Linux 服务器，<br>建立清晰、可追溯的 SSH 安全视图。</p><div class="intro-line"></div><small>SSH AUDIT · REAL-TIME ALERTS</small></div><footer>SSHGuard · 自托管服务器安全平台</footer></section>
     <section class="login-form"><div class="eyebrow">WELCOME BACK</div><h2>登录管理控制台</h2><p>使用管理员分配的账号继续</p><el-form label-position="top" @submit.prevent="signIn"><el-form-item label="用户名"><el-input v-model="login.username" autocomplete="username" size="large" /></el-form-item><el-form-item label="密码"><el-input v-model="login.password" type="password" show-password autocomplete="current-password" size="large" /></el-form-item><el-button type="primary" size="large" native-type="submit" :loading="busy">安全登录 <el-icon><ArrowRight /></el-icon></el-button></el-form><small>初始管理员密码见部署时生成的配置文件。</small></section>

@@ -26,6 +26,25 @@ func main() {
 			log.Fatal("Cannot load configured TLS certificate and key: ", e)
 		}
 	}
+	if c.SetupPending {
+		if *check {
+			log.Print("Web initialization ready; database and administrator will be configured in the browser")
+			return
+		}
+		setupCtx, stopSetup := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		completed, err := serveSetup(setupCtx, c)
+		stopSetup()
+		if err != nil {
+			log.Fatal("Initialization service failed: ", err)
+		}
+		if !completed {
+			return
+		}
+		c, e = api.LoadConfig()
+		if e != nil {
+			log.Fatal(e)
+		}
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	db, e := storage.Open(ctx, c.Driver, c.DatabaseURL)
 	if e != nil {

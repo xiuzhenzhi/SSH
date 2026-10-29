@@ -14,7 +14,17 @@ sh scripts/quick-start.sh
 
 最后一条命令下载固定版本 `v0.3.4` 的对应架构发行包，校验 SHA256，再调用安装向导。下载使用当前用户的 GitHub 登录，只有安装时调用 sudo。不要把 GitHub Token 放进命令行或发给 Agent。
 
-运行安装脚本后进入编号菜单，选择「1 安装 / 更新」，输入端口（回车使用 8080）即可。默认 SQLite，不再询问数据库、域名或反向代理。首次交互安装完成后直接显示访问地址、管理员账号和初始密码；CI/重定向日志不显示密码。已有 Nginx / OpenResty 不影响此流程。再次运行脚本可查看状态、日志，以及启动、停止或重启服务。
+运行安装脚本后进入编号菜单，选择「1 安装 / 更新」，输入端口（回车使用 8080）即可。已有 Nginx / OpenResty 不影响此流程。首次交互安装显示初始化链接，打开后选择数据库、测试连接、创建管理员。SQLite 无需额外服务；MySQL / PostgreSQL 需预先创建专用空数据库。初始化口令通过链接片段传递，不进入 HTTP 访问日志；CI/重定向日志不显示口令，可用 sudo 查看 `/etc/sshguard/api.env` 中的 SETUP_TOKEN 并在网页填写。
+
+网页初始化配置存放在 `/var/lib/sshguard-api/setup.json`，与数据库及 `/etc/sshguard/api.env` 一起备份。初始化完成后入口关闭；已有安装升级不会重新创建管理员或切换数据库。显式 `--config` 的无人值守安装仍按配置文件初始化数据库和管理员，无需网页操作。
+
+### 卸载中央平台（含旧版）
+
+运行管理菜单选择「7 卸载中央平台」，或 `sudo sh /opt/sshguard/deploy.sh --uninstall`。确认后停止并移除中央服务与当前程序，保留数据库、配置和历史目录，不卸载 Nginx/OpenResty、外部数据库服务或 Agent。
+
+旧版没有卸载菜单时，从本仓库取得 `scripts/uninstall.sh`，在中央服务器执行 `sudo sh uninstall.sh`；无需先升级。也可以从新 Release 下载独立的 `uninstall.sh` 与 `SHA256SUMS`，校验后运行。支持标准 `/opt/sshguard` 原生安装及新版发行目录链接；非标准服务路径会停止自动卸载。无人值守可加 `--yes`。已有反代条目在宝塔或原配置中自行移除。旧 Compose 部署在原项目目录执行 `docker compose down`，不要加 `-v`，以保留数据卷。
+
+再次运行安装可沿用保留的配置与数据；要全新初始化，请先完成备份并由管理员明确处理旧数据，脚本不会自动清空数据库。
 
 下面的接入方式与证书仅用于显式指定 `--proxy external` / `--proxy managed` 或配置文件中的 TLS 参数，不属于默认安装必填项：
 

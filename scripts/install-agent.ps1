@@ -89,6 +89,10 @@ function Initialize-FixedUpdater {
     $runner = Join-Path $installDir 'poll-update.ps1'
     Assert-NoReparsePoint $localInstaller
     Assert-NoReparsePoint $runner
+    $uninstaller = Join-Path $installDir 'uninstall-agent.ps1'
+    Assert-NoReparsePoint $uninstaller
+    Copy-Item -LiteralPath (Join-Path $staging 'uninstall-agent.ps1') -Destination $uninstaller -Force
+    Protect-File $uninstaller
     if ([IO.Path]::GetFullPath($PSCommandPath) -ne $localInstaller) { Copy-Item -LiteralPath $PSCommandPath -Destination $localInstaller -Force }
     @'
 #Requires -RunAsAdministrator
@@ -133,6 +137,7 @@ $replaceBackup = Join-Path $staging 'replaced.exe'
 $keepBackup = $false
 try {
     if ($Update -and (-not $service -or -not (Test-Path -LiteralPath $config) -or -not (Test-Path -LiteralPath $exe))) { throw 'Agent not installed; generate an installation command.' }
+    Invoke-WebRequest -UseBasicParsing -TimeoutSec 60 -MaximumRedirection 0 -Uri "$Endpoint/downloads/uninstall-agent.ps1" -OutFile (Join-Path $staging 'uninstall-agent.ps1')
     Invoke-WebRequest -UseBasicParsing -TimeoutSec 180 -MaximumRedirection 0 -Uri "$Endpoint/downloads/sshguard-agent-windows-$arch.exe" -OutFile $download
     Invoke-WebRequest -UseBasicParsing -TimeoutSec 30 -MaximumRedirection 0 -Uri "$Endpoint/downloads/sshguard-agent-windows-$arch.exe.sha256" -OutFile $checksum
     $expected = ((Get-Content -LiteralPath $checksum -Raw).Trim() -split '\s+')[0]

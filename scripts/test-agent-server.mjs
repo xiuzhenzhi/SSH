@@ -6,7 +6,7 @@ if(process.env.GITHUB_ACTIONS!=='true') throw Error('Disposable CI only');
 const events=new Set();
 let updatePending=false,updateResult='';
 const server=https.createServer({pfx:readFileSync(process.env.SSHGUARD_TEST_PFX),passphrase:process.env.SSHGUARD_TEST_PFX_PASSWORD},(req,res)=>{
- if(req.method==='GET' && /^\/downloads\/sshguard-agent-windows-amd64\.exe(?:\.sha256)?$/.test(req.url)){
+ if(req.method==='GET' && /^\/downloads\/(?:sshguard-agent-windows-amd64\.exe(?:\.sha256)?|uninstall-agent\.ps1)$/.test(req.url)){
    try {res.end(readFileSync(join(process.env.SSHGUARD_TEST_DOWNLOAD_ROOT,req.url.split('/').pop())));}catch{res.writeHead(404).end();}return;
  }
  if(req.url==='/ready'){res.end('ready');return;}

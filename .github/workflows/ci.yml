@@ -43,6 +43,7 @@ jobs:
           go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
           sh -n scripts/install-agent.sh
           sh -n scripts/uninstall-agent.sh
+          sh -n scripts/uninstall.sh
           sh -n scripts/deploy.sh
           sh -n scripts/quick-start.sh
       - name: Validate GitHub Actions workflows

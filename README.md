@@ -26,7 +26,7 @@ Agent 主动出站连接平台，不保存服务器 SSH 密码或私钥，不接
 
 *开发验收截图，包含隔离测试数据，不是生产服务器监控结果。*
 
-中央平台推荐 Ubuntu / Debian + systemd。准备解析到平台主机的域名、80/443 端口和可信 HTTPS；私有仓库使用有权限的 GitHub 账号，先完成 gh auth login。
+中央平台推荐 Ubuntu / Debian + systemd，直接通过 IP 和端口访问，无需域名或 Nginx；接入 Agent 时再配置可信 HTTPS。私有仓库使用有权限的 GitHub 账号，先完成 gh auth login。
 
 **版本提示：SQLite 从 v0.3.1 开始支持。** 下方一键入口下载固定版本 `v0.3.4`，安装前确认 [Releases](https://github.com/xiuzhenzhi/SSH/releases) 中该版本已构建完成并包含安装包；也可按下方 Compose 步骤从源码构建。
 
@@ -36,11 +36,11 @@ cd SSH
 sh scripts/quick-start.sh
 ```
 
-向导下载固定版本、校验 SHA256，并配置 systemd。默认使用 SQLite，程序直接提供网页和 API，无需安装 Nginx 或数据库服务；也可复用已有 Nginx / OpenResty / 宝塔反向代理。独立模式支持现有证书启用内置 HTTPS；HTTP 可体验面板，接入 Agent 前须启用 HTTPS。数据库还可选择 PostgreSQL / MySQL。SQLite 数据位于 `/var/lib/sshguard-api/sshguard.db`，管理员初始密码及通知加密密钥保存在 root 专用的 `/etc/sshguard/api.env`。详见 [安装与管理](docs/QUICKSTART.md)。
+向导下载固定版本、校验 SHA256，并配置 systemd。程序直接提供网页和 API，无需安装 Nginx；已有 Nginx / OpenResty / 宝塔可按文档反代。首次打开网页选择 SQLite（推荐，无需数据库服务）、MySQL 或 PostgreSQL，并创建管理员。SQLite 数据位于 `/var/lib/sshguard-api/sshguard.db`，网页数据库配置保存在同目录的 `setup.json`；通知加密密钥保存在 root 专用的 `/etc/sshguard/api.env`，备份时一起保存。详见 [安装与管理](docs/QUICKSTART.md)。
 
 更新平台：`sh scripts/quick-start.sh --update`。先备份数据库与 api.env，再更新平台、最后分批更新 Agent。自动回退恢复程序，**不逆向恢复数据库迁移**。离线包、无人值守配置、证书和迁移说明见 [快速开始](docs/QUICKSTART.md)。
 
-安装脚本提供中文编号菜单：选择安装，端口回车即可，默认 SQLite，无需输入域名或选择反代。首次交互安装完成后直接显示访问地址、账号和初始密码。反代与 HTTPS 放在快速开始文档中，需要时再配置。
+安装脚本提供中文编号菜单：选择安装，端口回车即可。首次交互安装显示初始化链接，打开网页完成数据库和管理员配置；旧版升级保留原账号和数据库。菜单也可卸载中央平台，默认保留数据，兼容旧版原生安装。Agent 安装后保存本地卸载脚本，平台离线时仍可卸载。反代与 HTTPS 按快速开始文档按需配置。
 
 ## Compose（可选）
 

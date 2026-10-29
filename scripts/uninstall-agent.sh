@@ -1,9 +1,16 @@
 #!/bin/sh
 set -eu
 [ "$(id -u)" -eq 0 ] || { echo 'Run as root.' >&2; exit 1; }
-for path in /usr/local/lib/sshguard /usr/local/bin/sshguard-agent /etc/systemd/system/sshguard-agent.service /etc/init.d/sshguard-agent; do
+printf '[1/2] 停止 Agent 及版本更新服务…\n'
+for path in /usr/local/lib/sshguard /usr/local/bin/sshguard-agent /etc/systemd/system/sshguard-agent.service /etc/init.d/sshguard-agent /etc/systemd/system/sshguard-agent-update.timer /etc/systemd/system/sshguard-agent-update.service /etc/init.d/sshguard-agent-update; do
     [ ! -L "$path" ] || { echo "Refusing symlink: $path" >&2; exit 1; }
 done
+if [ -f /etc/systemd/system/sshguard-agent.service ]; then
+    grep -Fxq 'ExecStart=/usr/local/bin/sshguard-agent -config /etc/sshguard/agent.json' /etc/systemd/system/sshguard-agent.service || { echo '同名服务属于其他安装，停止卸载。' >&2; exit 1; }
+fi
+if [ -f /etc/init.d/sshguard-agent ]; then
+    grep -Fxq 'command="/usr/local/bin/sshguard-agent"' /etc/init.d/sshguard-agent || { echo '同名服务属于其他安装，停止卸载。' >&2; exit 1; }
+fi
 mkdir /run/sshguard-agent-install.lock 2>/dev/null || { echo 'Installation/update active; retry after it finishes.' >&2; exit 1; }
 trap 'rmdir /run/sshguard-agent-install.lock' EXIT
 if command -v systemctl >/dev/null 2>&1 && [ -f /etc/systemd/system/sshguard-agent-update.timer ]; then
@@ -26,5 +33,5 @@ elif command -v rc-service >/dev/null 2>&1 && [ -f /etc/init.d/sshguard-agent ];
     rm -f /etc/init.d/sshguard-agent
 fi
 rm -f /usr/local/bin/sshguard-agent
-rm -f /usr/local/lib/sshguard/update-agent.sh /usr/local/lib/sshguard/update-loop.sh
-echo 'Configuration and logs retained. Revoke the credential in the dashboard.'
+rm -f /usr/local/lib/sshguard/update-agent.sh /usr/local/lib/sshguard/update-loop.sh /usr/local/lib/sshguard/uninstall-agent.sh
+printf '[2/2] Agent 已卸载，配置与历史日志已保留。\n请在控制台撤销该服务器凭据，停止接收它的上报。中央平台不受影响。\n'

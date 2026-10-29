@@ -25,5 +25,6 @@ cpSync('README.md',`${out}/README.md`);
 cpSync('docs',`${out}/docs`,{recursive:true});
 cpSync('VERSION',`${out}/VERSION`);
 cpSync('scripts/deploy.sh',`${out}/deploy.sh`);
+cpSync('scripts/uninstall.sh',`${out}/uninstall.sh`);
 for (const name of ['CHANGELOG.md','CONTRIBUTING.md','SECURITY.md']) cpSync(name,`${out}/${name}`);
 console.log(`Native Linux release ready: ${out}`);

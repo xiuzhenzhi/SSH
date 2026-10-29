@@ -79,6 +79,24 @@ grep sshguard-agent /var/log/messages
 新安装的 Alpine Agent 交给 syslog 管理日志与轮转，需启用本机 syslog 服务；更新会刷新服务定义并保留配置及队列；旧日志文件仍需按本机策略清理。Windows 交由事件日志保留策略管理。卸载脚本：`scripts/uninstall-agent.sh`（root）或 `scripts/uninstall-agent.ps1`（管理员 PowerShell）。卸载保留凭证文件和历史日志，须在后台撤销凭证；系统用户/事件源不自动删除。
 
 
+## 简单安装与离线卸载
+
+在控制台添加服务器，复制对应系统的一条安装命令到目标机器执行。Linux 自动识别 amd64/arm64 和 systemd/OpenRC，安装所需依赖、注册服务并设置开机自启；Windows 使用管理员 PowerShell，服务以 LocalService 运行。更新沿用服务器身份和配置，支持平台管理员触发固定版本更新；不支持远程 Shell、文件操作或其他命令。
+
+新安装/更新会缓存卸载脚本，平台不可访问时也能执行：
+
+```sh
+# Ubuntu / Debian；Alpine 使用 root 执行，去掉 sudo
+sudo sh /usr/local/lib/sshguard/uninstall-agent.sh
+```
+
+```powershell
+# 管理员 PowerShell
+& "$env:ProgramFiles\SSHGuardAgent\uninstall-agent.ps1"
+```
+
+卸载停止并删除采集服务、受限更新服务/计划任务及程序，保留配置、队列和历史日志，不影响中央平台。旧 Agent 尚无缓存时，使用控制台生成的卸载命令，或从本仓库复制对应 `scripts/uninstall-agent.sh` / `.ps1` 到目标机器执行。之后在控制台撤销凭据。安装与卸载体验参考 [Komari Agent](https://github.com/komari-monitor/komari-agent)，本项目仍保持专用 SSH 采集工具的权限范围。
+
 ## 单台验收
 
 1. 安装完成后服务处于运行状态。

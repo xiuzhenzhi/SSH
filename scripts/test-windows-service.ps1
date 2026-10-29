@@ -19,6 +19,7 @@ try {
     go build -trimpath -o $download ./cmd/agent
     if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
     Write-Checksum
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'uninstall-agent.ps1') -Destination (Join-Path $temp 'uninstall-agent.ps1')
     Copy-Item $download (Join-Path $temp 'good.exe')
     $cert = New-SelfSignedCertificate -DnsName localhost -CertStoreLocation Cert:\LocalMachine\My -KeyExportPolicy Exportable -NotAfter (Get-Date).AddDays(2)
     $pfxPassword = [Guid]::NewGuid().ToString('N')
@@ -82,6 +83,9 @@ try {
     if ((Get-FileHash $config -Algorithm SHA256).Hash -ne $configHash) { throw 'Rollback changed credentials' }
     if ((Get-FileHash $exe -Algorithm SHA256).Hash -ne (Get-FileHash (Join-Path $temp 'good.exe') -Algorithm SHA256).Hash) { throw 'Rollback binary mismatch' }
     Write-Output 'Windows real LocalService install, update, idempotence, checksum rejection and rollback passed.'
+    & (Join-Path $env:ProgramFiles 'SSHGuardAgent\uninstall-agent.ps1')
+    if (Get-Service SSHGuardAgent -ErrorAction SilentlyContinue) { throw 'Offline uninstall left service installed' }
+    if ((Get-FileHash $config -Algorithm SHA256).Hash -ne $configHash) { throw 'Uninstall changed retained credentials' }
 } finally {
     if (Get-Service SSHGuardAgent -ErrorAction SilentlyContinue) { & "$PSScriptRoot/uninstall-agent.ps1" }
     if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id }

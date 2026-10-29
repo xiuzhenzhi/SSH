@@ -3,6 +3,9 @@
 set -eu
 umask 077
 die() { echo "$*" >&2; exit 1; }
+case "${1:-}" in
+    --help|-h) printf '安装：sudo sh install-agent.sh HTTPS_ORIGIN ONE_TIME_TOKEN\n更新：sudo sh install-agent.sh HTTPS_ORIGIN --update\n离线卸载：sudo sh /usr/local/lib/sshguard/uninstall-agent.sh\n'; exit 0 ;;
+esac
 [ "$(id -u)" -eq 0 ] || die 'Run as root (sudo sh on Ubuntu/Debian).'
 [ "$#" -eq 2 ] || die 'Usage: install-agent.sh HTTPS_ORIGIN ONE_TIME_TOKEN|--update'
 endpoint=${1%/}
@@ -14,7 +17,12 @@ else printf '%s' "$enrollment" | grep -Eq '^[a-f0-9]{64}$' || die 'Invalid enrol
 if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then init=systemd
 elif command -v rc-service >/dev/null 2>&1 && command -v supervise-daemon >/dev/null 2>&1; then init=openrc
 else die 'A running systemd or OpenRC installation is required.'; fi
-command -v curl >/dev/null 2>&1 || die 'Install curl and ca-certificates first (apt or apk).'
+printf '[1/4] 检查系统与依赖（%s）…\n' "$init"
+if ! command -v curl >/dev/null 2>&1 || [ ! -s /etc/ssl/certs/ca-certificates.crt ]; then
+    if command -v apt-get >/dev/null 2>&1; then apt-get update; apt-get install -y curl ca-certificates
+    elif command -v apk >/dev/null 2>&1; then apk add --no-cache curl ca-certificates
+    else die '请先安装 curl 和 ca-certificates，再重新运行本命令。'; fi
+fi
 command -v sha256sum >/dev/null 2>&1
 case "$(uname -m)" in x86_64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; *) die 'Only amd64 / arm64 supported.' ;; esac
 for path in /var/lib/sshguard-agent /etc/sshguard /etc/sshguard/agent.json /usr/local/bin/sshguard-agent /etc/systemd/system/sshguard-agent.service /etc/init.d/sshguard-agent; do
@@ -82,6 +90,9 @@ configure_updater() {
     mkdir -p /usr/local/lib/sshguard
     chown root:root /usr/local/lib/sshguard
     chmod 0700 /usr/local/lib/sshguard
+    [ ! -L /usr/local/lib/sshguard/uninstall-agent.sh ] || die 'Refusing symlink uninstaller.'
+    cp "$tmp/uninstall-agent.sh" /usr/local/lib/sshguard/uninstall-agent.sh
+    chmod 0700 /usr/local/lib/sshguard/uninstall-agent.sh
     # Keep a trusted local installer. Never fetch scripts in a remote task.
     cp "$0" "$tmp/update-agent.sh"
     chmod 0700 "$tmp/update-agent.sh"
@@ -161,6 +172,9 @@ trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 mkdir -p /usr/local/bin
 tmp=$(mktemp -d /usr/local/bin/.sshguard-install.XXXXXX)
+printf '[2/4] 下载并校验 Agent…\n'
+curl --proto '=https' --tlsv1.2 --connect-timeout 15 --max-time 60 -fsS "$endpoint/downloads/uninstall-agent.sh" -o "$tmp/uninstall-agent.sh"
+sh -n "$tmp/uninstall-agent.sh"
 curl --proto '=https' --tlsv1.2 --connect-timeout 15 --max-time 180 --retry 2 -fsS "$endpoint/downloads/sshguard-agent-linux-$arch" -o "$tmp/agent"
 curl --proto '=https' --tlsv1.2 --connect-timeout 15 --max-time 30 -fsS "$endpoint/downloads/sshguard-agent-linux-$arch.sha256" -o "$tmp/hash"
 expected=$(awk '{print $1}' "$tmp/hash")
@@ -172,6 +186,7 @@ if [ -n "${SSHGUARD_EXPECTED_VERSION:-}" ]; then
     [ "$("$tmp/agent" -version)" = "SSHGuard $SSHGUARD_EXPECTED_VERSION linux/$arch" ] || die 'Platform version changed; refusing mismatched update.'
 fi
 if [ "$mode" = update ]; then
+    printf '[3/4] 更新程序，保留服务器身份与配置…\n'
     chown root:sshguard "$config"
     chmod 0640 "$config"
     "$tmp/agent" -check -endpoint "$endpoint" -config "$config"
@@ -203,6 +218,7 @@ if ! id sshguard >/dev/null 2>&1; then
     else addgroup -S sshguard; adduser -S -D -H -h /nonexistent -s /sbin/nologin -G sshguard sshguard; fi
 fi
 prepare_collection
+printf '[3/4] 注册服务器并设置开机自启…\n'
 mkdir -p /etc/sshguard
 # API and Agent may share this parent. Keep their secrets in separately
 # protected files/directories instead of assigning the parent to one service.
@@ -220,4 +236,4 @@ sleep 2
 service_active
 "$exe" -check -endpoint "$endpoint" -config "$config"
 configure_updater
-echo "Installed for $init. Durable SSH collection enabled; check collector health in the console."
+printf '[4/4] Agent 已启动，请在控制台查看上线和采集状态。\n离线卸载：sudo sh /usr/local/lib/sshguard/uninstall-agent.sh\n'

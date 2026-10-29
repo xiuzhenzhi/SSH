@@ -5,6 +5,9 @@ $exe = Join-Path $env:ProgramFiles 'SSHGuardAgent\sshguard-agent.exe'
 $config = Join-Path $env:ProgramData 'SSHGuard\agent.json'
 $installLock = $null
 $installDir = Split-Path -Parent $exe
+foreach ($path in @($installDir,$exe)) {
+    if ((Get-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Refusing reparse point: $path" }
+}
 if (Test-Path -LiteralPath $installDir) {
     $lockPath = Join-Path $installDir 'install.lock'
     if ((Get-Item -LiteralPath $lockPath -Force -ErrorAction SilentlyContinue).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Refusing reparse point lock.' }
@@ -32,7 +35,7 @@ if (Get-Service SSHGuardAgent -ErrorAction SilentlyContinue) {
     if ($LASTEXITCODE -ne 0) { throw 'Service removal failed; executable and config retained.' }
 }
 if (Test-Path -LiteralPath $exe) { Remove-Item -LiteralPath $exe }
-foreach ($path in @($runner,(Join-Path $env:ProgramFiles 'SSHGuardAgent\update-agent.ps1'))) {
+foreach ($path in @($runner,(Join-Path $env:ProgramFiles 'SSHGuardAgent\update-agent.ps1'),(Join-Path $env:ProgramFiles 'SSHGuardAgent\uninstall-agent.ps1'))) {
     if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path }
 }
 Write-Output 'Service removed. Config, event source and historical logs retained; revoke the credential in the dashboard.'

@@ -12,6 +12,8 @@ import (
 
 type Config struct {
 	WebDir, TLSCertFile, TLSKeyFile                                      string
+	SetupFile, SetupToken                                                string
+	SetupPending                                                         bool
 	Driver, DatabaseURL, PublicURL, Listen, AdminUsername, AdminPassword string
 	SecureCookie                                                         bool
 	EncryptionKey                                                        string
@@ -22,6 +24,27 @@ type Config struct {
 func LoadConfig() (Config, error) {
 	c := Config{Driver: os.Getenv("DB_DRIVER"), DatabaseURL: os.Getenv("DATABASE_URL"), PublicURL: strings.TrimRight(os.Getenv("PUBLIC_URL"), "/"), Listen: os.Getenv("LISTEN_ADDR"), AdminUsername: os.Getenv("ADMIN_USERNAME"), AdminPassword: os.Getenv("ADMIN_PASSWORD"), SecureCookie: true}
 	c.EncryptionKey = os.Getenv("ENCRYPTION_KEY")
+	if os.Getenv("WEB_SETUP") == "true" {
+		c.SetupFile = os.Getenv("SETUP_CONFIG_FILE")
+		if c.SetupFile == "" {
+			c.SetupFile = "/var/lib/sshguard-api/setup.json"
+		}
+		record, err := readSetupRecord(c.SetupFile)
+		if err == nil {
+			c.Driver, c.DatabaseURL, c.AdminUsername = record.Driver, record.DatabaseURL, record.AdminUsername
+			c.AdminPassword = ""
+		} else if os.IsNotExist(err) {
+			c.SetupPending = true
+			c.Driver = "sqlite"
+			c.DatabaseURL = "file:" + filepath.ToSlash(filepath.Join(filepath.Dir(c.SetupFile), "sshguard.db"))
+			c.SetupToken = os.Getenv("SETUP_TOKEN")
+			if len(c.SetupToken) < 32 {
+				return c, fmt.Errorf("SETUP_TOKEN must contain at least 32 characters")
+			}
+		} else {
+			return c, fmt.Errorf("cannot read initialization manifest")
+		}
+	}
 	c.WebDir = os.Getenv("WEB_DIR")
 	if c.WebDir == "" {
 		if executable, err := os.Executable(); err == nil {

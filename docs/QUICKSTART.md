@@ -12,7 +12,7 @@ cd SSH
 sh scripts/quick-start.sh
 ```
 
-最后一条命令下载固定版本 `v0.3.2` 的对应架构发行包，校验 SHA256，再调用安装向导。下载使用当前用户的 GitHub 登录，只有安装时调用 sudo。不要把 GitHub Token 放进命令行或发给 Agent。
+最后一条命令下载固定版本 `v0.3.3` 的对应架构发行包，校验 SHA256，再调用安装向导。下载使用当前用户的 GitHub 登录，只有安装时调用 sudo。不要把 GitHub Token 放进命令行或发给 Agent。
 
 默认安装只询问应用端口（回车使用 8080）和数据库（回车使用 SQLite），不询问域名或反向代理。直接访问 `http://服务器IP:8080`；已有 Nginx / OpenResty 不影响此流程。
 
@@ -102,7 +102,7 @@ MySQL 5.6 已于 2021 年结束生命周期；应用兼容不能修复数据库�
 先备份数据库和 `/etc/sshguard`，阅读目标版本迁移说明，再下载新版本：
 
 ```sh
-SSHGUARD_VERSION=v0.3.2 sh scripts/quick-start.sh --update
+SSHGUARD_VERSION=v0.3.3 sh scripts/quick-start.sh --update
 # 或使用已解压的新包：
 sudo sh sshguard-linux-amd64/deploy.sh --update
 ```

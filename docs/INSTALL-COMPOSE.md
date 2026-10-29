@@ -48,6 +48,6 @@ SQLite 模式只启动 API 和 Web，数据保存在 `sqlite-data` 命名卷中�
 
 参阅 [Agent 安装](AGENTS.md)、[运维手册](OPERATIONS.md)。
 
-## 旧版本升级
+## 更新
 
-保留原 .env、数据库卷和登录密码。若缺少 ENCRYPTION_KEY，执行 openssl rand -hex 32 生成一次并追加到 .env；不要重新运行初始化器覆盖配置。备份数据库与该密钥后再更新。公网反代须支持 WebSocket Upgrade，随包 Nginx 模板已配置。通知配置及内网目的地例外见 [告警手册](ALERTING.md)。
+备份数据库卷和 .env 后更新源码，再执行 `docker compose up -d --build`。保留数据库、登录账号和 ENCRYPTION_KEY，不重新运行初始化器覆盖配置。反代须支持 WebSocket Upgrade，通知配置见 [告警手册](ALERTING.md)。

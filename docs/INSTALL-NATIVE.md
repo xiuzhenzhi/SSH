@@ -2,7 +2,7 @@
 
 > 推荐先使用 [一键部署向导](QUICKSTART.md)，默认 SQLite，支持独立运行、内置 HTTPS 或复用 Nginx / OpenResty。下文保留手工 Nginx 部署方案。MySQL 可接入 5.6.51 或 8.4；新部署建议维护中的版本。
 
-独立部署无需 Nginx：保留发布包中与 `sshguard-api` 同目录的 `web/`，程序自动提供控制台和下载文件，也可通过 `WEB_DIR` 指定目录。设置 `LISTEN_ADDR=0.0.0.0:8080`、实际 `PUBLIC_URL` 和数据库配置；内置 HTTPS 同时设置 `TLS_CERT_FILE`、`TLS_KEY_FILE`（服务账号必须可读），证书更新后重启 API。纯 HTTP 需要显式设置 `ALLOW_INSECURE_HTTP=true`，仅适合受信任网络体验面板，Agent 安装和更新仍要求 HTTPS。
+独立部署无需 Nginx：保留发布包中与 `sshguard-api` 同目录的 `web/`，程序自动提供控制台和下载文件，也可通过 `WEB_DIR` 指定目录。设置 `LISTEN_ADDR=0.0.0.0:8080`、实际 `PUBLIC_URL` 和数据库配置；内置 HTTPS 同时设置 `TLS_CERT_FILE`、`TLS_KEY_FILE`（服务账号必须可读），证书更新后重启 API。纯 HTTP 需要显式设置 `ALLOW_INSECURE_HTTP=true`，仅适合受信任网络体验面板，Agent 的 HTTP 接入需显式授权，发行文件通过 HTTPS 下载。
 
 中央平台部署在 Linux，Agent 可运行在 Windows / Ubuntu / Debian / Alpine。
 
@@ -21,7 +21,7 @@ ARM64 中央服务器把 amd64 改成 arm64。包内已有 API、Web 和全部 A
 
 ### 2. 准备数据库（三选一）
 
-SQLite：使用包含 SQLite 功能的新构建包，无需安装数据库服务；设置 `DB_DRIVER=sqlite`、`DATABASE_URL=file:/var/lib/sshguard-api/sshguard.db`。随包 systemd 服务会创建权限为 0700 的数据目录。如果在启动 systemd 前手动运行 API 的 `-check`，先执行 `sudo install -d -o sshguard-api -g sshguard-api -m 700 /var/lib/sshguard-api`（须先创建下文的服务用户）。SQLite 使用本机磁盘和单个 API 实例；旧 `v0.3.0` 发行包不包含本次源码新增功能。
+SQLite：使用包含 SQLite 功能的新构建包，无需安装数据库服务；设置 `DB_DRIVER=sqlite`、`DATABASE_URL=file:/var/lib/sshguard-api/sshguard.db`。随包 systemd 服务会创建权限为 0700 的数据目录。如果在启动 systemd 前手动运行 API 的 `-check`，先执行 `sudo install -d -o sshguard-api -g sshguard-api -m 700 /var/lib/sshguard-api`（须先创建下文的服务用户）。SQLite 使用本机磁盘和单个 API 实例。
 
 先安装数据库，或使用已有实例。下面在数据库管理员会话中执行，把密码占位符换成随机密码；建议密码只使用十六进制字符，避免 DSN/环境文件转义问题。
 
@@ -88,6 +88,6 @@ sudo journalctl -u sshguard-api -n 100 --no-pager
 
 登录 PUBLIC_URL 后按 [Agent 安装](AGENTS.md) 接入服务器，日常升级和备份见 [运维手册](OPERATIONS.md)。
 
-## v0.3 通知加密密钥
+## 通知加密密钥
 
 手工部署须设置 ENCRYPTION_KEY=64位随机十六进制值（openssl rand -hex 32 生成），保存在 root 专用 api.env；后续更新保持不变。原生向导会自动补充缺失密钥。随数据库一起备份密钥，详见 [告警配置](ALERTING.md)。

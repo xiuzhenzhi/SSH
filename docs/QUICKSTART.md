@@ -22,11 +22,11 @@ sh scripts/quick-start.sh
 
 网页初始化配置存放在 `/var/lib/sshguard-api/setup.json`，与数据库及 `/etc/sshguard/api.env` 一起备份。初始化完成后入口关闭；已有安装升级不会重新创建管理员或切换数据库。显式 `--config` 的无人值守安装仍按配置文件初始化数据库和管理员，无需网页操作。
 
-### 卸载中央平台（含旧版）
+### 卸载中央平台
 
 运行管理菜单选择「7 卸载中央平台」，或 `sudo sh /opt/sshguard/deploy.sh --uninstall`。确认后停止并移除中央服务与当前程序，保留数据库、配置和历史目录，不卸载 Nginx/OpenResty、外部数据库服务或 Agent。
 
-旧版没有卸载菜单时，从本仓库取得 `scripts/uninstall.sh`，在中央服务器执行 `sudo sh uninstall.sh`；无需先升级。也可以从新 Release 下载独立的 `uninstall.sh` 与 `SHA256SUMS`，校验后运行。支持标准 `/opt/sshguard` 原生安装及新版发行目录链接；非标准服务路径会停止自动卸载。无人值守可加 `--yes`。已有反代条目在宝塔或原配置中自行移除。旧 Compose 部署在原项目目录执行 `docker compose down`，不要加 `-v`，以保留数据卷。
+独立卸载脚本为 `scripts/uninstall.sh`，支持标准 `/opt/sshguard` 安装路径。无人值守可加 `--yes`，非标准服务路径会停止自动卸载。反代条目在原面板中自行移除；Compose 部署在项目目录执行 `docker compose down`，不加 `-v` 以保留数据卷。
 
 再次运行安装可沿用保留的配置与数据；要全新初始化，请先完成备份并由管理员明确处理旧数据，脚本不会自动清空数据库。
 
@@ -39,15 +39,15 @@ sh scripts/quick-start.sh
 
 向导仅安装缺少的依赖、初始化数据库、创建低权限服务账号、配置 systemd，最后检查 API 健康状态。独立和复用模式不会安装或重载 Nginx / OpenResty。初始账号 `admin`，随机密码仅保存在 `/etc/sshguard/api.env`，不会输出到部署日志。登录后点右上角「修改密码」，旧会话会全部失效。
 
-独立模式访问 `http://服务器IP:8080`，也可按需启用内置 TLS。默认安装显式开启 `ALLOW_INSECURE_HTTP=true`，生成的 Agent 命令包含 HTTP 授权参数并在本地配置中保存，因此注册、心跳、事件与更新都能使用同一 IP 地址。HTTP 的登录、凭证、下载与上报未加密，应确保网络可信；SHA256 只能检查完整性。已有 HTTPS 部署继续校验证书，不会降级。程序直接提供发布包中的 `web/`，无需 Node.js 或单独的 Web 服务。
+独立模式访问 `http://服务器IP:8080`，也可按需启用内置 TLS。默认安装显式开启 `ALLOW_INSECURE_HTTP=true`，生成的 Agent 命令包含 HTTP 授权参数并在本地配置中保存，因此注册、心跳、事件与更新都能使用同一 IP 地址。HTTP 的登录、凭证与上报未加密，应确保网络可信；SHA256 只能检查完整性。已有 HTTPS 部署继续校验证书，不会降级。程序直接提供发布包中的 `web/`，无需 Node.js 或单独的 Web 服务。
 
 复用 Nginx / OpenResty / 宝塔时选择 `--proxy external`，在已有 HTTPS 站点把整个应用反代到 `http://127.0.0.1:8080`（或自选 APP_PORT），并启用 WebSocket。参考生成的 `/etc/sshguard/nginx-existing.conf`，将 location 配置合并进现有 server 块，避免重复的 `location /`；由你自己的面板验证并重载配置。无需再配置静态网页目录。不要为了安装本项目停止已有网站或安装第二套 Nginx。
 
-更新会保留接入方式、端口、数据库和加密密钥。切换接入方式需手动迁移配置，不能仅通过更新参数切换。以上独立运行及复用向导需要包含这些功能的新发行包；v0.3.1 仍使用旧向导。
+更新会保留接入方式、端口、数据库和加密密钥。切换接入方式需手动迁移配置，不能仅通过更新参数切换。
 
 SHA256 用于检查下载完整性；发行包与校验文件来自同一个受信任仓库，它不等同于独立数字签名。
 
-SQLite 从 v0.3.1 开始支持，安装前确认该版本的 Release 附件已构建完成。固定版本下载不会使用源码目录中的未发布修改。向导将数据库放在 `/var/lib/sshguard-api/sshguard.db`，由 systemd 创建权限为 0700 的专用目录；升级保留数据库和加密密钥。无人值守部署设置 `DB_DRIVER=sqlite` 并省略 `DATABASE_URL`，其他域名和证书配置与下述示例相同。使用本机磁盘，备份前停止 API，同时保存数据库文件、存在的 WAL/SHM 文件和 `/etc/sshguard/api.env`。
+安装器默认使用 SQLite。向导将数据库放在 `/var/lib/sshguard-api/sshguard.db`，由 systemd 创建权限为 0700 的专用目录；升级保留数据库和加密密钥。无人值守部署设置 `DB_DRIVER=sqlite` 并省略 `DATABASE_URL`，其他域名和证书配置与下述示例相同。使用本机磁盘，备份前停止 API，同时保存数据库文件、存在的 WAL/SHM 文件和 `/etc/sshguard/api.env`。
 
 ## 离线包 / 不在服务器保存 GitHub 登录
 
@@ -94,7 +94,7 @@ ARM64 将文件名中的 `amd64` 换成 `arm64`。发行包包含 Web 和全部 
 
 ## 无交互部署 / MySQL 5.6
 
-MySQL 兼容目标为 5.6.51 和 8.4，CI 使用这两种真实服务运行迁移与接口测试。向导不自动安装停止维护的 MySQL 5.6。先新建库和专用账号（密码自行替换）：
+MySQL 支持 5.6.51 和 8.4，使用已有数据库服务。先新建库和专用账号（密码自行替换）：
 
 ```sql
 CREATE DATABASE sshguard CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -120,7 +120,7 @@ sshguard:YOUR_PASSWORD@tcp(127.0.0.1:3306)/sshguard?charset=utf8mb4&parseTime=tr
 
 API 强制连接字符集 utf8mb4、时间解析和会话 UTC，并禁用多 SQL 语句执行。MySQL 5.6 不执行 CHECK 约束，业务字段校验由 API 强制执行。默认 767 字节 InnoDB 索引限制即可，不要求 `innodb_large_prefix`。切换数据库不会迁移数据。
 
-MySQL 5.6 已于 2021 年结束生命周期；应用兼容不能修复数据库本身的漏洞。已有环境可使用此路径，新环境优先选择维护中的版本。[MySQL 官方说明](https://dev.mysql.com/blog-archive/5-6-goes-deep-six/)
+数据库服务由管理员独立维护、更新和备份。
 
 ## 更新中央平台
 
@@ -132,25 +132,10 @@ SSHGUARD_VERSION=v0.3.9 sh scripts/quick-start.sh --update
 sudo sh sshguard-linux-amd64/deploy.sh --update
 ```
 
-更新保留配置、管理员、服务器、Agent 凭证和数据库。先检查数据库并迁移，再原子切换 `/opt/sshguard` 符号链接和重启 API；启动或健康检查失败会切回旧程序。旧版本保留在 `/opt/sshguard-releases/`，不自动删除。
+更新保留配置、管理员、服务器、Agent 凭证和数据库。先检查数据库并迁移，再原子切换 `/opt/sshguard` 符号链接和重启 API；启动或健康检查失败会恢复更新前的程序。程序备份保留在 `/opt/sshguard-releases/`，不自动删除。
 
-**数据库迁移不会自动回退。** 本版本新增索引兼容旧程序；未来包含不兼容数据库变更时，应使用完整备份恢复。平台不远程执行 Agent 命令；升级平台后在「服务器管理 → 更新命令」复制到目标机器执行。
+**数据库迁移不会自动回退。** 数据库结构变更后的恢复使用完整备份。Agent 可在「服务器管理」发起平台更新，或复制更新命令到目标机器执行。
 
-### 从 v0.2 手工部署迁入
-
-旧 `/opt/sshguard` 是普通目录，向导不会覆盖。也可继续按 [原生文档](INSTALL-NATIVE.md) 手工升级。要迁入向导，先备份并安排停机，再执行（仅适用于文档中的标准路径）：
-
-```sh
-sudo systemctl stop sshguard-api
-sudo mv /opt/sshguard /opt/sshguard-legacy-v02
-sudo ln -s /opt/sshguard-legacy-v02 /opt/sshguard
-sudo touch /etc/sshguard/deploy-managed
-# 确保 api.env 中采用双引号且不带路径/端口：
-# PUBLIC_URL="https://guard.example.com"
-sudo sh sshguard-linux-amd64/deploy.sh --update
-```
-
-旧 Nginx 配置和证书保持原样，证书仍按原方式续期。迁入失败时可把 `/opt/sshguard` 符号链接指回保留的旧目录并重启服务。
 
 ## 运维
 

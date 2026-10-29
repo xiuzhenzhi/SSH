@@ -31,7 +31,7 @@
 
 ## 已知边界
 
-- Windows 仅监控 OpenSSH，不覆盖 RDP 或所有 Windows 安全登录；Linux 解析 OpenSSH 标准 Accepted / Failed 记录，不保证第三方定制 PAM 文本兼容。
+- Windows 仅监控 OpenSSH，不覆盖 RDP 或所有 Windows 安全登录；Linux 解析 OpenSSH 标准 Accepted / Failed 记录，第三方定制 PAM 文本可能无法解析。
 - 日志被删除/压缩、copytruncate 竞态、磁盘损坏、断网超过源日志保留期均可能导致缺口；本平台不是完整 SIEM 或操作系统日志备份。
 - 不保证外部通知 exactly-once。需要现有监控发现中央平台自身宕机；不包含短信、电话或商业服务商代付账号。
 - 当前没有 MFA、SSO、用户禁用/改角色界面、内置数据库主从切换、远程执行脚本或自动远程升级。

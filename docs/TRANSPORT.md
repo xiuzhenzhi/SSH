@@ -39,7 +39,7 @@
 {"type":"ack","request_id":"bb16d836-8df1-4a44-a47c-62c2d1ebdc7c","status":200,"data":{"accepted":1,"inserted":1,"duplicates":0}}
 ```
 
-`heartbeat` 消息的 data 与 HTTPS heartbeat 一致，包含 version、collector_state、collector_message、queue_depth、rejected_events、last_poll_at、last_event_at。旧 Agent 只上报 version 仍兼容，但不会显示采集健康。
+`heartbeat` 消息的 data 与 HTTPS heartbeat 一致，包含 version、collector_state、collector_message、queue_depth、rejected_events、last_poll_at、last_event_at，以及 report_interval_seconds 与 ip_addresses。
 
 | 状态 | Agent 行为 |
 |---|---|

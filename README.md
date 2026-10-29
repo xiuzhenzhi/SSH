@@ -1,5 +1,7 @@
 # SSHGuard
 
+[![CI](https://github.com/xiuzhenzhi/SSH/actions/workflows/ci.yml/badge.svg)](https://github.com/xiuzhenzhi/SSH/actions/workflows/ci.yml) [![构建与发布](https://github.com/xiuzhenzhi/SSH/actions/workflows/release.yml/badge.svg)](https://github.com/xiuzhenzhi/SSH/actions/workflows/release.yml) [发布版本](https://github.com/xiuzhenzhi/SSH/releases)
+
 面向多服务器环境的 SSH 登录审计与实时告警平台。Go API + Vue 控制台 + 轻量 Go Agent，数据库可选 PostgreSQL、MySQL（兼容 5.6.51）或 SQLite，Docker Compose 可选。
 
 在一个控制台查看谁在什么时间、从哪里登录了哪台服务器；对异常登录、连续认证失败和采集离线配置通知。适合需要集中审计多台 Windows / Linux 主机的运维团队。
@@ -125,4 +127,4 @@ MySQL 5.6 已停止官方维护，兼容旧版本不等于修复数据库自身�
 | [开发](docs/DEVELOPMENT.md) / [发布](docs/RELEASING.md) | 本地构建、Actions、发布产物 |
 | [路线图](docs/ROADMAP.md) / [更新日志](CHANGELOG.md) | 产品范围与版本变化 |
 
-Actions 自动测试、检查漏洞、构建两个平台包和四个 Agent，生成 SHA256SUMS。标签发布先执行完整 CI，通过后才上传 Release；不会自动操作你的生产服务器。提交规范见 [CONTRIBUTING.md](CONTRIBUTING.md)，安全问题见 [SECURITY.md](SECURITY.md)。
+Actions 提供两个入口：**CI** 用于 PR、main 提交和手动验证；**构建与发布** 用于版本标签及手动重试发布。流程覆盖测试、竞态与漏洞检查、两个平台包和四个 Agent 构建、SQLite/PostgreSQL 原生安装升级验收及 SHA256SUMS 校验。同一份候选安装包通过全部验收后才保存为 `sshguard-release-assets`；版本标签通过完整流程后上传 Release。具体操作见 [构建与发布](docs/RELEASING.md)。不会自动操作你的生产服务器。提交规范见 [CONTRIBUTING.md](CONTRIBUTING.md)，安全问题见 [SECURITY.md](SECURITY.md)。

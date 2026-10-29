@@ -5,14 +5,16 @@ apk add --no-cache curl ca-certificates openrc busybox-openrc
 update-ca-certificates >/dev/null
 mkdir -p /run/openrc
 touch /run/openrc/softlevel
-# Networking belongs to Docker; expose it to OpenRC's dependency resolver.
+# Container networking, mounts and clock are already provided by Docker.
+# Bootstrap this provider without its default OpenRC dependencies to avoid
+# asking the provider to start itself through localmount/hostname.
 cat > /etc/init.d/ci-network <<'UNIT'
 #!/sbin/openrc-run
 depend() { provide net clock hostname localmount; }
 start() { return 0; }
 UNIT
 chmod 0755 /etc/init.d/ci-network
-rc-service ci-network start
+rc-service --nodeps ci-network start
 rc-service syslog start
 sh /ci/install-agent.sh "${SSHGUARD_TEST_ORIGIN:-https://guard.sshguard.test}" "$SSHGUARD_ENROLLMENT_TOKEN"
 unset SSHGUARD_ENROLLMENT_TOKEN

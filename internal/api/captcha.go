@@ -248,6 +248,9 @@ func verifyCaptcha(ctx context.Context, client *http.Client, cfg CaptchaConfig, 
 		At       time.Time `json:"challenge_ts"`
 		Errors   []string  `json:"error-codes"`
 		Result   string    `json:"result"`
+		Status   string    `json:"status"`
+		Code     string    `json:"code"`
+		Reason   string    `json:"reason"`
 		Args     struct {
 			Lot     string `json:"lot_number"`
 			Referer string `json:"referer"`
@@ -258,6 +261,17 @@ func verifyCaptcha(ctx context.Context, client *http.Client, cfg CaptchaConfig, 
 	}
 	host := result.Hostname
 	if cfg.Provider == "geetest" {
+		if result.Status == "error" {
+			switch result.Code {
+			case "-50002", "-50003", "-50004", "-50005", "-50301", "-50302", "-50303", "-50304", "-50305", "-50306", "-50307", "-50308":
+				return errCaptchaInvalid
+			default:
+				return errCaptchaUnavailable
+			}
+		}
+		if result.Result != "success" && result.Result != "fail" || strings.Contains(result.Reason, "sign_token") {
+			return errCaptchaUnavailable
+		}
 		if result.Result != "success" || result.Args.Lot != answer.Lot {
 			return errCaptchaInvalid
 		}

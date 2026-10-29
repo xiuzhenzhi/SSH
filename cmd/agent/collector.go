@@ -87,11 +87,13 @@ func runAgent(ctx context.Context, cfg Config, stateDir string) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ticker := time.NewTicker(time.Second)
-			defer ticker.Stop()
-			nextPoll := time.Time{}
+			pollTimer := time.NewTimer(0)
+			defer pollTimer.Stop()
 			for {
-				if !time.Now().Before(nextPoll) {
+				select {
+				case <-ctx.Done():
+					return
+				case <-pollTimer.C:
 					pollCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 					at, err := collectPlatform(pollCtx, s, cfg.LogFile)
 					cancel()
@@ -99,12 +101,7 @@ func runAgent(ctx context.Context, cfg Config, stateDir string) {
 						return
 					}
 					health.update(err, at)
-					nextPoll = time.Now().Add(min(interval, 2*time.Second))
-				}
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
+					pollTimer.Reset(min(interval, 2*time.Second))
 				}
 			}
 		}()

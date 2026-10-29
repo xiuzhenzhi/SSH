@@ -5,16 +5,28 @@ apk add --no-cache curl ca-certificates openrc busybox-openrc
 update-ca-certificates >/dev/null
 mkdir -p /run/openrc
 touch /run/openrc/softlevel
-# Container networking, mounts and clock are already provided by Docker.
-# Bootstrap this provider without its default OpenRC dependencies to avoid
-# asking the provider to start itself through localmount/hostname.
+# Container networking and clock are already provided by Docker.
 cat > /etc/init.d/ci-network <<'UNIT'
 #!/sbin/openrc-run
-depend() { provide net clock hostname localmount; }
+depend() { provide net clock; }
 start() { return 0; }
 UNIT
 chmod 0755 /etc/init.d/ci-network
+# Docker also provides the hostname and mounted filesystems. Represent those
+# completed boot stages without changing container/host mounts or hostname.
+for dependency in localmount hostname; do
+    cat > "/etc/init.d/$dependency" <<'UNIT'
+#!/sbin/openrc-run
+start() { return 0; }
+UNIT
+    chmod 0755 "/etc/init.d/$dependency"
+done
+# rc-status initializes all OpenRC runtime state/lock directories. A bare
+# softlevel file is insufficient on OpenRC 0.55 in Alpine 3.21.
+rc-status >/dev/null
 rc-service --nodeps ci-network start
+rc-service --nodeps localmount start
+rc-service --nodeps hostname start
 rc-service syslog start
 sh /ci/install-agent.sh "${SSHGUARD_TEST_ORIGIN:-https://guard.sshguard.test}" "$SSHGUARD_ENROLLMENT_TOKEN"
 unset SSHGUARD_ENROLLMENT_TOKEN

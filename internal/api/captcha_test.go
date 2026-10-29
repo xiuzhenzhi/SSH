@@ -22,7 +22,7 @@ func (f captchaRoundTrip) RoundTrip(r *http.Request) (*http.Response, error) { r
 func TestCaptchaProvidersValidateOnServer(t *testing.T) {
 	now := time.Now().UTC()
 	for _, provider := range []string{"turnstile", "recaptcha", "geetest"} {
-		for _, scenario := range []string{"valid", "wrong-host", "expired", "bad-token", "outage", "oversize", "bad-json", "wrong-action", "wrong-lot"} {
+		for _, scenario := range []string{"valid", "wrong-host", "expired", "bad-token", "outage", "oversize", "bad-json", "wrong-action", "wrong-lot", "invalid-key", "provider-error"} {
 			t.Run(provider+"/"+scenario, func(t *testing.T) {
 				cfg := CaptchaConfig{Provider: provider, SiteKey: "site", Secret: "secret", Hostnames: []string{"guard.example.com"}}
 				answer := CaptchaAnswer{Token: "proof", Lot: "lot", Pass: "pass", Output: "output", Time: strconv.FormatInt(now.Unix(), 10)}
@@ -64,6 +64,18 @@ func TestCaptchaProvidersValidateOnServer(t *testing.T) {
 					}
 					value := map[string]any{"success": scenario != "bad-token", "hostname": host, "challenge_ts": at, "action": action, "result": result, "captcha_args": map[string]any{"referer": "https://" + host + "/login", "lot_number": lot}}
 					raw, _ := json.Marshal(value)
+					if scenario == "invalid-key" || scenario == "provider-error" {
+						if provider == "geetest" {
+							code := "-50000"
+							if scenario == "invalid-key" {
+								code = "-50102"
+							}
+							value = map[string]any{"status": "error", "code": code}
+						} else {
+							value = map[string]any{"success": false, "error-codes": []string{"invalid-input-secret"}}
+						}
+						raw, _ = json.Marshal(value)
+					}
 					status := 200
 					if scenario == "outage" {
 						status = 503
@@ -84,7 +96,7 @@ func TestCaptchaProvidersValidateOnServer(t *testing.T) {
 				if !valid && err == nil {
 					t.Fatal("untrusted validation accepted")
 				}
-				if scenario == "outage" && !errors.Is(err, errCaptchaUnavailable) {
+				if (scenario == "outage" || scenario == "invalid-key" || scenario == "provider-error") && !errors.Is(err, errCaptchaUnavailable) {
 					t.Fatal("outage treated as login failure", err)
 				}
 			})

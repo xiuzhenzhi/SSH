@@ -28,7 +28,7 @@ Agent 主动出站连接平台，不保存服务器 SSH 密码或私钥，不接
 
 主控推荐 Ubuntu / Debian + systemd，默认直接通过 IP 和端口访问，无需域名、Docker 或 Nginx，Agent 也可使用同一 IP 地址接入。HTTPS、反代和外部数据库均为可选配置。私有仓库使用有权限的 GitHub 账号，先完成 gh auth login。
 
-**版本提示：SQLite 从 v0.3.1 开始支持。** 下方一键入口下载固定版本 `v0.3.7`，安装前确认 [Releases](https://github.com/xiuzhenzhi/SSH/releases) 中该版本已构建完成并包含安装包；也可按下方 Compose 步骤从源码构建。
+**版本提示：SQLite 从 v0.3.1 开始支持。** 下方一键入口下载固定版本 `v0.3.8`，安装前确认 [Releases](https://github.com/xiuzhenzhi/SSH/releases) 中该版本已构建完成并包含安装包；也可按下方 Compose 步骤从源码构建。
 
 ```sh
 git clone https://github.com/xiuzhenzhi/SSH.git

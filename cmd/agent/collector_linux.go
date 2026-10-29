@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -74,7 +73,7 @@ func collectJournal(ctx context.Context, s *spool) (time.Time, error) {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	cmd := exec.CommandContext(runCtx, "journalctl", args...)
-	var stderr bytes.Buffer
+	var stderr diagnosticBuffer
 	cmd.Stderr = &stderr
 	stdout, e := cmd.StdoutPipe()
 	if e != nil {
@@ -115,6 +114,10 @@ func collectJournal(ctx context.Context, s *spool) (time.Time, error) {
 		}
 	}
 	scanErr := scanner.Err()
+	if scanErr != nil {
+		// Stop the producer before waiting: it may be blocked on its stdout pipe.
+		cancel()
+	}
 	waitErr := cmd.Wait()
 	if ctx.Err() != nil {
 		return time.Time{}, ctx.Err()

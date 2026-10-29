@@ -190,30 +190,11 @@ func collectFile(ctx context.Context, s *spool, path string) (time.Time, error) 
 	}
 	rotated := false
 	if previous.FileID != id {
-		entries, e := os.ReadDir(filepath.Dir(path))
+		candidate, e := findRotatedLog(ctx, filepath.Dir(path), previous.FileID)
 		if e != nil {
-			return time.Time{}, errors.New("cannot inspect rotated SSH logs")
+			return time.Time{}, e
 		}
-		found := false
-		for _, entry := range entries {
-			if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
-				continue
-			}
-			candidate, e := os.Open(filepath.Join(filepath.Dir(path), entry.Name()))
-			if e != nil {
-				continue
-			}
-			candidateID, err := fileIdentity(candidate)
-			if err == nil && candidateID == previous.FileID {
-				f.Close()
-				f = candidate
-				found = true
-				rotated = true
-				break
-			}
-			candidate.Close()
-		}
-		if !found {
+		if candidate == nil {
 			// Record an explicit gap before resuming the current file on the next poll.
 			e = s.append(nil, cursor{Kind: previous.Kind, FileID: id, At: previous.At})
 			if e != nil {
@@ -221,6 +202,9 @@ func collectFile(ctx context.Context, s *spool, path string) (time.Time, error) 
 			}
 			return time.Time{}, errors.New("SSH log rotation gap: previous file no longer exists; resuming current file")
 		}
+		f.Close()
+		f = candidate
+		rotated = true
 	}
 	info, e = f.Stat()
 	if e != nil {
@@ -281,4 +265,43 @@ func collectFile(ctx context.Context, s *spool, path string) (time.Time, error) 
 		return time.Time{}, e
 	}
 	return last, nil
+}
+
+// Scan directory entries in small batches; large log directories must not all
+// be retained in memory. Ownership of a matching file transfers to the caller.
+func findRotatedLog(ctx context.Context, dir, previousID string) (*os.File, error) {
+	d, err := os.Open(dir)
+	if err != nil {
+		return nil, errors.New("cannot inspect rotated SSH logs")
+	}
+	defer d.Close()
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		entries, readErr := d.ReadDir(128)
+		for _, entry := range entries {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			if !entry.Type().IsRegular() {
+				continue
+			}
+			candidate, err := os.Open(filepath.Join(dir, entry.Name()))
+			if err != nil {
+				continue
+			}
+			id, err := fileIdentity(candidate)
+			if err == nil && id == previousID {
+				return candidate, nil
+			}
+			candidate.Close()
+		}
+		if readErr == io.EOF {
+			return nil, nil
+		}
+		if readErr != nil {
+			return nil, errors.New("cannot inspect rotated SSH logs")
+		}
+	}
 }

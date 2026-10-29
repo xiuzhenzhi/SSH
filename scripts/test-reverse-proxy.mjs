@@ -3,14 +3,17 @@
 import assert from 'node:assert/strict';
 import {randomBytes} from 'node:crypto';
 import {spawn, execFileSync} from 'node:child_process';
-import {mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync} from 'node:fs';
+import {mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync, existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {join, resolve, sep} from 'node:path';
+import {join, resolve, sep, dirname} from 'node:path';
 import {createServer} from 'node:net';
 import tls from 'node:tls';
 
 assert.equal(process.argv.length,6,'Pass API, Nginx, certificate and key paths');
 const [apiPath,nginxPath,cert,key]=process.argv.slice(2).map(path=>resolve(path));
+const bundledWeb=join(dirname(apiPath),'web');
+const webDir=existsSync(join(bundledWeb,'index.html'))?bundledWeb:resolve('web/dist');
+assert(existsSync(join(webDir,'index.html')),'Build the frontend or pass an API from a native release bundle');
 const root=mkdtempSync(join(tmpdir(),'sshguard-proxy-'));
 assert(root.startsWith(resolve(tmpdir())+sep+'sshguard-proxy-'),'Unexpected test directory');
 const posix=path=>path.replaceAll('\\','/');
@@ -49,7 +52,7 @@ try{
       .replaceAll('http://127.0.0.1:8080','http://127.0.0.1:'+upstream)
       .replaceAll('/etc/sshguard/certs/fullchain.pem','"'+posix(cert)+'"').replaceAll('/etc/sshguard/certs/privkey.pem','"'+posix(key)+'"')
       .replaceAll('/etc/nginx/certs/fullchain.pem','"'+posix(cert)+'"').replaceAll('/etc/nginx/certs/privkey.pem','"'+posix(key)+'"')
-      .replaceAll('/usr/share/nginx/html','"'+posix(resolve('web/dist'))+'"')
+      .replaceAll('/usr/share/nginx/html','"'+posix(webDir)+'"')
       .replaceAll('listen 80;','listen 127.0.0.1:18080;').replaceAll('listen 443 ssl;','listen 127.0.0.1:18443 ssl;');
     const check=join(root,'syntax.conf');writeFileSync(check,wrap(template));
     execFileSync(nginxPath,['-p',posix(root)+'/', '-c',posix(check),'-t'],{stdio:'pipe',windowsHide:true});
@@ -57,7 +60,7 @@ try{
   execFileSync(nginxPath,['-p',posix(root)+'/', '-c',posix(config),'-t'],{stdio:'pipe',windowsHide:true});
   launch(apiPath,[],{...process.env,DB_DRIVER:'sqlite',DATABASE_URL:'file:'+posix(join(root,'sshguard.db')),PUBLIC_URL:origin,
     ALLOW_INSECURE_HTTP:'false',TLS_CERT_FILE:'',TLS_KEY_FILE:'',WEB_SETUP:'true',SETUP_TOKEN:setupToken,SETUP_CONFIG_FILE:join(root,'setup.json'),
-    ENCRYPTION_KEY:randomBytes(32).toString('hex'),LISTEN_ADDR:'127.0.0.1:'+upstream,WEB_DIR:resolve('web/dist'),GIN_MODE:'release'});
+    ENCRYPTION_KEY:randomBytes(32).toString('hex'),LISTEN_ADDR:'127.0.0.1:'+upstream,WEB_DIR:webDir,GIN_MODE:'release'});
   launch(nginxPath,['-p',posix(root)+'/', '-c',posix(config),'-g','daemon off; master_process off;']);
   await ready();
   await api('/setup/complete','POST',{username:'admin',password},403);
@@ -79,7 +82,8 @@ try{
   assert.equal(await upgrade('/api/v1/agent/stream',{Authorization:'Bearer '+credential.token,Origin:origin}),403);
   assert.equal((await api('/agent/update-commands')).endpoint,origin);
   for(const path of ['/api.env','/setup.json','/downloads/.secret'])assert.equal((await fetch(origin+path)).status,404,path);
-  assert((await fetch(origin+'/')).headers.get('content-security-policy')?.includes("frame-ancestors 'none'"));
+  const page=await fetch(origin+'/');assert.equal(page.status,200,'Console HTML unavailable');
+  assert(page.headers.get('content-security-policy')?.includes("frame-ancestors 'none'"));
   console.log('Real Nginx HTTPS proxy passed: setup, Secure cookie, Origin rejection, browser and Agent WebSockets, exact PUBLIC_URL and file confinement.');
 }finally{
   for(const child of children.reverse())if(child.pid && child.exitCode===null){const done=new Promise(r=>child.once('exit',r));child.kill();await done;}

@@ -215,11 +215,12 @@ try {
     if ($wasRunning -and -not $enrolled) { Start-Service -Name SSHGuardAgent -ErrorAction Continue }
     throw
 } finally {
+    try {
     # Only delete the exact temporary files created by this invocation.
-    $files = @($download,$checksum,$replaceBackup)
+    $files = @($download,$checksum,$replaceBackup,(Join-Path $staging 'uninstall-agent.ps1'))
     if (-not $keepBackup) { $files += $backup }
     foreach ($file in $files) { if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file -Force } }
     if (-not $keepBackup -and (Test-Path -LiteralPath $staging)) { Remove-Item -LiteralPath $staging }
     if ($keepBackup) { Write-Warning "Rollback failed; backup retained at $backup" }
-    $installLock.Dispose()
+    } finally { $installLock.Dispose() }
 }

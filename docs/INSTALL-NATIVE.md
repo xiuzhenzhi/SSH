@@ -1,6 +1,8 @@
-# 原生部署：Go 二进制 + systemd + Nginx
+# 原生部署：Go 二进制 + systemd（反向代理可选）
 
-> 推荐先使用 [一键部署向导](QUICKSTART.md)，自动配置数据库、systemd、Nginx 和 HTTPS。下文保留手工部署方案。MySQL 可接入 5.6.51 或 8.4；新部署建议维护中的版本。
+> 推荐先使用 [一键部署向导](QUICKSTART.md)，默认 SQLite，支持独立运行、内置 HTTPS 或复用 Nginx / OpenResty。下文保留手工 Nginx 部署方案。MySQL 可接入 5.6.51 或 8.4；新部署建议维护中的版本。
+
+独立部署无需 Nginx：保留发布包中与 `sshguard-api` 同目录的 `web/`，程序自动提供控制台和下载文件，也可通过 `WEB_DIR` 指定目录。设置 `LISTEN_ADDR=0.0.0.0:8080`、实际 `PUBLIC_URL` 和数据库配置；内置 HTTPS 同时设置 `TLS_CERT_FILE`、`TLS_KEY_FILE`（服务账号必须可读），证书更新后重启 API。纯 HTTP 需要显式设置 `ALLOW_INSECURE_HTTP=true`，仅适合受信任网络体验面板，Agent 安装和更新仍要求 HTTPS。
 
 中央平台部署在 Linux，Agent 可运行在 Windows / Ubuntu / Debian / Alpine。
 

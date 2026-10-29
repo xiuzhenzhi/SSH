@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"log"
 	"net/http"
@@ -19,6 +20,11 @@ func main() {
 	c, e := api.LoadConfig()
 	if e != nil {
 		log.Fatal(e)
+	}
+	if c.TLSCertFile != "" {
+		if _, e := tls.LoadX509KeyPair(c.TLSCertFile, c.TLSKeyFile); e != nil {
+			log.Fatal("Cannot load configured TLS certificate and key: ", e)
+		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	db, e := storage.Open(ctx, c.Driver, c.DatabaseURL)
@@ -38,7 +44,7 @@ func main() {
 		return
 	}
 	app := api.NewApp(db, c)
-	s := &http.Server{Addr: c.Listen, Handler: app.Router(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
+	s := &http.Server{Addr: c.Listen, Handler: app.Router(), TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12}, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
 	stop, done := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer done()
 	waitWorkers := app.StartWorkers(stop)
@@ -60,7 +66,13 @@ func main() {
 	}()
 	go func() {
 		log.Printf("SSHGuard API listening on %s", c.Listen)
-		if e := s.ListenAndServe(); e != nil && e != http.ErrServerClosed {
+		var e error
+		if c.TLSCertFile != "" {
+			e = s.ListenAndServeTLS(c.TLSCertFile, c.TLSKeyFile)
+		} else {
+			e = s.ListenAndServe()
+		}
+		if e != nil && e != http.ErrServerClosed {
 			log.Fatal(e)
 		}
 	}()

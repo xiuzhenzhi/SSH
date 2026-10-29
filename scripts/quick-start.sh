@@ -1,6 +1,12 @@
 #!/bin/sh
 # Download as the invoking user; elevate only the verified deployment step.
 set -eu
+case "${1:-}" in
+    --status|--logs|--restart)
+        [ -f /opt/sshguard/deploy.sh ] || { echo 'No installed SSHGuard management script found.' >&2; exit 1; }
+        if [ "$(id -u)" -eq 0 ]; then exec sh /opt/sshguard/deploy.sh "$@";
+        else exec sudo sh /opt/sshguard/deploy.sh "$@"; fi ;;
+esac
 version=${SSHGUARD_VERSION:-v0.3.1}
 printf '%s' "$version" | grep -Eq '^v[0-9][A-Za-z0-9.+_-]{0,31}$' || { echo 'Invalid SSHGUARD_VERSION' >&2; exit 1; }
 case "$(uname -m)" in x86_64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; *) echo 'Only Linux amd64/arm64 supported.' >&2; exit 1 ;; esac

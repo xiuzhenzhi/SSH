@@ -36,7 +36,7 @@ cd SSH
 sh scripts/quick-start.sh
 ```
 
-向导下载固定版本、校验 SHA256、配置 systemd / Nginx / HTTPS。数据库可选择 SQLite、自动安装 PostgreSQL，或填写已有 PostgreSQL / MySQL DSN。SQLite 使用 `/var/lib/sshguard-api/sshguard.db`，无需填写 DSN。初始管理员密码及通知加密密钥保存在 root 专用的 /etc/sshguard/api.env。
+向导下载固定版本、校验 SHA256，并配置 systemd。默认使用 SQLite，程序直接提供网页和 API，无需安装 Nginx 或数据库服务；也可复用已有 Nginx / OpenResty / 宝塔反向代理。独立模式支持现有证书启用内置 HTTPS；HTTP 可体验面板，接入 Agent 前须启用 HTTPS。数据库还可选择 PostgreSQL / MySQL。SQLite 数据位于 `/var/lib/sshguard-api/sshguard.db`，管理员初始密码及通知加密密钥保存在 root 专用的 `/etc/sshguard/api.env`。详见 [安装与管理](docs/QUICKSTART.md)。
 
 更新平台：`sh scripts/quick-start.sh --update`。先备份数据库与 api.env，再更新平台、最后分批更新 Agent。自动回退恢复程序，**不逆向恢复数据库迁移**。离线包、无人值守配置、证书和迁移说明见 [快速开始](docs/QUICKSTART.md)。
 
@@ -90,7 +90,7 @@ flowchart LR
 
 | 项目 | 支持 |
 |---|---|
-| 中央平台 | Linux amd64 / arm64；Go 二进制 + systemd + Nginx，或 Compose |
+| 中央平台 | Linux amd64 / arm64；Go 程序自带 Web 服务 + systemd，反向代理可选；也支持 Compose |
 | Agent | Windows / Ubuntu / Debian / Alpine，amd64 / arm64 |
 | 数据库 | SQLite（内嵌，无需额外安装）；PostgreSQL 16；MySQL 5.6.51 / 8.4 |
 | 运行依赖 | 发布包无需 Go / Node；不依赖 Redis；Linux Agent 静态构建兼容 glibc / musl |

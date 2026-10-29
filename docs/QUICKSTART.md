@@ -4,7 +4,7 @@
 
 ## 一键入口
 
-先将公网域名解析到中央服务器，开放 80/443。数据库端口无需对公网开放。私有仓库先在当前普通用户下执行 `gh auth login`，账号需要仓库读取权限。
+独立运行可直接使用服务器 IPv4 和应用端口（默认 8080），无需 Nginx。使用域名和已有反向代理时，将域名解析到中央服务器并开放 443；只有自动申请证书才需要开放 80。数据库端口无需对公网开放。私有仓库先在当前普通用户下执行 `gh auth login`，账号需要仓库读取权限。
 
 ```sh
 git clone https://github.com/xiuzhenzhi/SSH.git
@@ -16,12 +16,18 @@ sh scripts/quick-start.sh
 
 向导询问：
 
-1. 公网域名，例如 `guard.example.com`。
-2. 数据库：`sqlite` 使用本机文件数据库；`local-postgres` 自动安装本机 PostgreSQL；`mysql` / `postgres` 连接已建好的数据库。
-3. 外部数据库 DSN（输入隐藏）；本机 PostgreSQL 自动生成随机密码；SQLite 无需填写 DSN。
-4. TLS：填写已有证书和私钥路径；或者留空，填写邮箱，由 Certbot/Let's Encrypt 自动申请。此选项接受 ACME 服务条款，域名必须指向本机且公网可访问 80 端口。
+1. 接入方式：独立运行、复用已有 Web 服务、由脚本管理系统 Nginx。检测到 Nginx / OpenResty / 宝塔或 80/443 服务时推荐复用，否则默认独立运行。
+2. 访问域名或 IPv4。独立模式可选择端口、HTTP 或内置 HTTPS（提供已有证书与私钥）。
+3. 数据库：默认 `sqlite`，无需 DSN；`local-postgres` 自动安装本机 PostgreSQL；`mysql` / `postgres` 连接已有数据库，DSN 隐藏输入。
+4. 只有托管 Nginx 模式才配置 Nginx 证书，支持已有证书或 Certbot/Let's Encrypt（接受 ACME 服务条款，公网 80 端口可达）。复用模式沿用现有站点证书。
 
-向导安装依赖、初始化数据库、创建低权限服务账号、配置 systemd / Nginx，最后检查 API 健康状态。初始账号 `admin`，随机密码仅保存在 `/etc/sshguard/api.env`，不会输出到部署日志。登录后点右上角「修改密码」，旧会话会全部失效。
+向导仅安装缺少的依赖、初始化数据库、创建低权限服务账号、配置 systemd，最后检查 API 健康状态。独立和复用模式不会安装或重载 Nginx / OpenResty。初始账号 `admin`，随机密码仅保存在 `/etc/sshguard/api.env`，不会输出到部署日志。登录后点右上角「修改密码」，旧会话会全部失效。
+
+独立模式访问 `http://服务器IP:8080`，或启用内置 TLS 后访问 `https://域名:端口`。HTTP 登录信息没有传输加密，仅用于受信任网络体验；Agent 注册与更新要求 HTTPS。程序直接提供发布包中的 `web/`，无需 Node.js 或单独的 Web 服务。
+
+复用 Nginx / OpenResty / 宝塔时选择 `--proxy external`，在已有 HTTPS 站点把整个应用反代到 `http://127.0.0.1:8080`（或自选 APP_PORT），并启用 WebSocket。参考生成的 `/etc/sshguard/nginx-existing.conf`，将 location 配置合并进现有 server 块，避免重复的 `location /`；由你自己的面板验证并重载配置。无需再配置静态网页目录。不要为了安装本项目停止已有网站或安装第二套 Nginx。
+
+更新会保留接入方式、端口、数据库和加密密钥。切换接入方式需手动迁移配置，不能仅通过更新参数切换。以上独立运行及复用向导需要包含这些功能的新发行包；v0.3.1 仍使用旧向导。
 
 SHA256 用于检查下载完整性；发行包与校验文件来自同一个受信任仓库，它不等同于独立数字签名。
 
@@ -102,11 +108,15 @@ sudo sh sshguard-linux-amd64/deploy.sh --update
 ## 运维
 
 ```sh
-sudo systemctl status sshguard-api nginx
-sudo journalctl -u sshguard-api -n 100 --no-pager
+sudo sh /opt/sshguard/deploy.sh           # 已安装时打开管理菜单
+sudo sh /opt/sshguard/deploy.sh --status  # 状态、版本、访问地址，不输出密码
+sudo sh /opt/sshguard/deploy.sh --logs    # 最近 100 条日志
+sudo sh /opt/sshguard/deploy.sh --restart
 curl -fsS https://guard.example.com/api/v1/health
 ```
 
-自动申请证书会配置 Certbot 续期和 Nginx reload hook，保留 80 端口 ACME 验证路径。使用已有证书时向导复制证书，以后需自行更新 `/etc/sshguard/certs/` 并 reload Nginx。向导不调整防火墙，不覆盖其他虚拟主机。
+也可用 `sh scripts/quick-start.sh --status`（或 `--logs` / `--restart`），这些管理命令直接操作已安装服务，无需重新下载。管理菜单的更新只安装当前包；升级到新版本仍按上文下载并校验新包后执行 `--update`。
+
+托管 Nginx 模式自动申请证书会配置 Certbot 续期和 reload hook；手动证书更新 `/etc/sshguard/certs/` 后 reload Nginx。独立 HTTPS 的证书位于 `/etc/sshguard/tls/`，续期后保持 root:sshguard-api 所有权和 0640 权限并重启 API。复用模式由现有面板管理证书。向导不调整防火墙，不覆盖其他虚拟主机。
 
 数据库检查失败不会切换程序；首次安装中断会保留配置方便排错。残留锁目录仅在确认没有部署进程后删除。旧发行目录、备份和发行包按自己的策略清理。

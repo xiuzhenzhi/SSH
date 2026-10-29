@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
 
 type Config struct {
+	WebDir, TLSCertFile, TLSKeyFile                                      string
 	Driver, DatabaseURL, PublicURL, Listen, AdminUsername, AdminPassword string
 	SecureCookie                                                         bool
 	EncryptionKey                                                        string
@@ -20,6 +22,19 @@ type Config struct {
 func LoadConfig() (Config, error) {
 	c := Config{Driver: os.Getenv("DB_DRIVER"), DatabaseURL: os.Getenv("DATABASE_URL"), PublicURL: strings.TrimRight(os.Getenv("PUBLIC_URL"), "/"), Listen: os.Getenv("LISTEN_ADDR"), AdminUsername: os.Getenv("ADMIN_USERNAME"), AdminPassword: os.Getenv("ADMIN_PASSWORD"), SecureCookie: true}
 	c.EncryptionKey = os.Getenv("ENCRYPTION_KEY")
+	c.WebDir = os.Getenv("WEB_DIR")
+	if c.WebDir == "" {
+		if executable, err := os.Executable(); err == nil {
+			candidate := filepath.Join(filepath.Dir(executable), "web")
+			if info, err := os.Stat(filepath.Join(candidate, "index.html")); err == nil && info.Mode().IsRegular() {
+				c.WebDir = candidate
+			}
+		}
+	}
+	c.TLSCertFile, c.TLSKeyFile = os.Getenv("TLS_CERT_FILE"), os.Getenv("TLS_KEY_FILE")
+	if (c.TLSCertFile == "") != (c.TLSKeyFile == "") {
+		return c, fmt.Errorf("TLS_CERT_FILE and TLS_KEY_FILE must be configured together")
+	}
 	for _, setting := range []struct {
 		name     string
 		target   *int
@@ -57,10 +72,13 @@ func LoadConfig() (Config, error) {
 		return c, fmt.Errorf("PUBLIC_URL must be an origin, e.g. https://guard.example.com")
 	}
 	if u.Scheme != "https" {
-		if u.Scheme != "http" || (u.Hostname() != "localhost" && u.Hostname() != "127.0.0.1") {
+		if u.Scheme != "http" || (u.Hostname() != "localhost" && u.Hostname() != "127.0.0.1" && os.Getenv("ALLOW_INSECURE_HTTP") != "true") {
 			return c, fmt.Errorf("public deployments require HTTPS")
 		}
 		c.SecureCookie = false
+	}
+	if c.TLSCertFile != "" && u.Scheme != "https" {
+		return c, fmt.Errorf("built-in TLS requires an HTTPS PUBLIC_URL")
 	}
 	if c.DatabaseURL == "" {
 		return c, fmt.Errorf("DATABASE_URL required")

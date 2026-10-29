@@ -14,7 +14,7 @@ UNIT
 chmod 0755 /etc/init.d/ci-network
 rc-service ci-network start
 syslogd
-sh /ci/install-agent.sh https://guard.sshguard.test "$SSHGUARD_ENROLLMENT_TOKEN"
+sh /ci/install-agent.sh "${SSHGUARD_TEST_ORIGIN:-https://guard.sshguard.test}" "$SSHGUARD_ENROLLMENT_TOKEN"
 unset SSHGUARD_ENROLLMENT_TOKEN
 sleep 3
 logger -t sshd 'Accepted publickey for ci-fixture from 192.0.2.10 port 2222 ssh2'
@@ -24,8 +24,8 @@ before=$(sha256sum /etc/sshguard/agent.json)
 rc-service sshguard-agent stop
 printf '\n' >> /usr/local/bin/sshguard-agent
 rc-service sshguard-agent start
-sh /ci/install-agent.sh https://guard.sshguard.test --update
-sh /ci/install-agent.sh https://guard.sshguard.test --update
+sh /ci/install-agent.sh "${SSHGUARD_TEST_ORIGIN:-https://guard.sshguard.test}" --update
+sh /ci/install-agent.sh "${SSHGUARD_TEST_ORIGIN:-https://guard.sshguard.test}" --update
 [ "$before" = "$(sha256sum /etc/sshguard/agent.json)" ]
 rc-service sshguard-agent status
 rc-service sshguard-agent stop

@@ -76,6 +76,10 @@ func installCommands(origin, t string) map[string]string {
 	return map[string]string{"ubuntu": linux("sudo "), "debian": linux("sudo "), "alpine": linux(""), "windows": windows}
 }
 func (a *App) enrollment(c *gin.Context) {
+	if !strings.HasPrefix(a.cfg.PublicURL, "https://") {
+		bad(c, 409, "请先配置内置 HTTPS 或可信 HTTPS 反向代理，再安装 Agent")
+		return
+	}
 	id := c.Param("id")
 	t := token()
 	expires := time.Now().UTC().Add(15 * time.Minute)

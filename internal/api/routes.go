@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"sshguard/internal/storage"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -71,7 +72,13 @@ func (a *App) Router() *gin.Engine {
 	web.GET("/auth/me", func(c *gin.Context) { ok(c, c.MustGet("user")) })
 	web.POST("/auth/logout", a.logout)
 	web.POST("/auth/password", authLimit, a.changePassword)
-	web.GET("/agent/update-commands", role("admin"), func(c *gin.Context) { ok(c, gin.H{"commands": updateCommands(cfg.PublicURL), "version": Version}) })
+	web.GET("/agent/update-commands", role("admin"), func(c *gin.Context) {
+		if !strings.HasPrefix(cfg.PublicURL, "https://") {
+			bad(c, 409, "请先配置 HTTPS 再更新 Agent")
+			return
+		}
+		ok(c, gin.H{"commands": updateCommands(cfg.PublicURL), "version": Version})
+	})
 	web.GET("/dashboard/summary", a.summary)
 	web.GET("/dashboard/overview", a.overview)
 	web.GET("/live", a.live)
@@ -107,7 +114,7 @@ func (a *App) Router() *gin.Engine {
 	agent.GET("/stream", a.agentStream)
 	agent.POST("/heartbeat", a.heartbeat)
 	agent.POST("/events/batch", a.batch)
-	r.NoRoute(func(c *gin.Context) { bad(c, 404, "接口不存在") })
+	r.NoRoute(a.serveWeb)
 	return r
 }
 

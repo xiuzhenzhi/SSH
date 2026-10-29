@@ -171,14 +171,22 @@ jobs:
           retention-days: 3
           compression-level: 0
   native:
-    name: Native install and upgrade / ${{ matrix.database }}
+    name: Native install and upgrade / ${{ matrix.database }} / ${{ matrix.proxy }}
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        database: [local-postgres, sqlite]
+        include:
+          - database: local-postgres
+            proxy: managed
+          - database: sqlite
+            proxy: managed
+          - database: sqlite
+            proxy: external
+          - database: sqlite
+            proxy: standalone
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -197,7 +205,7 @@ jobs:
           sha256sum -c SHA256SUMS
           tar -xzf sshguard-linux-amd64.tar.gz -C ..
       - name: Verify installation, upgrades, permissions and recovery
-        run: sudo env "PATH=$PATH" GITHUB_ACTIONS=true SSHGUARD_NATIVE_DB=${{ matrix.database }} sh scripts/test-native-deploy.sh dist/sshguard-linux-amd64
+        run: sudo env "PATH=$PATH" GITHUB_ACTIONS=true SSHGUARD_NATIVE_DB=${{ matrix.database }} SSHGUARD_NATIVE_PROXY=${{ matrix.proxy }} sh scripts/test-native-deploy.sh dist/sshguard-linux-amd64
   artifacts:
     name: Verified release assets
     needs: native

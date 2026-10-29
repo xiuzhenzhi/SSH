@@ -16,7 +16,7 @@ func (a *App) servers(c *gin.Context) {
 	a.list(c, `SELECT `+serverColumns+` FROM servers WHERE name LIKE ? OR hostname LIKE ? OR group_name LIKE ? ORDER BY created_at DESC LIMIT ? OFFSET ?`, time.Now().UTC().Add(-90*time.Second), q, q, q)
 }
 func (a *App) server(c *gin.Context) {
-	rows, e := a.db.List(c, `SELECT `+serverColumns+` FROM servers WHERE id=?`, time.Now().UTC().Add(-90*time.Second), c.Param("id"))
+	rows, e := a.db.List(c.Request.Context(), `SELECT `+serverColumns+` FROM servers WHERE id=?`, time.Now().UTC().Add(-90*time.Second), c.Param("id"))
 	if e != nil {
 		fail(c, e)
 		return
@@ -50,14 +50,14 @@ func (a *App) saveServer(c *gin.Context) {
 	}
 	e := a.mutate(c, c.MustGet("user").(User).ID, action, id, func(tx *sql.Tx) error {
 		if create {
-			_, e := tx.ExecContext(c, a.db.Bind(`INSERT INTO servers(id,name,group_name,notes) VALUES(?,?,?,?)`), id, in.Name, in.Group, in.Notes)
+			_, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`INSERT INTO servers(id,name,group_name,notes) VALUES(?,?,?,?)`), id, in.Name, in.Group, in.Notes)
 			return e
 		}
 		var exists string
-		if e := tx.QueryRowContext(c, a.db.Bind(`SELECT id FROM servers WHERE id=? FOR UPDATE`), id).Scan(&exists); e != nil {
+		if e := tx.QueryRowContext(c.Request.Context(), a.db.Bind(`SELECT id FROM servers WHERE id=? FOR UPDATE`), id).Scan(&exists); e != nil {
 			return e
 		}
-		_, e := tx.ExecContext(c, a.db.Bind(`UPDATE servers SET name=?,group_name=?,notes=? WHERE id=?`), in.Name, in.Group, in.Notes, id)
+		_, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`UPDATE servers SET name=?,group_name=?,notes=? WHERE id=?`), in.Name, in.Group, in.Notes, id)
 		return e
 	})
 	if e != nil {
@@ -81,13 +81,13 @@ func (a *App) enrollment(c *gin.Context) {
 	expires := time.Now().UTC().Add(15 * time.Minute)
 	e := a.mutate(c, c.MustGet("user").(User).ID, "agent.enrollment.create", id, func(tx *sql.Tx) error {
 		var existing string
-		if e := tx.QueryRowContext(c, a.db.Bind(`SELECT id FROM servers WHERE id=? FOR UPDATE`), id).Scan(&existing); e != nil {
+		if e := tx.QueryRowContext(c.Request.Context(), a.db.Bind(`SELECT id FROM servers WHERE id=? FOR UPDATE`), id).Scan(&existing); e != nil {
 			return e
 		}
-		if _, e := tx.ExecContext(c, a.db.Bind(`DELETE FROM agent_enrollments WHERE server_id=?`), id); e != nil {
+		if _, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`DELETE FROM agent_enrollments WHERE server_id=?`), id); e != nil {
 			return e
 		}
-		_, e := tx.ExecContext(c, a.db.Bind(`INSERT INTO agent_enrollments(token_hash,server_id,expires_at) VALUES(?,?,?)`), hash(t), id, expires)
+		_, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`INSERT INTO agent_enrollments(token_hash,server_id,expires_at) VALUES(?,?,?)`), hash(t), id, expires)
 		return e
 	})
 	if e != nil {
@@ -106,11 +106,11 @@ func (a *App) revoke(c *gin.Context) {
 	id := c.Param("id")
 	e := a.mutate(c, c.MustGet("user").(User).ID, "agent.revoke", id, func(tx *sql.Tx) error {
 		var existing string
-		if e := tx.QueryRowContext(c, a.db.Bind(`SELECT id FROM servers WHERE id=? FOR UPDATE`), id).Scan(&existing); e != nil {
+		if e := tx.QueryRowContext(c.Request.Context(), a.db.Bind(`SELECT id FROM servers WHERE id=? FOR UPDATE`), id).Scan(&existing); e != nil {
 			return e
 		}
 		for _, q := range []string{`UPDATE servers SET revoked=true WHERE id=?`, `UPDATE agent_credentials SET revoked_at=CURRENT_TIMESTAMP WHERE server_id=?`, `DELETE FROM agent_enrollments WHERE server_id=?`} {
-			if _, e := tx.ExecContext(c, a.db.Bind(q), id); e != nil {
+			if _, e := tx.ExecContext(c.Request.Context(), a.db.Bind(q), id); e != nil {
 				return e
 			}
 		}

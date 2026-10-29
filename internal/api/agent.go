@@ -25,7 +25,7 @@ func (a *App) enroll(c *gin.Context) {
 	t := token()
 	var id string
 	// Lock server first for a consistent lock order with revocation and token replacement.
-	if e := a.db.Row(c, `SELECT server_id FROM agent_enrollments WHERE token_hash=?`, hash(in.Token)).Scan(&id); e != nil {
+	if e := a.db.Row(c.Request.Context(), `SELECT server_id FROM agent_enrollments WHERE token_hash=?`, hash(in.Token)).Scan(&id); e != nil {
 		if e == sql.ErrNoRows {
 			bad(c, 401, "注册凭证无效")
 		} else {
@@ -35,23 +35,23 @@ func (a *App) enroll(c *gin.Context) {
 	}
 	e := a.mutate(c, "", "agent.enrolled", id, func(tx *sql.Tx) error {
 		var locked string
-		if e := tx.QueryRowContext(c, a.db.Bind(`SELECT id FROM servers WHERE id=? FOR UPDATE`), id).Scan(&locked); e != nil {
+		if e := tx.QueryRowContext(c.Request.Context(), a.db.Bind(`SELECT id FROM servers WHERE id=? FOR UPDATE`), id).Scan(&locked); e != nil {
 			return e
 		}
 		var enrolled string
-		if e := tx.QueryRowContext(c, a.db.Bind(`SELECT server_id FROM agent_enrollments WHERE token_hash=? AND used_at IS NULL AND expires_at>? FOR UPDATE`), hash(in.Token), time.Now().UTC()).Scan(&enrolled); e != nil {
+		if e := tx.QueryRowContext(c.Request.Context(), a.db.Bind(`SELECT server_id FROM agent_enrollments WHERE token_hash=? AND used_at IS NULL AND expires_at>? FOR UPDATE`), hash(in.Token), time.Now().UTC()).Scan(&enrolled); e != nil {
 			return e
 		}
-		if _, e := tx.ExecContext(c, a.db.Bind(`UPDATE agent_enrollments SET used_at=? WHERE token_hash=?`), time.Now().UTC(), hash(in.Token)); e != nil {
+		if _, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`UPDATE agent_enrollments SET used_at=? WHERE token_hash=?`), time.Now().UTC(), hash(in.Token)); e != nil {
 			return e
 		}
-		if _, e := tx.ExecContext(c, a.db.Bind(`UPDATE agent_credentials SET revoked_at=CURRENT_TIMESTAMP WHERE server_id=?`), id); e != nil {
+		if _, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`UPDATE agent_credentials SET revoked_at=CURRENT_TIMESTAMP WHERE server_id=?`), id); e != nil {
 			return e
 		}
-		if _, e := tx.ExecContext(c, a.db.Bind(`INSERT INTO agent_credentials(token_hash,server_id) VALUES(?,?)`), hash(t), id); e != nil {
+		if _, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`INSERT INTO agent_credentials(token_hash,server_id) VALUES(?,?)`), hash(t), id); e != nil {
 			return e
 		}
-		_, e := tx.ExecContext(c, a.db.Bind(`UPDATE servers SET hostname=?,distribution=?,agent_version=?,last_seen_at=?,revoked=false WHERE id=?`), in.Hostname, in.Distribution, in.Version, time.Now().UTC(), id)
+		_, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`UPDATE servers SET hostname=?,distribution=?,agent_version=?,last_seen_at=?,revoked=false WHERE id=?`), in.Hostname, in.Distribution, in.Version, time.Now().UTC(), id)
 		return e
 	})
 	if e != nil {
@@ -88,19 +88,19 @@ func (a *App) agentAuth(c *gin.Context) {
 	c.Next()
 }
 func (a *App) agentTx(c *gin.Context, fn func(*sql.Tx) error) error {
-	return a.agentTransaction(c, c.GetString("server_id"), c.GetString("agent_hash"), fn)
+	return a.agentTransaction(c.Request.Context(), c.GetString("server_id"), c.GetString("agent_hash"), fn)
 }
-func (a *App) agentTransaction(c context.Context, serverID, credentialHash string, fn func(*sql.Tx) error) error {
-	tx, e := a.db.BeginTx(c, nil)
+func (a *App) agentTransaction(ctx context.Context, serverID, credentialHash string, fn func(*sql.Tx) error) error {
+	tx, e := a.db.BeginTx(ctx, nil)
 	if e != nil {
 		return e
 	}
 	defer tx.Rollback()
 	var id string
-	if e = tx.QueryRowContext(c, a.db.Bind(`SELECT id FROM servers WHERE id=? AND revoked=false FOR UPDATE`), serverID).Scan(&id); e != nil {
+	if e = tx.QueryRowContext(ctx, a.db.Bind(`SELECT id FROM servers WHERE id=? AND revoked=false FOR UPDATE`), serverID).Scan(&id); e != nil {
 		return e
 	}
-	if e = tx.QueryRowContext(c, a.db.Bind(`SELECT server_id FROM agent_credentials WHERE token_hash=? AND server_id=? AND revoked_at IS NULL`), credentialHash, serverID).Scan(&id); e != nil {
+	if e = tx.QueryRowContext(ctx, a.db.Bind(`SELECT server_id FROM agent_credentials WHERE token_hash=? AND server_id=? AND revoked_at IS NULL`), credentialHash, serverID).Scan(&id); e != nil {
 		return e
 	}
 	if e = fn(tx); e != nil {
@@ -157,7 +157,7 @@ func (a *App) heartbeat(c *gin.Context) {
 	if !bind(c, &in) {
 		return
 	}
-	if e := a.recordHeartbeat(c, c.GetString("server_id"), c.GetString("agent_hash"), in); e != nil {
+	if e := a.recordHeartbeat(c.Request.Context(), c.GetString("server_id"), c.GetString("agent_hash"), in); e != nil {
 		agentFailure(c, e)
 		return
 	}
@@ -205,7 +205,7 @@ func (a *App) batch(c *gin.Context) {
 	if !bind(c, &in) {
 		return
 	}
-	result, e := a.ingest(c, c.GetString("server_id"), c.GetString("agent_hash"), in)
+	result, e := a.ingest(c.Request.Context(), c.GetString("server_id"), c.GetString("agent_hash"), in)
 	if e != nil {
 		agentFailure(c, e)
 		return

@@ -27,7 +27,7 @@ type Rule struct {
 }
 
 func (a *App) rules(c *gin.Context) {
-	items, e := a.readRules(c, false)
+	items, e := a.readRules(c.Request.Context(), false)
 	if e != nil {
 		fail(c, e)
 		return
@@ -89,12 +89,12 @@ func (a *App) saveRule(c *gin.Context) {
 	e := a.mutate(c, c.MustGet("user").(User).ID, "rule.save", id, func(tx *sql.Tx) error {
 		// Serialize count+insert without database-specific partial indexes.
 		var locked string
-		if e := tx.QueryRowContext(c, a.db.Bind(`SELECT id FROM users WHERE role='admin' ORDER BY id LIMIT 1 FOR UPDATE`)).Scan(&locked); e != nil {
+		if e := tx.QueryRowContext(c.Request.Context(), a.db.Bind(`SELECT id FROM users WHERE role='admin' ORDER BY id LIMIT 1 FOR UPDATE`)).Scan(&locked); e != nil {
 			return e
 		}
 		for _, channel := range in.Channels {
 			var n int
-			if e := tx.QueryRowContext(c, a.db.Bind(`SELECT COUNT(*) FROM notification_channels WHERE id=?`), channel).Scan(&n); e != nil {
+			if e := tx.QueryRowContext(c.Request.Context(), a.db.Bind(`SELECT COUNT(*) FROM notification_channels WHERE id=?`), channel).Scan(&n); e != nil {
 				return e
 			}
 			if n != 1 {
@@ -103,19 +103,19 @@ func (a *App) saveRule(c *gin.Context) {
 		}
 		if create {
 			var n int
-			if e := tx.QueryRowContext(c, `SELECT COUNT(*) FROM alert_rules`).Scan(&n); e != nil {
+			if e := tx.QueryRowContext(c.Request.Context(), `SELECT COUNT(*) FROM alert_rules`).Scan(&n); e != nil {
 				return e
 			}
 			if n >= 100 {
 				return errChannelConflict
 			}
-			_, e := tx.ExecContext(c, a.db.Bind(`INSERT INTO alert_rules(id,name,kind,enabled,threshold_count,window_seconds,cooldown_seconds,server_group,trusted_cidrs,channel_ids) VALUES(?,?,?,?,?,?,?,?,?,?)`), id, in.Name, in.Kind, in.Enabled, in.Threshold, in.Window, in.Cooldown, in.Group, string(cidrs), string(channels))
+			_, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`INSERT INTO alert_rules(id,name,kind,enabled,threshold_count,window_seconds,cooldown_seconds,server_group,trusted_cidrs,channel_ids) VALUES(?,?,?,?,?,?,?,?,?,?)`), id, in.Name, in.Kind, in.Enabled, in.Threshold, in.Window, in.Cooldown, in.Group, string(cidrs), string(channels))
 			return e
 		}
-		if e := tx.QueryRowContext(c, a.db.Bind(`SELECT id FROM alert_rules WHERE id=? FOR UPDATE`), id).Scan(&locked); e != nil {
+		if e := tx.QueryRowContext(c.Request.Context(), a.db.Bind(`SELECT id FROM alert_rules WHERE id=? FOR UPDATE`), id).Scan(&locked); e != nil {
 			return e
 		}
-		_, e := tx.ExecContext(c, a.db.Bind(`UPDATE alert_rules SET name=?,kind=?,enabled=?,threshold_count=?,window_seconds=?,cooldown_seconds=?,server_group=?,trusted_cidrs=?,channel_ids=? WHERE id=?`), in.Name, in.Kind, in.Enabled, in.Threshold, in.Window, in.Cooldown, in.Group, string(cidrs), string(channels), id)
+		_, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`UPDATE alert_rules SET name=?,kind=?,enabled=?,threshold_count=?,window_seconds=?,cooldown_seconds=?,server_group=?,trusted_cidrs=?,channel_ids=? WHERE id=?`), in.Name, in.Kind, in.Enabled, in.Threshold, in.Window, in.Cooldown, in.Group, string(cidrs), string(channels), id)
 		return e
 	})
 	if e == errChannelConflict {
@@ -284,10 +284,10 @@ func (a *App) acknowledgeAlert(c *gin.Context) {
 	id := c.Param("id")
 	e := a.mutate(c, c.MustGet("user").(User).ID, "alert.acknowledge", id, func(tx *sql.Tx) error {
 		var existing string
-		if e := tx.QueryRowContext(c, a.db.Bind(`SELECT id FROM alerts WHERE id=? FOR UPDATE`), id).Scan(&existing); e != nil {
+		if e := tx.QueryRowContext(c.Request.Context(), a.db.Bind(`SELECT id FROM alerts WHERE id=? FOR UPDATE`), id).Scan(&existing); e != nil {
 			return e
 		}
-		_, e := tx.ExecContext(c, a.db.Bind(`UPDATE alerts SET acknowledged_by=?,acknowledged_at=? WHERE id=? AND acknowledged_at IS NULL`), c.MustGet("user").(User).ID, time.Now().UTC(), id)
+		_, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`UPDATE alerts SET acknowledged_by=?,acknowledged_at=? WHERE id=? AND acknowledged_at IS NULL`), c.MustGet("user").(User).ID, time.Now().UTC(), id)
 		return e
 	})
 	if e != nil {

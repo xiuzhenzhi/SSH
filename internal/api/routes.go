@@ -31,6 +31,9 @@ func NewApp(db *storage.DB, cfg Config) *App {
 	return &App{db: db, cfg: cfg, dummyHash: string(h), hub: newLiveHub()}
 }
 func (a *App) Router() *gin.Engine {
+	// Pass c.Request.Context() to SQL and background-capable helpers. Gin pools
+	// its Context after the handler returns; driver cancellation goroutines may
+	// still be observing the context even after a query has completed.
 	db, cfg := a.db, a.cfg
 	r := gin.New()
 	r.ContextWithFallback = true
@@ -48,7 +51,7 @@ func (a *App) Router() *gin.Engine {
 		c.Next()
 	})
 	r.GET("/api/v1/health", func(c *gin.Context) {
-		if e := db.PingContext(c); e != nil {
+		if e := db.PingContext(c.Request.Context()); e != nil {
 			bad(c, 503, "数据库不可用")
 			return
 		}
@@ -168,7 +171,7 @@ func page(c *gin.Context) (int, int) {
 func (a *App) list(c *gin.Context, q string, args ...any) {
 	size, offset := page(c)
 	args = append(args, size+1, offset)
-	rows, e := a.db.List(c, q, args...)
+	rows, e := a.db.List(c.Request.Context(), q, args...)
 	if e != nil {
 		fail(c, e)
 		return
@@ -180,7 +183,7 @@ func (a *App) list(c *gin.Context, q string, args ...any) {
 	ok(c, gin.H{"items": rows, "has_more": more})
 }
 func (a *App) mutate(c *gin.Context, actor, action, target string, fn func(*sql.Tx) error) error {
-	tx, e := a.db.BeginTx(c, nil)
+	tx, e := a.db.BeginTx(c.Request.Context(), nil)
 	if e != nil {
 		return e
 	}
@@ -192,7 +195,7 @@ func (a *App) mutate(c *gin.Context, actor, action, target string, fn func(*sql.
 	if actor != "" {
 		who = actor
 	}
-	if _, e = tx.ExecContext(c, a.db.Bind(`INSERT INTO audit_logs(actor_id,action,target) VALUES(?,?,?)`), who, action, target); e != nil {
+	if _, e = tx.ExecContext(c.Request.Context(), a.db.Bind(`INSERT INTO audit_logs(actor_id,action,target) VALUES(?,?,?)`), who, action, target); e != nil {
 		return e
 	}
 	return tx.Commit()
@@ -201,11 +204,11 @@ func (a *App) summary(c *gin.Context) {
 	since := time.Now().UTC().Add(-24 * time.Hour)
 	online := time.Now().UTC().Add(-90 * time.Second)
 	var total, on, rev, events, success int64
-	if e := a.db.Row(c, `SELECT COUNT(*),COALESCE(SUM(CASE WHEN revoked=false AND last_seen_at>? THEN 1 ELSE 0 END),0),COALESCE(SUM(CASE WHEN revoked=true THEN 1 ELSE 0 END),0) FROM servers`, online).Scan(&total, &on, &rev); e != nil {
+	if e := a.db.Row(c.Request.Context(), `SELECT COUNT(*),COALESCE(SUM(CASE WHEN revoked=false AND last_seen_at>? THEN 1 ELSE 0 END),0),COALESCE(SUM(CASE WHEN revoked=true THEN 1 ELSE 0 END),0) FROM servers`, online).Scan(&total, &on, &rev); e != nil {
 		fail(c, e)
 		return
 	}
-	if e := a.db.Row(c, `SELECT COUNT(*),COALESCE(SUM(CASE WHEN outcome='success' THEN 1 ELSE 0 END),0) FROM ssh_events WHERE occurred_at>=?`, since).Scan(&events, &success); e != nil {
+	if e := a.db.Row(c.Request.Context(), `SELECT COUNT(*),COALESCE(SUM(CASE WHEN outcome='success' THEN 1 ELSE 0 END),0) FROM ssh_events WHERE occurred_at>=?`, since).Scan(&events, &success); e != nil {
 		fail(c, e)
 		return
 	}

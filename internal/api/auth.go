@@ -62,12 +62,12 @@ func (a *App) login(c *gin.Context) {
 	if a.db.Driver == "mysql" {
 		q = `INSERT INTO login_attempts(bucket_key,attempts,window_start) VALUES(?,1,?) ON DUPLICATE KEY UPDATE attempts=attempts+1`
 	}
-	if _, e := a.db.Exec(c, q, key, time.Now().UTC()); e != nil {
+	if _, e := a.db.Exec(c.Request.Context(), q, key, time.Now().UTC()); e != nil {
 		fail(c, e)
 		return
 	}
 	var attempts int
-	if e := a.db.Row(c, `SELECT attempts FROM login_attempts WHERE bucket_key=?`, key).Scan(&attempts); e != nil {
+	if e := a.db.Row(c.Request.Context(), `SELECT attempts FROM login_attempts WHERE bucket_key=?`, key).Scan(&attempts); e != nil {
 		fail(c, e)
 		return
 	}
@@ -78,7 +78,7 @@ func (a *App) login(c *gin.Context) {
 	}
 	var u User
 	var pw string
-	e := a.db.Row(c, `SELECT id,username,role,password_hash FROM users WHERE username=?`, in.Username).Scan(&u.ID, &u.Username, &u.Role, &pw)
+	e := a.db.Row(c.Request.Context(), `SELECT id,username,role,password_hash FROM users WHERE username=?`, in.Username).Scan(&u.ID, &u.Username, &u.Role, &pw)
 	if e != nil && e != sql.ErrNoRows {
 		fail(c, e)
 		return
@@ -94,13 +94,13 @@ func (a *App) login(c *gin.Context) {
 	t := token()
 	if e = a.mutate(c, u.ID, "auth.login", u.ID, func(tx *sql.Tx) error {
 		var current string
-		if e := tx.QueryRowContext(c, a.db.Bind(`SELECT password_hash FROM users WHERE id=? FOR UPDATE`), u.ID).Scan(&current); e != nil {
+		if e := tx.QueryRowContext(c.Request.Context(), a.db.Bind(`SELECT password_hash FROM users WHERE id=? FOR UPDATE`), u.ID).Scan(&current); e != nil {
 			return e
 		}
 		if current != pw {
 			return sql.ErrNoRows
 		}
-		_, e := tx.ExecContext(c, a.db.Bind(`INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)`), hash(t), u.ID, time.Now().UTC().Add(12*time.Hour))
+		_, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)`), hash(t), u.ID, time.Now().UTC().Add(12*time.Hour))
 		return e
 	}); e != nil {
 		fail(c, e)
@@ -124,7 +124,7 @@ func (a *App) changePassword(c *gin.Context) {
 	}
 	u := c.MustGet("user").(User)
 	var pw string
-	if e := a.db.Row(c, `SELECT password_hash FROM users WHERE id=?`, u.ID).Scan(&pw); e != nil {
+	if e := a.db.Row(c.Request.Context(), `SELECT password_hash FROM users WHERE id=?`, u.ID).Scan(&pw); e != nil {
 		fail(c, e)
 		return
 	}
@@ -139,16 +139,16 @@ func (a *App) changePassword(c *gin.Context) {
 	}
 	e = a.mutate(c, u.ID, "auth.password.change", u.ID, func(tx *sql.Tx) error {
 		var current string
-		if e := tx.QueryRowContext(c, a.db.Bind(`SELECT password_hash FROM users WHERE id=? FOR UPDATE`), u.ID).Scan(&current); e != nil {
+		if e := tx.QueryRowContext(c.Request.Context(), a.db.Bind(`SELECT password_hash FROM users WHERE id=? FOR UPDATE`), u.ID).Scan(&current); e != nil {
 			return e
 		}
 		if current != pw {
 			return sql.ErrNoRows
 		}
-		if _, e := tx.ExecContext(c, a.db.Bind(`UPDATE users SET password_hash=? WHERE id=?`), string(b), u.ID); e != nil {
+		if _, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`UPDATE users SET password_hash=? WHERE id=?`), string(b), u.ID); e != nil {
 			return e
 		}
-		_, e := tx.ExecContext(c, a.db.Bind(`DELETE FROM sessions WHERE user_id=?`), u.ID)
+		_, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`DELETE FROM sessions WHERE user_id=?`), u.ID)
 		return e
 	})
 	if e != nil {
@@ -196,7 +196,7 @@ func (a *App) logout(c *gin.Context) {
 	t, _ := c.Cookie("sshguard_session")
 	u := c.MustGet("user").(User)
 	e := a.mutate(c, u.ID, "auth.logout", u.ID, func(tx *sql.Tx) error {
-		_, e := tx.ExecContext(c, a.db.Bind(`DELETE FROM sessions WHERE token_hash=?`), hash(t))
+		_, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`DELETE FROM sessions WHERE token_hash=?`), hash(t))
 		return e
 	})
 	if e != nil {
@@ -227,7 +227,7 @@ func (a *App) createUser(c *gin.Context) {
 	}
 	id := uuid.NewString()
 	e = a.mutate(c, c.MustGet("user").(User).ID, "user.create", id, func(tx *sql.Tx) error {
-		_, e := tx.ExecContext(c, a.db.Bind(`INSERT INTO users(id,username,password_hash,role) VALUES(?,?,?,?)`), id, in.Username, string(b), in.Role)
+		_, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`INSERT INTO users(id,username,password_hash,role) VALUES(?,?,?,?)`), id, in.Username, string(b), in.Role)
 		return e
 	})
 	if e != nil {

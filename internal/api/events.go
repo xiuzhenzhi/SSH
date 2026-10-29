@@ -37,7 +37,7 @@ func (a *App) events(c *gin.Context) {
 	a.list(c, q+` ORDER BY e.occurred_at DESC,e.id DESC LIMIT ? OFFSET ?`, args...)
 }
 func (a *App) event(c *gin.Context) {
-	rows, e := a.db.List(c, `SELECT e.*,s.name AS server_name FROM ssh_events e JOIN servers s ON e.server_id=s.id WHERE e.id=?`, c.Param("id"))
+	rows, e := a.db.List(c.Request.Context(), `SELECT e.*,s.name AS server_name FROM ssh_events e JOIN servers s ON e.server_id=s.id WHERE e.id=?`, c.Param("id"))
 	if e != nil {
 		fail(c, e)
 		return

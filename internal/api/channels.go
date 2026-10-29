@@ -18,7 +18,7 @@ func (a *App) channels(c *gin.Context) {
 func (a *App) channel(c *gin.Context) {
 	var id, name, kind, sealed string
 	var enabled bool
-	if e := a.db.Row(c, `SELECT id,name,kind,config_ciphertext,enabled FROM notification_channels WHERE id=?`, c.Param("id")).Scan(&id, &name, &kind, &sealed, &enabled); e != nil {
+	if e := a.db.Row(c.Request.Context(), `SELECT id,name,kind,config_ciphertext,enabled FROM notification_channels WHERE id=?`, c.Param("id")).Scan(&id, &name, &kind, &sealed, &enabled); e != nil {
 		fail(c, e)
 		return
 	}
@@ -64,7 +64,7 @@ func (a *App) saveChannel(c *gin.Context) {
 	var previousCiphertext string
 	if !create {
 		var sealed, kind string
-		if e := a.db.Row(c, `SELECT config_ciphertext,kind FROM notification_channels WHERE id=?`, id).Scan(&sealed, &kind); e != nil {
+		if e := a.db.Row(c.Request.Context(), `SELECT config_ciphertext,kind FROM notification_channels WHERE id=?`, id).Scan(&sealed, &kind); e != nil {
 			fail(c, e)
 			return
 		}
@@ -118,27 +118,27 @@ func (a *App) saveChannel(c *gin.Context) {
 	e = a.mutate(c, c.MustGet("user").(User).ID, action, id, func(tx *sql.Tx) error {
 		if create {
 			var locked string
-			if e := tx.QueryRowContext(c, a.db.Bind(`SELECT id FROM users WHERE role='admin' ORDER BY id LIMIT 1 FOR UPDATE`)).Scan(&locked); e != nil {
+			if e := tx.QueryRowContext(c.Request.Context(), a.db.Bind(`SELECT id FROM users WHERE role='admin' ORDER BY id LIMIT 1 FOR UPDATE`)).Scan(&locked); e != nil {
 				return e
 			}
 			var count int
-			if e := tx.QueryRowContext(c, `SELECT COUNT(*) FROM notification_channels`).Scan(&count); e != nil {
+			if e := tx.QueryRowContext(c.Request.Context(), `SELECT COUNT(*) FROM notification_channels`).Scan(&count); e != nil {
 				return e
 			}
 			if count >= 100 {
 				return errChannelConflict
 			}
-			_, e := tx.ExecContext(c, a.db.Bind(`INSERT INTO notification_channels(id,name,kind,config_ciphertext,enabled) VALUES(?,?,?,?,?)`), id, in.Name, in.Kind, sealed, in.Enabled)
+			_, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`INSERT INTO notification_channels(id,name,kind,config_ciphertext,enabled) VALUES(?,?,?,?,?)`), id, in.Name, in.Kind, sealed, in.Enabled)
 			return e
 		}
 		var current string
-		if e := tx.QueryRowContext(c, a.db.Bind(`SELECT config_ciphertext FROM notification_channels WHERE id=? FOR UPDATE`), id).Scan(&current); e != nil {
+		if e := tx.QueryRowContext(c.Request.Context(), a.db.Bind(`SELECT config_ciphertext FROM notification_channels WHERE id=? FOR UPDATE`), id).Scan(&current); e != nil {
 			return e
 		}
 		if current != previousCiphertext {
 			return errChannelConflict
 		}
-		_, e := tx.ExecContext(c, a.db.Bind(`UPDATE notification_channels SET name=?,config_ciphertext=?,enabled=?,updated_at=? WHERE id=?`), in.Name, sealed, in.Enabled, time.Now().UTC(), id)
+		_, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`UPDATE notification_channels SET name=?,config_ciphertext=?,enabled=?,updated_at=? WHERE id=?`), in.Name, sealed, in.Enabled, time.Now().UTC(), id)
 		return e
 	})
 	if e == errChannelConflict {
@@ -155,16 +155,16 @@ func (a *App) testChannel(c *gin.Context) {
 	id, alertID, jobID := c.Param("id"), uuid.NewString(), uuid.NewString()
 	e := a.mutate(c, c.MustGet("user").(User).ID, "channel.test", id, func(tx *sql.Tx) error {
 		var enabled bool
-		if e := tx.QueryRowContext(c, a.db.Bind(`SELECT enabled FROM notification_channels WHERE id=? FOR UPDATE`), id).Scan(&enabled); e != nil {
+		if e := tx.QueryRowContext(c.Request.Context(), a.db.Bind(`SELECT enabled FROM notification_channels WHERE id=? FOR UPDATE`), id).Scan(&enabled); e != nil {
 			return e
 		}
 		if !enabled {
 			return errChannelDisabled
 		}
-		if _, e := tx.ExecContext(c, a.db.Bind(`INSERT INTO alerts(id,severity,title,message) VALUES(?,'info',?,?)`), alertID, "SSHGuard 渠道测试", "这是一条由管理员主动触发的测试通知。"); e != nil {
+		if _, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`INSERT INTO alerts(id,severity,title,message) VALUES(?,'info',?,?)`), alertID, "SSHGuard 渠道测试", "这是一条由管理员主动触发的测试通知。"); e != nil {
 			return e
 		}
-		_, e := tx.ExecContext(c, a.db.Bind(`INSERT INTO notification_jobs(id,alert_id,channel_id,next_attempt_at) VALUES(?,?,?,?)`), jobID, alertID, id, time.Now().UTC())
+		_, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`INSERT INTO notification_jobs(id,alert_id,channel_id,next_attempt_at) VALUES(?,?,?,?)`), jobID, alertID, id, time.Now().UTC())
 		return e
 	})
 	if e == errChannelDisabled {
@@ -198,13 +198,13 @@ func (a *App) retryDelivery(c *gin.Context) {
 	id := c.Param("id")
 	e := a.mutate(c, c.MustGet("user").(User).ID, "notification.retry", id, func(tx *sql.Tx) error {
 		var status string
-		if e := tx.QueryRowContext(c, a.db.Bind(`SELECT status FROM notification_jobs WHERE id=? FOR UPDATE`), id).Scan(&status); e != nil {
+		if e := tx.QueryRowContext(c.Request.Context(), a.db.Bind(`SELECT status FROM notification_jobs WHERE id=? FOR UPDATE`), id).Scan(&status); e != nil {
 			return e
 		}
 		if status != "dead" {
 			return errChannelDisabled
 		}
-		_, e := tx.ExecContext(c, a.db.Bind(`UPDATE notification_jobs SET status='pending',attempts=0,next_attempt_at=?,locked_until=NULL,lease_token='',last_error='' WHERE id=?`), time.Now().UTC(), id)
+		_, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`UPDATE notification_jobs SET status='pending',attempts=0,next_attempt_at=?,locked_until=NULL,lease_token='',last_error='' WHERE id=?`), time.Now().UTC(), id)
 		return e
 	})
 	if e == errChannelDisabled {

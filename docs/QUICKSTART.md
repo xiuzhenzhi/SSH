@@ -39,18 +39,27 @@ SQLite 从 v0.3.1 开始支持，安装前确认该版本的 Release 附件已�
 
 ### 可选：安装后使用 Nginx / OpenResty / 宝塔反代
 
-先按默认方式安装，再在现有 HTTPS 网站中反代整个应用，无需设置网站根目录。将以下配置合并到已有 server 块（替换重复的 location）：
+先按默认方式安装，再在现有 HTTPS 网站中反代整个应用，无需设置网站根目录。宝塔用户进入「网站 → 对应站点 → 反向代理 → 配置文件」，将该反代条目的原内容整体替换为下面配置，再保存；不要包裹 `server {}`。直接管理 Nginx/OpenResty 配置时，放在已有 server 块内并替换重复的根 location。端口不为 8080 时同步修改 proxy_pass。
 
 ```nginx
-location / {
+#PROXY-START/
+location ^~ / {
     proxy_pass http://127.0.0.1:8080;
     proxy_http_version 1.1;
-    proxy_set_header Host $host;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
     proxy_read_timeout 90s;
+    proxy_connect_timeout 10s;
+    proxy_send_timeout 90s;
     proxy_buffering off;
+    proxy_cache off;
+    client_max_body_size 1m;
 }
+#PROXY-END/
 ```
 
 然后在 `/etc/sshguard/api.env` 设置 `PUBLIC_URL="https://你的域名"`，可将 `LISTEN_ADDR` 改为 `127.0.0.1:8080` 限制直连；执行 `sudo systemctl restart sshguard-api`。证书与 Web 服务继续由原面板管理。通过自己的面板验证并加载反代配置后访问域名，Agent 安装和平台更新也会使用这个 HTTPS 地址。默认直连 HTTP 不填写 PUBLIC_URL，应用会按实际请求地址进行同源校验，不信任客户端伪造的转发头。

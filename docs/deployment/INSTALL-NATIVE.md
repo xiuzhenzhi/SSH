@@ -13,6 +13,12 @@ cd sshguard-linux-amd64
 
 ARM64 将 `amd64` 换成 `arm64`。
 
+## 更新后的旧版本清理
+
+从 v0.3.19 起，一键脚本会在更新通过健康检查后，自动清理 `/opt/sshguard-releases/` 中可识别的旧程序目录，仅保留 `/opt/sshguard` 当前指向的版本。更新失败时不清理旧版本，保留恢复能力。
+
+清理不涉及 `/var/lib/sshguard-api`、`/etc/sshguard`、外部数据库及手动下载的文件。符号链接、不符合标准结构或含额外文件的目录会保留，避免删除用户自行保存的数据。
+
 ## 准备数据库
 
 SQLite 无需创建数据库。使用 PostgreSQL 或 MySQL 时，先创建专用库和账号。

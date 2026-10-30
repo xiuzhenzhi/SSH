@@ -10,6 +10,36 @@ message() {
     else printf '%s %s\n' "$label" "$*"; fi
 }
 die() { message 31 '[错误]' "$*" >&2; exit 1; }
+prune_releases() (
+    # Only direct, recognizable release directories; never follow directory links.
+    release_root=$1
+    active_release=$2
+    command -v mountpoint >/dev/null 2>&1 || return 1
+    [ -d "$release_root" ] && [ ! -L "$release_root" ] || return 1
+    [ "$(readlink -f "$release_root")" = "$release_root" ] || return 1
+    [ -d "$active_release" ] && [ ! -L "$active_release" ] || return 1
+    [ "$(dirname "$active_release")" = "$release_root" ] || return 1
+    for candidate in "$release_root"/*; do
+        [ "$candidate" != "$active_release" ] || continue
+        [ -d "$candidate" ] && [ ! -L "$candidate" ] || continue
+        if mountpoint -q "$candidate"; then continue; fi
+        [ -f "$candidate/VERSION" ] && [ ! -L "$candidate/VERSION" ] || continue
+        release_version=$(cat "$candidate/VERSION") || continue
+        printf '%s' "$release_version" | grep -Eq '^[0-9][A-Za-z0-9.+_-]{0,31}$' || continue
+        suffix=${candidate##*/}
+        case "$suffix" in "$release_version".??????) ;; *) continue ;; esac
+        case "${suffix##*.}" in *[!A-Za-z0-9]*) continue ;; esac
+        [ -f "$candidate/sshguard-api" ] && [ -d "$candidate/web" ] && [ -d "$candidate/deploy" ] || continue
+        # Preserve directories containing user-added configuration, data or backups.
+        unexpected=$(find "$candidate" -mindepth 1 -maxdepth 1 ! -name sshguard-api ! -name web ! -name deploy ! -name VERSION ! -name sshguard.sh ! -name deploy.sh ! -name quick-start.sh ! -name update.sh ! -name uninstall.sh -print) || continue
+        [ -z "$unexpected" ] || continue
+        if rm -rf --one-file-system -- "$candidate"; then
+            printf '  已清理旧版本：%s\n' "${candidate##*/}"
+        else
+            printf '  旧版本清理未完成：%s（当前服务不受影响）\n' "$candidate" >&2
+        fi
+    done
+)
 management_action() {
     printf '\n  SSHGuard · 主控管理\n  ────────────────────────\n' >&2
     default_choice=1
@@ -472,6 +502,9 @@ fi
 switched=false
 if [ "$public_origin" = "http://SERVER_IP:$app_port" ]; then
     public_origin=$(direct_origin "$app_port")
+fi
+if [ "$mode" = update ] && [ "$(readlink -f /opt/sshguard)" = "$stage" ]; then
+    prune_releases /opt/sshguard-releases "$stage" || printf '  跳过旧版本清理：无法确认版本目录。\n' >&2
 fi
 if [ "$mode" = update ]; then printf '\n更新完成 · SSHGuard %s\n访问地址：%s\n' "$version" "$public_origin"
 else printf '\n安装完成 · SSHGuard %s\n访问地址：%s\n' "$version" "$public_origin"; fi

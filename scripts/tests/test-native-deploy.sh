@@ -123,6 +123,7 @@ if [ "$proxy_mode" = external ]; then
 fi
 check_sqlite_state
 [ "$old" != "$(readlink /opt/sshguard)" ]
+[ ! -e "$old" ]
 [ "$before_env" = "$(sha256sum /etc/sshguard/api.env)" ]
 node scripts/tests/test-native-api.mjs verify
 # Preflight must reject an invalid binary before switching the working deployment.
@@ -132,6 +133,7 @@ printf '#!/bin/sh\nexit 1\n' > "$tmp/broken/sshguard-api"
 old=$(readlink /opt/sshguard)
 if PATH="$deploy_path" sh "$tmp/broken/deploy.sh" --update; then echo 'Invalid API accepted' >&2; exit 1; fi
 [ "$old" = "$(readlink /opt/sshguard)" ]
+[ -f "$old/sshguard-api" ]
 curl -fsS "$origin/api/v1/health" >/dev/null
 echo 'Native deploy, HTTPS, real systemd Agent install/update/idempotence/rollback, and platform update passed.'
 SSHGUARD_TEST_SERVER_NAME=CI-Alpine-OpenRC node scripts/tests/test-native-api.mjs enroll

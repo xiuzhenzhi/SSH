@@ -20,5 +20,3 @@ SQLite 可点击「回收空间」，核对确认框后开始后台维护。流�
 - 缩短保留期限可能永久删除过期数据，保存前会要求确认；空间回收与过期记录删除是两个独立操作。
 
 当前数据库连接在首次初始化时配置。更换数据库需先备份并迁移数据，参见[备份与恢复](../deployment/OPERATIONS.md)。
-
-实现参考了 [Komari 的数据库维护流程](https://github.com/komari-monitor/komari/blob/main/database/dbcore/maintenance.go)，并接入 SSHGuard 的访问权限、审计和后台任务生命周期。

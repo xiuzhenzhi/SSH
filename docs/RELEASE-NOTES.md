@@ -1,17 +1,8 @@
-# SSHGuard v0.3.18
+# SSHGuard v0.3.19
 
-- 恢复服务器列表、SSH 事件、国家排名和最近事件的国旗，并增加全部国家 SVG 的生产打包检查。
-- 移除安装命令弹窗中的 Linux 和 Windows 环境说明。
-- CI 按主控、数据库、Agent、前端、部署脚本、文档分别触发，支持任意组合；仅版本值变化不再误触发其他模块，实际数据库访问和共用代码保留联动检查。
-- 未变化的前端和 Agent 复用经过校验的已发布产物；文档独立检查与部署，发布安装矩阵按影响范围缩减。
-- 修复安装更新测试混用主控与 Agent 版本号的遗漏，补齐版本分离、128 种模块组合和产物复用的回归测试。
+- fix: prune old controller releases after healthy updates
+- docs: record verified v0.3.18 release
+- fix: retain CI coverage across cancelled pushes
+- test: verify component combinations using real Git history
 
-## 更新
-
-```sh
-sh /opt/sshguard/sshguard.sh --update
-```
-
-Agent 保持 0.3.16，无需为本次前端修复重装 Agent。更新后刷新浏览器。从旧仓库地址版本升级，请使用[安装与更新](guides/QUICKSTART.md)中的最新更新脚本。
-
-v0.3.17 因安装测试中的旧版本判断被拦截，没有发布；本版本包含其修复。升级前备份数据库、配置和 ENCRYPTION_KEY。
+升级前备份数据库、配置和 ENCRYPTION_KEY。数据库类型不会自动切换或搬迁，程序回退不撤销数据库迁移。安装与升级见 [快速开始](guides/QUICKSTART.md)。

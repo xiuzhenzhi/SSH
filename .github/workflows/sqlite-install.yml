@@ -1,0 +1,56 @@
+name: SQLite installation recheck
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: Existing CI run containing a verified build candidate
+        type: string
+        required: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  sqlite:
+    name: SQLite / ${{ matrix.proxy }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        proxy: [managed, external, standalone, standalone-http]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+      - name: Require unchanged application inputs from this repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN: ${{ inputs.candidate_run_id }}
+        run: |
+          case "$CANDIDATE_RUN" in ''|*[!0-9]*) exit 1 ;; esac
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN" > "$RUNNER_TEMP/candidate-run.json"
+          base=$(node -e 'const r=require(process.argv[1]); if(r.head_repository.full_name!==process.env.GITHUB_REPOSITORY || r.path!==".github/workflows/ci.yml" || !["push","workflow_dispatch"].includes(r.event) || !/^[a-f0-9]{40}$/.test(r.head_sha))process.exit(1);console.log(r.head_sha)' "$RUNNER_TEMP/candidate-run.json")
+          git merge-base --is-ancestor "$base" HEAD
+          git diff --exit-code "$base" HEAD -- cmd internal go.mod go.sum web AGENT_VERSION scripts/install-agent.sh scripts/install-agent.ps1 scripts/uninstall-agent.sh scripts/uninstall-agent.ps1 scripts/build
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: sshguard-build-candidate
+          path: dist/release
+          run-id: ${{ inputs.candidate_run_id }}
+          github-token: ${{ github.token }}
+      - name: Verify binaries and use current installer files
+        run: |
+          cd dist/release
+          sha256sum -c SHA256SUMS
+          tar -xzf sshguard-linux-amd64.tar.gz -C ..
+          cd ../..
+          cp sshguard.sh dist/sshguard-linux-amd64/sshguard.sh
+          cp -R deploy/native/. dist/sshguard-linux-amd64/deploy/
+      - name: Verify SQLite installation, permissions and update recovery
+        env:
+          PROXY_MODE: ${{ matrix.proxy }}
+        run: sudo env "PATH=$PATH" GITHUB_ACTIONS=true SSHGUARD_NATIVE_DB=sqlite SSHGUARD_NATIVE_PROXY="$PROXY_MODE" sh scripts/tests/test-native-deploy.sh dist/sshguard-linux-amd64

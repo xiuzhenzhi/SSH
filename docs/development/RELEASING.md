@@ -104,3 +104,7 @@ Release 按上个标签到当前提交判断变化，仍构建并校验主控发
 正式 Release 发布成功后自动调用 `Publish container images`，从该版本的公开安装包校验 SHA-256 并组装主控、前端双架构镜像，不重新编译应用和 Agent。版本标签保持不变；只有 GitHub 当前最新正式版本能更新 `latest`，补发旧版或预发布版不会覆盖它。
 
 可在 Actions 的 `Publish container images` 中手动输入已发布标签（如 `v0.3.19`）补发或重试，无需创建新版本。工作流关联当前仓库，并仅使用短期 `GITHUB_TOKEN` 写入 GHCR，不需要保存个人访问令牌。首次发布后应确认两个容器包的可见性为 Public，确保用户可以匿名拉取。
+
+### SQLite 安装问题定向复验
+
+如果仅修复原生安装脚本，可在 Actions 的 `SQLite installation recheck` 中填写已有 CI 的运行编号。流程先确认主控、Agent、前端及构建输入没有变化，再校验并复用已有程序产物，只覆盖当前安装脚本和服务模板，执行 SQLite 的四种安装模式。它不发布版本，也不重复运行前端、Agent、MySQL 或 PostgreSQL 的独立检查；应用代码变化时会拒绝复用。

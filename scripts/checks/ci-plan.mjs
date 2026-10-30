@@ -29,6 +29,7 @@ export function planCI(files, full = false, versionOnly = [], databaseLinked = [
   if (databaseLinked.includes(p)) plan.database=true;
   if (/\.md$/i.test(p) || p.startsWith('docs/') || ['LICENSE','package.json','package-lock.json','.github/workflows/docs.yml','scripts/build/build-docs.mjs','scripts/checks/check-docs.mjs'].includes(p)) {plan.docs=true;continue;}
   if (['scripts/checks/ci-plan.mjs','scripts/tests/ci-plan.test.mjs'].includes(p)) continue; // Always tested by the scope job.
+  if (p === '.github/workflows/sqlite-install.yml') {plan.automation=true;continue;}
   if (p.startsWith('web/')) {plan.web=true;continue;}
   if (['go.mod','go.sum'].includes(p)) {plan.server=true;plan.agent=true;plan.database=true;continue;}
   if (/^(cmd\/agent|internal\/agent)\//.test(p)) {plan.agent=true;continue;}

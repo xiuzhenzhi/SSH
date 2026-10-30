@@ -409,9 +409,24 @@ if [ "$mode" = install ] && [ "$proxy_mode" = standalone ] && "$builtin_tls"; th
     install -o root -g sshguard-api -m 0640 "$private_key" /opt/SSHGuard/Server/tls/privkey.pem
 fi
 [ ! -L /opt/SSHGuard/Server/data ] || die '拒绝数据目录符号链接。'
-install -d -o sshguard-api -g sshguard-api -m 0700 /opt/SSHGuard/Server/data
 mkdir -p /opt/SSHGuard
 chmod 0755 /opt/SSHGuard
+install -d -o sshguard-api -g sshguard-api -m 0700 /opt/SSHGuard/Server/data
+# Create private SQLite files explicitly; do not rely only on the service manager's umask.
+# Run as the service account so file preparation cannot modify root-owned targets.
+if grep -Eq '^(DB_DRIVER="sqlite"|WEB_SETUP="true")$' /opt/SSHGuard/Server/api.env; then
+    su sshguard-api -s /bin/sh -c '
+        set -eu
+        umask 077
+        database=/opt/SSHGuard/Server/data/sshguard.db
+        [ ! -L "$database" ] || exit 1
+        if [ ! -e "$database" ]; then (set -C; : > "$database"); fi
+        for path in "$database" "$database-wal" "$database-shm"; do
+            [ ! -L "$path" ] || exit 1
+            if [ -e "$path" ]; then [ -f "$path" ] && chmod 0600 "$path"; fi
+        done
+    ' || die '无法准备 SQLite 私有数据文件，请检查数据目录权限。'
+fi
 stage=$(mktemp -d /opt/.SSHGuard-stage.XXXXXX)
 # A bundle may be extracted inside an existing panel website. Copy only release
 # payloads, never unrelated site files, deploy.conf or certificate private keys.

@@ -53,10 +53,11 @@ if [ "$proxy_mode" = external ]; then
 fi
 check_sqlite_state() {
     [ "$driver" = sqlite ] || return 0
-    [ "$(stat -c %a /opt/SSHGuard/Server/data)" = 700 ]
-    [ "$(stat -c %U /opt/SSHGuard/Server/data)" = sshguard-api ]
-    [ -s /opt/SSHGuard/Server/data/sshguard.db ]
-    [ "$(stat -c %a /opt/SSHGuard/Server/data/sshguard.db)" = 600 ]
+    stat -c 'SQLite state: %a %U %n' /opt/SSHGuard/Server/data /opt/SSHGuard/Server/data/sshguard.db
+    [ "$(stat -c %a /opt/SSHGuard/Server/data)" = 700 ] || { echo 'SQLite directory mode must be 700' >&2; exit 1; }
+    [ "$(stat -c %U /opt/SSHGuard/Server/data)" = sshguard-api ] || { echo 'SQLite directory owner mismatch' >&2; exit 1; }
+    [ -s /opt/SSHGuard/Server/data/sshguard.db ] || { echo 'SQLite database missing' >&2; exit 1; }
+    [ "$(stat -c %a /opt/SSHGuard/Server/data/sshguard.db)" = 600 ] || { echo 'SQLite database mode must be 600' >&2; exit 1; }
     curl -fsS "$origin/api/v1/health" | grep -Fq '"database":"sqlite"'
 }
 check_sqlite_state

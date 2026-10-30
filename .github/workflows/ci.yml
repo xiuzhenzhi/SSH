@@ -27,6 +27,7 @@ on:
         default: true
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}-${{ inputs.full_validation && 'full' || 'checks' }}
   cancel-in-progress: true
@@ -54,6 +55,7 @@ jobs:
           node-version: '24'
       - id: plan
         env:
+          GH_TOKEN: ${{ github.token }}
           BEFORE_SHA: ${{ github.event.before }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           SOURCE_SHA: ${{ inputs.source_ref || github.sha }}

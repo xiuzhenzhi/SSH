@@ -54,11 +54,35 @@ export function nativeMatrix(plan, full=false) {
  return {include:[]};
 }
 
+export function validatedBase(runs, head, isAncestor) {
+ for(const run of runs){
+  if(run.conclusion!=='success' || run.head_sha===head || !/^[a-f0-9]{40}$/.test(run.head_sha||''))continue;
+  if(isAncestor(run.head_sha))return run.head_sha;
+ }
+ return '';
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   let base = process.env.PR_BASE_SHA || process.env.BEFORE_SHA || '';
   const head = process.env.SOURCE_SHA || process.env.GITHUB_SHA || '';
   if (process.env.SELECTIVE_RELEASE === 'true') {
     try { base = execFileSync('git',['rev-list','-n','1',execFileSync('git',['describe','--tags','--abbrev=0',head+'^'],{encoding:'utf8'}).trim()],{encoding:'utf8'}).trim(); } catch { base=''; }
+  } else if(process.env.GITHUB_EVENT_NAME==='push' && process.env.GITHUB_REF_TYPE==='branch') {
+    // A newer push can cancel its predecessor. Compare against a successful CI,
+    // not the immediately preceding (possibly unverified) commit.
+    base='';
+    try {
+      const repo=process.env.GITHUB_REPOSITORY,branch=process.env.GITHUB_REF_NAME;
+      if(!/^[\w.-]+\/[\w.-]+$/.test(repo||'') || !branch)throw Error('Missing repository context');
+      const response=await fetch(`https://api.github.com/repos/${repo}/actions/workflows/ci.yml/runs?branch=${encodeURIComponent(branch)}&event=push&status=success&per_page=30`,{
+        headers:{Authorization:`Bearer ${process.env.GH_TOKEN}`,Accept:'application/vnd.github+json'},signal:AbortSignal.timeout(15000),
+      });
+      if(!response.ok)throw Error('Cannot read validated history');
+      const data=await response.json();
+      base=validatedBase(data.workflow_runs||[],head,sha=>{
+        try{execFileSync('git',['merge-base','--is-ancestor',sha,head],{stdio:'ignore'});return true;}catch{return false;}
+      });
+    }catch{ /* Unknown history expands checks instead of losing cancelled changes. */ }
   }
   let files = null;
   if (/^[a-f0-9]{40}$/.test(base) && !/^0+$/.test(base) && /^[a-f0-9]{40}$/.test(head)) {

@@ -1,9 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {planCI,isVersionOnlyChange,nativeMatrix,isDatabaseConsumer} from '../checks/ci-plan.mjs';
+import {planCI,isVersionOnlyChange,nativeMatrix,isDatabaseConsumer,validatedBase} from '../checks/ci-plan.mjs';
 import {affectsAgent} from '../release/agent-version.mjs';
 const none={server:false,agent:false,database:false,web:false,deploy:false,automation:false,docs:false};
 const all=Object.fromEntries(Object.keys(none).map(k=>[k,true]));
+
+test('cancelled or unrelated commits cannot hide unverified changes',()=>{
+ const head='a'.repeat(40),cancelled='b'.repeat(40),unrelated='c'.repeat(40),passed='d'.repeat(40);
+ const runs=[{head_sha:head,conclusion:'success'},{head_sha:cancelled,conclusion:'cancelled'},{head_sha:unrelated,conclusion:'success'},{head_sha:passed,conclusion:'success'}];
+ assert.equal(validatedBase(runs,head,sha=>sha===passed),passed);
+ assert.equal(validatedBase(runs,head,()=>false),'');
+});
 
 test('release version edits do not expand a frontend-only change',()=>{
  const fixtures=[
@@ -92,7 +99,7 @@ test('real Git diffs keep frontend-only and Agent + database + docs releases iso
  const git=(...args)=>execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
  const put=(path,text)=>{mkdirSync(dirname(join(root,path)),{recursive:true});writeFileSync(join(root,path),text);};
  const commit=()=>{git('add','.');git('-c','user.name=CI fixture','-c','user.email=fixture@example.invalid','commit','-m','fixture');return git('rev-parse','HEAD');};
- const run=base=>JSON.parse(execFileSync(process.execPath,[fileURLToPath(new URL('../checks/ci-plan.mjs',import.meta.url))],{cwd:root,encoding:'utf8',env:{...process.env,BEFORE_SHA:base,PR_BASE_SHA:'',SOURCE_SHA:git('rev-parse','HEAD'),SELECTIVE_RELEASE:'false',FULL_VALIDATION:'false',GITHUB_OUTPUT:join(root,'result.txt')}}));
+ const run=base=>JSON.parse(execFileSync(process.execPath,[fileURLToPath(new URL('../checks/ci-plan.mjs',import.meta.url))],{cwd:root,encoding:'utf8',env:{...process.env,GITHUB_EVENT_NAME:'test',GITHUB_REF_TYPE:'',BEFORE_SHA:base,PR_BASE_SHA:'',SOURCE_SHA:git('rev-parse','HEAD'),SELECTIVE_RELEASE:'false',FULL_VALIDATION:'false',GITHUB_OUTPUT:join(root,'result.txt')}}));
  try{
   git('init');put('.gitignore','result.txt\n');put('VERSION','0.3.16\n');put('AGENT_VERSION','0.3.16\n');put('internal/api/routes.go','package api\nvar Version = "0.3.16"\nvar AgentVersion = "0.3.16"\n');put('web/src/App.vue','old');put('internal/storage/storage.go','package storage\n');put('docs/index.md','old');
   const before=commit();put('VERSION','0.3.17\n');put('internal/api/routes.go','package api\nvar Version = "0.3.17"\nvar AgentVersion = "0.3.16"\n');put('web/src/App.vue','new');const frontend=commit();

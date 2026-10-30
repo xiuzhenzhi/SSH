@@ -2,10 +2,26 @@ import { execFileSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
-export function planCI(files, full = false) {
+const versionPatterns = {
+ VERSION: /^[0-9]+\.[0-9]+\.[0-9]+(?:-[\w.-]+)?\r?\n?$/,
+ 'internal/api/routes.go': /^var Version = "[0-9]+\.[0-9]+\.[0-9]+(?:-[\w.-]+)?"$/m,
+ 'sshguard.sh': /^version=\$\{SSHGUARD_VERSION:-v[0-9]+\.[0-9]+\.[0-9]+(?:-[\w.-]+)?\}$/m,
+};
+
+// Ignore only a changed release value, never another edit in the same file.
+export function isVersionOnlyChange(path, before, after) {
+ const pattern=versionPatterns[path];
+ if (!pattern || before===after || !pattern.test(before) || !pattern.test(after)) return false;
+ return before.replace(pattern,'<release-version>')===after.replace(pattern,'<release-version>');
+}
+
+export function planCI(files, full = false, versionOnly = []) {
  const plan = {go:false, agent:false, database:false, web:false, deploy:false};
  if (full || files === null) return Object.fromEntries(Object.keys(plan).map(k=>[k,true]));
  for (const p of files) {
+  if (versionOnly.includes(p) && Object.hasOwn(versionPatterns,p)) continue;
+  // The mandatory scope job runs these tests on every push and release.
+  if (['scripts/checks/ci-plan.mjs','scripts/tests/ci-plan.test.mjs'].includes(p)) continue;
   if (/\.md$/i.test(p) || p.startsWith('docs/') || ['LICENSE','package.json','package-lock.json','.github/workflows/docs.yml','scripts/build/build-docs.mjs'].includes(p)) continue;
   if (p.startsWith('web/')) { plan.web=true; continue; }
   if (/^(cmd\/agent|internal\/agent)\//.test(p)) {plan.agent=true;continue;}
@@ -32,9 +48,18 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     try { files = execFileSync('git', ['diff', '--name-only', '-z', base, head], {encoding:'utf8'}).split('\0').filter(Boolean); }
     catch { /* A missing base must expand checks, never silently skip them. */ }
   }
-  const plan = planCI(files, process.env.FULL_VALIDATION === 'true' && process.env.SELECTIVE_RELEASE !== 'true');
+  const versionOnly=[];
+  for (const path of files || []) {
+    if (!Object.hasOwn(versionPatterns,path)) continue;
+    try {
+      const before=execFileSync('git',['show',`${base}:${path}`],{encoding:'utf8',stdio:['ignore','pipe','ignore']});
+      const after=execFileSync('git',['show',`${head}:${path}`],{encoding:'utf8',stdio:['ignore','pipe','ignore']});
+      if (isVersionOnlyChange(path,before,after)) versionOnly.push(path);
+    } catch { /* Missing or unreadable content keeps its normal checks. */ }
+  }
+  const plan = planCI(files, process.env.FULL_VALIDATION === 'true' && process.env.SELECTIVE_RELEASE !== 'true',versionOnly);
   appendFileSync(process.env.GITHUB_OUTPUT, Object.entries(plan).map(([k,v])=>`${k}=${v}\n`).join(''));
   const packages = plan.go && plan.agent ? './...' : plan.agent ? './cmd/agent ./internal/agent ./internal/ipaddress ./internal/originurl' : './cmd/api ./internal/api ./internal/server ./internal/storage ./internal/geoip ./internal/notify ./internal/ipaddress ./internal/originurl';
   appendFileSync(process.env.GITHUB_OUTPUT, `packages=${packages}\n`);
-  console.log(JSON.stringify({files: files?.length ?? 'all', ...plan}));
+  console.log(JSON.stringify({files: files?.length ?? 'all', versionOnly, ...plan}));
 }

@@ -14,12 +14,13 @@ import 'element-plus/es/components/table-column/style/css';
 import 'element-plus/es/components/dialog/style/css';
 import 'element-plus/es/components/message/style/css';
 import 'element-plus/es/components/message-box/style/css';
-import { Monitor, Grid, Connection, Bell, Message, Filter, CircleCheck, Key, Promotion, DocumentChecked, User, Lock, Setting, Plus, Refresh, Search, ArrowRight, Moon, Sunny } from '@element-plus/icons-vue';
+import { Monitor, Grid, Connection, Bell, Message, Filter, CircleCheck, Key, Promotion, DocumentChecked, User, Lock, Setting, MapLocation, Plus, Refresh, Search, ArrowRight, Moon, Sunny } from '@element-plus/icons-vue';
 import Overview from './Overview.vue';
 import AlertCenter from './AlertCenter.vue';
 import ServerList from './ServerList.vue';
 import Allowlist from './Allowlist.vue';
 import LoginProtection from './LoginProtection.vue';
+import GeoIPSettings from './GeoIPSettings.vue';
 import CaptchaWidget from './CaptchaWidget.vue';
 import SetupWizard from './SetupWizard.vue';
 import { copyText } from './clipboard';
@@ -28,6 +29,7 @@ const stopTheme=observeTheme();
 onUnmounted(stopTheme);
 const setupRequired = ref(false);
 const protectionPage=ref<InstanceType<typeof LoginProtection>>();
+const geoIPPage=ref<InstanceType<typeof GeoIPSettings>>();
 type Row = Record<string, any>;
 const user = ref<Row | null>(null), booting = ref(true), busy = ref(false), error = ref('');
 const active = ref('dashboard'), rows = ref<Row[]>([]), summary = ref<Row>({}), page = ref(1), more = ref(false);
@@ -57,12 +59,13 @@ const writer = computed(() => ['admin', 'operator'].includes(user.value?.role));
 const nav = computed(() => [
   {id: 'dashboard', title: '安全总览', icon: Grid}, {id: 'servers', title: '服务器管理', icon: Monitor},
   {id: 'events', title: 'SSH 事件', icon: Connection}, {id: 'alerts', title: '告警中心', icon: Bell},
-  ...(admin.value ? [{id:'channels',title:'通知渠道',icon:Message},{id:'rules',title:'检测规则',icon:Filter},{id:'ip-allowlist',title:'IP 白名单',icon:CircleCheck},{id:'login-protection',title:'登录防护',icon:Key},{id:'notifications',title:'投递记录',icon:Promotion},{id: 'audit-logs', title: '操作审计', icon: DocumentChecked}, {id: 'users', title: '用户与权限', icon: User}] : [])
+  ...(admin.value ? [{id:'channels',title:'通知渠道',icon:Message},{id:'rules',title:'检测规则',icon:Filter},{id:'ip-allowlist',title:'IP 白名单',icon:CircleCheck},{id:'geoip',title:'地理位置',icon:MapLocation},{id:'login-protection',title:'登录防护',icon:Key},{id:'notifications',title:'投递记录',icon:Promotion},{id: 'audit-logs', title: '操作审计', icon: DocumentChecked}, {id: 'users', title: '用户与权限', icon: User}] : [])
 ]);
 const title = computed(() => nav.value.find(x => x.id === active.value)?.title || '安全总览');
 const roleNames:Row={admin:'管理员',operator:'操作员',viewer:'只读用户'};
 const auditNames:Row={'auth.login':'登录','auth.logout':'退出登录','auth.password.change':'修改密码','user.create':'创建用户','server.create':'添加服务器','server.update':'编辑服务器','server.reporting.update':'修改上报间隔','agent.enrolled':'Agent 注册','agent.enrollment.create':'生成安装命令','agent.revoke':'撤销 Agent 凭证','agent.update.request':'请求更新 Agent','agent.update.success':'Agent 更新成功','agent.update.failed':'Agent 更新失败','channel.create':'添加通知渠道','channel.update':'编辑通知渠道','channel.test':'测试通知渠道','notification.retry':'重试通知投递','rule.save':'保存检测规则','alert.acknowledge':'确认告警','auth.ip.block':'封禁登录来源','auth.ip.unblock':'解除登录封禁','auth.protection.update':'更新登录防护','allowlist.create':'添加 IP 白名单','allowlist.delete':'移除 IP 白名单'};
 const sourceAddress=(row:Row)=>row.source_port?(String(row.source_ip).includes(':')?'['+row.source_ip+']':row.source_ip)+':'+row.source_port:row.source_ip;
+Object.assign(auditNames,{'geoip.settings.update':'更新地理位置设置','geoip.database.update':'更新 GeoIP 数据库'});
 const statusName: Row = {online: '在线', offline: '离线', pending: '待接入', revoked: '已撤销'};
 const time = (s: any) => s ? new Date(s).toLocaleString('zh-CN', {hour12: false}) : '尚无记录';
 let generation = 0;
@@ -103,6 +106,7 @@ async function load() {
   try {
     if (active.value === 'dashboard' || !summary.value.version) {const s = await api('/dashboard/summary','GET',undefined,signal); if (request !== generation) return; summary.value = s;}
     if(active.value==='login-protection'){rows.value=[];await protectionPage.value?.refresh();return;}
+    if(active.value==='geoip'){rows.value=[];await geoIPPage.value?.refresh();return;}
     if (active.value === 'dashboard') {const value = await api('/dashboard/overview?range='+trendRange.value,'GET',undefined,signal);if(request !== generation)return;overview.value=value;rows.value=[];return;}
     const params = new URLSearchParams({page: String(page.value), page_size: active.value === 'rules' ? '100' : '20'});
     if (active.value === 'servers' && search.value) params.set('q',search.value);
@@ -136,7 +140,7 @@ function stopLive() {
   liveState.value='连接中';
 }
 function scheduleRefresh() {
-  if(refreshTimer || !user.value || document.hidden || active.value==='login-protection')return;
+  if(refreshTimer || !user.value || document.hidden || ['login-protection','geoip'].includes(active.value))return;
   refreshTimer=setTimeout(()=>{refreshTimer=undefined;if(!user.value)return;if(loading || busy.value){scheduleRefresh();return;}void load();},500);
 }
 function startLive() {
@@ -164,12 +168,13 @@ onUnmounted(() => {stopLive();clearInterval(timer); controller?.abort();document
     <section class="login-form"><div class="eyebrow">WELCOME BACK</div><h2>登录管理控制台</h2><el-form label-position="top" @submit.prevent="signIn"><el-form-item label="用户名"><el-input v-model="login.username" autocomplete="username" size="large" /></el-form-item><el-form-item label="密码"><el-input v-model="login.password" type="password" show-password autocomplete="current-password" size="large" /></el-form-item><CaptchaWidget v-if="['turnstile','recaptcha','geetest'].includes(protection.provider)" :key="protection.provider+protection.site_key" ref="captchaWidget" :provider="protection.provider" :site-key="protection.site_key" @answer="value=>captchaAnswer=value"/><p v-if="loginError" class="captcha-error" role="alert">{{loginError}}</p><p v-if="protectionError" class="captcha-error" role="alert">{{protectionError}} <button type="button" class="text-action" @click="loadProtection">重试</button></p><el-button type="primary" size="large" native-type="submit" :disabled="!captchaReady" :loading="busy">安全登录 <el-icon><ArrowRight /></el-icon></el-button></el-form></section>
   </main>
   <div v-else class="shell">
-    <aside><div class="brand"><el-icon><Lock /></el-icon> SSHGuard</div><nav><button v-for="item in nav" :key="item.id" :class="{selected: active === item.id}" :aria-current="active===item.id?'page':undefined" @click="navigate(item.id)"><el-icon :class="['nav-icon','nav-icon-'+item.id]"><component :is="item.icon" /></el-icon>{{ item.title }}</button></nav><div class="sidebar-bottom"><span class="dot"></span> {{ summary.version || 'SSHGuard' }}</div></aside>
+    <aside><div class="brand"><el-icon><Lock /></el-icon> SSHGuard</div><nav><button v-for="item in nav" :key="item.id" :class="{selected: active === item.id}" :aria-current="active===item.id?'page':undefined" @click="navigate(item.id)"><el-icon :class="['nav-icon','nav-icon-'+item.id]"><MapLocation v-if="item.id==='geoip'"/><component v-else :is="item.icon" :key="item.id"/></el-icon>{{ item.title }}</button></nav><div class="sidebar-bottom"><span class="dot"></span> {{ summary.version || 'SSHGuard' }}</div></aside>
     <div class="main"><header><div class="breadcrumb"><span class="breadcrumb-root">控制台 /</span>{{ title }}</div><div class="account"><b>{{ user.role==='admin'?'Admin':user.username }}</b><span class="sync-status" :class="{connected:liveState==='实时连接'}"><i/>{{liveState}}</span><el-button class="header-tool refresh-tool" :class="{'is-refreshing':refreshing}" :icon="Refresh" :disabled="refreshing" title="刷新当前页面" aria-label="刷新当前页面" @click="refreshPage"/><el-button class="header-tool theme-toggle" :icon="isDark?Sunny:Moon" :title="isDark?'切换浅色模式':'切换深色模式'" :aria-label="isDark?'切换浅色模式':'切换深色模式'" @click="toggleTheme"/><el-button class="header-tool settings-tool" :icon="Setting" title="修改密码" aria-label="修改密码" @click="passwordDialog=true"/><el-button class="header-tool logout-tool" title="退出登录" aria-label="退出登录" :disabled="busy" @click="signOut"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h4"/><path class="logout-arrow" d="M13 8l4 4-4 4m-5-4h9"/></svg></el-button></div></header>
     <section class="content"><div v-if="active!=='dashboard'" class="page-title"><h1>{{ title }}</h1><div class="actions"><el-button v-if="active === 'servers' && writer" type="primary" :icon="Plus" @click="editServer()">添加服务器</el-button><el-button v-if="active === 'users' && admin" type="primary" :icon="Plus" @click="userDialog = true">创建用户</el-button></div></div>
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="notice" />
     <Overview v-if="active === 'dashboard'" :summary="summary" :overview="overview" :admin="admin" :range="trendRange" @range="(value:string)=>{trendRange=value;void load()}" @navigate="navigate"/>
     <LoginProtection v-else-if="active==='login-protection'" ref="protectionPage" :api="api"/>
+    <GeoIPSettings v-else-if="active==='geoip'" ref="geoIPPage" :api="api"/>
     <Allowlist v-else-if="active==='ip-allowlist'" :rows="rows" :api="api" @refresh="load"/>
     <AlertCenter v-else-if="management" :key="active" :mode="active" :rows="rows" :admin="admin" :writer="writer" :api="api" @refresh="load"/>
     <div v-else class="panel"><div v-if="active==='servers'" class="panel-heading server-toolbar"><div class="filters"><el-input v-model="search" placeholder="搜索名称、主机名或分组" :prefix-icon="Search" clearable @keyup.enter="filter" @clear="filter"/><el-button @click="filter">查询</el-button></div></div>

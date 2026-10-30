@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin/binding"
 	"github.com/google/uuid"
 	"net"
+	"sshguard/internal/ipaddress"
 	"strings"
 	"time"
 )
@@ -63,6 +64,9 @@ func (a *App) enroll(c *gin.Context) {
 			return e
 		}
 		if e := a.ensureServerSettings(c.Request.Context(), tx, id); e != nil {
+			return e
+		}
+		if _, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`DELETE FROM server_network WHERE server_id=?`), id); e != nil {
 			return e
 		}
 		_, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`UPDATE server_settings SET report_interval_seconds=?,reported_interval_seconds=0,ip_addresses='[]' WHERE server_id=?`), interval, id)
@@ -124,6 +128,7 @@ func (a *App) agentTransaction(ctx context.Context, serverID, credentialHash str
 }
 
 type Heartbeat struct {
+	SourceIP   string     `json:"-"`
 	Interval   int        `json:"report_interval_seconds" binding:"min=0,max=30"`
 	Addresses  []string   `json:"ip_addresses" binding:"max=16,dive,ip"`
 	Version    string     `json:"version" binding:"max=32"`
@@ -140,6 +145,26 @@ func (a *App) recordHeartbeat(ctx context.Context, serverID, credentialHash stri
 		return errInvalidAgentMessage
 	}
 	e := a.agentTransaction(ctx, serverID, credentialHash, func(tx *sql.Tx) error {
+		if ipaddress.Public(in.SourceIP) {
+			var previous string
+			err := tx.QueryRowContext(ctx, a.db.Bind(`SELECT public_ip FROM server_network WHERE server_id=?`), serverID).Scan(&previous)
+			if err == sql.ErrNoRows {
+				if _, err := tx.ExecContext(ctx, a.db.Bind(`INSERT INTO server_network(server_id,public_ip) VALUES(?,?)`), serverID, in.SourceIP); err != nil {
+					return err
+				}
+			} else if err != nil {
+				return err
+			} else if previous != in.SourceIP {
+				if _, err := tx.ExecContext(ctx, a.db.Bind(`UPDATE server_network SET public_ip=? WHERE server_id=?`), in.SourceIP, serverID); err != nil {
+					return err
+				}
+			}
+		} else if in.SourceIP != "" {
+			// A changed route/proxy must not leave an old public source displayed forever.
+			if _, err := tx.ExecContext(ctx, a.db.Bind(`DELETE FROM server_network WHERE server_id=?`), serverID); err != nil {
+				return err
+			}
+		}
 		if in.Interval > 0 {
 			if e := a.ensureServerSettings(ctx, tx, serverID); e != nil {
 				return e
@@ -195,6 +220,7 @@ func (a *App) heartbeat(c *gin.Context) {
 	if !bind(c, &in) {
 		return
 	}
+	in.SourceIP = c.ClientIP()
 	if e := a.recordHeartbeat(c.Request.Context(), c.GetString("server_id"), c.GetString("agent_hash"), in); e != nil {
 		agentFailure(c, e)
 		return

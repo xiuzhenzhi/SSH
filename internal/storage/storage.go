@@ -198,7 +198,7 @@ func Migrate(ctx context.Context, d *DB) error {
 			}
 			b = []byte(strings.ReplaceAll(string(b), "token_hash varchar(64)", "token_hash varchar(64) CHARACTER SET "+charset+" COLLATE "+collation))
 		}
-		if d.Driver == "mysql" && (f.Name() == "004_alerting.sql" || f.Name() == "005_agent_updates.sql" || f.Name() == "006_agent_settings.sql") {
+		if d.Driver == "mysql" && (f.Name() == "004_alerting.sql" || f.Name() == "005_agent_updates.sql" || f.Name() == "006_agent_settings.sql" || f.Name() == "010_geoip.sql") {
 			// Existing installs may use utf8mb4_bin or 0900 collations. Foreign
 			// key columns must match their actual referenced columns exactly.
 			for _, ref := range []struct{ table, column string }{{"servers", "server_id"}, {"users", "acknowledged_by"}} {

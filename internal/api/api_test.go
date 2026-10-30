@@ -228,6 +228,7 @@ func TestIntegration(t *testing.T) {
 	testAgentStream(t, handler, db, id, agent, event)
 	testDeliveryLeases(t, db)
 	testSettingsAndAllowlist(t, db, session, call)
+	testGeoIPSettings(t, db, cfg, session)
 	testLoginProtection(t, db, cfg, session)
 	testHealthRecovery(t, db, id, agent)
 	channelBody := map[string]any{"name": "disabled local fixture", "kind": "webhook", "enabled": false, "config": map[string]string{"url": "https://127.0.0.1:1/fixture", "secret": "must-never-be-returned"}}
@@ -268,6 +269,10 @@ func TestIntegration(t *testing.T) {
 		call("GET", "/rules", nil, s, "", false, 403)
 		call("GET", "/ip-allowlist", nil, s, "", false, 403)
 		call("GET", "/auth/protection/settings", nil, s, "", false, 403)
+		call("GET", "/settings/geoip", nil, s, "", false, 403)
+		call("PATCH", "/settings/geoip", map[string]any{"provider": "none"}, s, "", true, 403)
+		call("POST", "/settings/geoip/test", map[string]any{"ip": "8.8.8.8"}, s, "", true, 403)
+		call("POST", "/settings/geoip/update", map[string]any{}, s, "", true, 403)
 		call("PATCH", "/auth/protection/settings", map[string]any{}, s, "", true, 403)
 		call("GET", "/auth/blocked-ips", nil, s, "", false, 403)
 		call("DELETE", "/auth/blocked-ips/missing", nil, s, "", true, 403)

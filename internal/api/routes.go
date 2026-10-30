@@ -8,6 +8,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"log"
 	"net/http"
+	"sshguard/internal/geoip"
 	"sshguard/internal/storage"
 	"strconv"
 	"strings"
@@ -22,6 +23,7 @@ type App struct {
 	hub            *liveHub
 	dashboardMu    sync.Mutex
 	dashboardCache map[string]dashboardSnapshot
+	geo            geoIPState
 }
 
 var Version = "0.3.9"
@@ -31,7 +33,7 @@ func New(db *storage.DB, cfg Config) *gin.Engine {
 }
 func NewApp(db *storage.DB, cfg Config) *App {
 	h, _ := bcrypt.GenerateFromPassword([]byte(token()), 12)
-	return &App{db: db, cfg: cfg, dummyHash: string(h), hub: newLiveHub()}
+	return &App{db: db, cfg: cfg, dummyHash: string(h), hub: newLiveHub(), geo: geoIPState{client: geoip.NewClient()}}
 }
 func (a *App) Router() *gin.Engine {
 	// Pass c.Request.Context() to SQL and background-capable helpers. Gin pools
@@ -113,6 +115,10 @@ func (a *App) Router() *gin.Engine {
 	web.GET("/notifications", role("admin"), a.deliveries)
 	web.POST("/notifications/:id/retry", role("admin"), a.retryDelivery)
 	web.GET("/servers", a.servers)
+	web.GET("/settings/geoip", role("admin"), a.geoIPSettings)
+	web.PATCH("/settings/geoip", role("admin"), a.saveGeoIPSettings)
+	web.POST("/settings/geoip/update", role("admin"), a.updateGeoIPDatabase)
+	web.POST("/settings/geoip/test", role("admin"), authLimit, a.testGeoIP)
 	web.GET("/servers/:id", a.server)
 	web.POST("/servers", role("admin", "operator"), a.saveServer)
 	web.PATCH("/servers/:id", role("admin", "operator"), a.saveServer)

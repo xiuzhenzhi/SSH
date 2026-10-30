@@ -17,10 +17,11 @@ import (
 
 // transport has one owner: the upload loop. Never send concurrently on it.
 type transport struct {
-	cfg      Config
-	conn     *websocket.Conn
-	nextDial time.Time
-	failures int
+	cfg       Config
+	conn      *websocket.Conn
+	nextDial  time.Time
+	failures  int
+	addresses addressResolver
 }
 type apiStatusError int
 

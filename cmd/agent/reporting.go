@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"sort"
+	"sshguard/internal/ipaddress"
 	"time"
 )
 
@@ -23,7 +24,7 @@ func hostAddresses() []string {
 	seen := map[string]bool{}
 	for _, addr := range addrs {
 		ip, _, err := net.ParseCIDR(addr.String())
-		if err != nil || !ip.IsGlobalUnicast() {
+		if err != nil || !ipaddress.Public(ip.String()) {
 			continue
 		}
 		value := ip.String()
@@ -41,7 +42,7 @@ func hostAddresses() []string {
 
 func sendHeartbeat(ctx context.Context, tr *transport, payload map[string]any, interval time.Duration) error {
 	payload["report_interval_seconds"] = int(interval / time.Second)
-	payload["ip_addresses"] = hostAddresses()
+	payload["ip_addresses"] = tr.addresses.addresses(ctx)
 	// The reporting interval belongs to the installed config. ACKs carry no commands.
 	return tr.send(ctx, "heartbeat", payload, nil)
 }

@@ -14,10 +14,21 @@ const serverColumns = `id,name,hostname,distribution,group_name,notes,agent_vers
 
 func (a *App) servers(c *gin.Context) {
 	q := "%" + c.Query("q") + "%"
-	a.list(c, `SELECT `+serverColumns+` FROM servers WHERE name LIKE ? OR hostname LIKE ? OR group_name LIKE ? ORDER BY created_at DESC LIMIT ? OFFSET ?`, time.Now().UTC().Add(-90*time.Second), q, q, q)
+	size, offset := page(c)
+	rows, err := a.db.List(c.Request.Context(), `SELECT `+serverColumns+`,(SELECT public_ip FROM server_network WHERE server_id=servers.id) AS observed_public_ip FROM servers WHERE name LIKE ? OR hostname LIKE ? OR group_name LIKE ? ORDER BY created_at DESC LIMIT ? OFFSET ?`, time.Now().UTC().Add(-90*time.Second), q, q, q, size+1, offset)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	more := len(rows) > size
+	if more {
+		rows = rows[:size]
+	}
+	a.decorateServers(c.Request.Context(), rows)
+	ok(c, gin.H{"items": rows, "has_more": more})
 }
 func (a *App) server(c *gin.Context) {
-	rows, e := a.db.List(c.Request.Context(), `SELECT `+serverColumns+` FROM servers WHERE id=?`, time.Now().UTC().Add(-90*time.Second), c.Param("id"))
+	rows, e := a.db.List(c.Request.Context(), `SELECT `+serverColumns+`,(SELECT public_ip FROM server_network WHERE server_id=servers.id) AS observed_public_ip FROM servers WHERE id=?`, time.Now().UTC().Add(-90*time.Second), c.Param("id"))
 	if e != nil {
 		fail(c, e)
 		return
@@ -26,6 +37,7 @@ func (a *App) server(c *gin.Context) {
 		bad(c, 404, "服务器不存在")
 		return
 	}
+	a.decorateServers(c.Request.Context(), rows)
 	ok(c, rows[0])
 }
 func (a *App) saveServer(c *gin.Context) {

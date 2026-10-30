@@ -80,6 +80,7 @@ func (a *App) agentStream(c *gin.Context) {
 			if json.Unmarshal(msg.Data, &in) != nil {
 				e = errInvalidAgentMessage
 			} else {
+				in.SourceIP = c.ClientIP()
 				e = a.recordHeartbeat(ctx, id, credential, in)
 			}
 			ack.Data = gin.H{"received": e == nil}

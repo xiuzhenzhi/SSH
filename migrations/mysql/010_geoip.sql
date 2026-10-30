@@ -1,0 +1,3 @@
+CREATE TABLE IF NOT EXISTS geoip_settings (id integer PRIMARY KEY, config_ciphertext text NOT NULL) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS geoip_database (id integer PRIMARY KEY, revision varchar(36) NOT NULL, content longblob NOT NULL, updated_at datetime(6) NOT NULL) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS server_network (server_id varchar(36) PRIMARY KEY, public_ip varchar(45) NOT NULL, FOREIGN KEY(server_id) REFERENCES servers(id)) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

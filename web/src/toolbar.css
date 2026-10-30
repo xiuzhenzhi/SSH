@@ -8,7 +8,7 @@
 .header-tool.theme-toggle:hover .el-icon,.header-tool.theme-toggle:focus-visible .el-icon{transform:rotate(-18deg) scale(1.12)}
 .logout-arrow{transition:transform .2s ease}.logout-tool:hover .logout-arrow,.logout-tool:focus-visible .logout-arrow{transform:translateX(3px)}
 .header-tool.refresh-tool.is-refreshing .el-icon{animation:tool-spin .8s linear infinite}.header-tool.refresh-tool.is-refreshing{opacity:.7}
-.nav-icon{transform-origin:center;transition:transform .2s ease}.selected .nav-icon{animation:nav-select .3s ease-out}
+.nav-icon{flex:0 0 18px;width:18px;height:18px;transform-origin:center;transition:transform .2s ease}.nav-icon svg{display:block;width:18px;height:18px}.selected .nav-icon{animation:nav-select .3s ease-out}
 nav button:is(:hover,:focus-visible) .nav-icon{transform:translateY(-2px) scale(1.08)}
 nav button:is(:hover,:focus-visible) .nav-icon-alerts{animation:nav-ring .5s ease-in-out;transform-origin:top center}
 nav button:is(:hover,:focus-visible) .nav-icon-notifications{transform:translate(2px,-2px) rotate(-8deg)}

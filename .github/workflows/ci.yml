@@ -50,7 +50,7 @@ jobs:
           FULL_VALIDATION: ${{ inputs.full_validation == true }}
         run: node scripts/checks/ci-plan.mjs
       - run: node scripts/checks/check-docs.mjs
-      - run: node --test scripts/tests/ci-plan.test.mjs scripts/tests/release-version.test.mjs scripts/tests/prepare-release.test.mjs scripts/tests/quick-start.test.mjs
+      - run: node --test scripts/tests/ci-plan.test.mjs scripts/tests/release-version.test.mjs scripts/tests/prepare-release.test.mjs scripts/tests/quick-start.test.mjs scripts/tests/uninstall-agent.test.mjs
   go:
     name: Go / ${{ matrix.os }}
     needs: scope

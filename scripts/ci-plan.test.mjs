@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { planCI } from './ci-plan.mjs';
 
 test('documentation does not start application builds or database containers', () => {
-  assert.deepEqual(planCI(['README.md', 'docs/API.md', 'docs/overview-preview.png']), {go:false,web:false});
+  assert.deepEqual(planCI(['README.md', 'docs/API.md', 'docs/overview-preview.png', 'docs/.vitepress/config.mts', 'package.json', 'package-lock.json', '.github/workflows/docs.yml']), {go:false,web:false});
 });
 test('frontend changes check the frontend without running backend databases', () => {
   assert.deepEqual(planCI(['web/package-lock.json', 'web/src/App.vue', 'README.md']), {go:false,web:true});

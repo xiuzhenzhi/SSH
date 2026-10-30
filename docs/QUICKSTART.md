@@ -148,7 +148,7 @@ sudo sh sshguard-linux-amd64/deploy.sh --update
 
 默认只跟随最新正式版，预发布需通过 `SSHGUARD_VERSION` 显式指定。离线更新从已解压的新包运行 `deploy.sh --update`，不访问 GitHub；从已安装的 `/opt/sshguard/deploy.sh --update` 运行则下载最新正式版。手工部署的旧 `/opt/sshguard` 目录需要先按迁移流程处理，自动更新仅支持向导管理的安装。
 
-### 拉取最新更新脚本（旧安装也可用）
+### 拉取最新更新脚本
 
 如果旧菜单仍显示「安装 / 更新主控」、没有「9」，或服务器上的脚本尚未更新，在主控终端执行下面一条命令。它直接读取仓库 `main` 的最新自包含脚本，无需先下载新发行包，也不依赖本地 `update.sh` 或 `deploy.sh`：
 

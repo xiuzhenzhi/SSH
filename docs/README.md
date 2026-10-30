@@ -1,6 +1,8 @@
 # SSHGuard 文档
 
-当前版本以根目录 [VERSION](../VERSION) 和 [正式 Release](https://github.com/xiuzhenzhi/SSH/releases/latest) 为准；本次文档核对日期为 2026-10-30。更新日志和验证记录保留历史版本，不能视为当前版本的验收结果。
+在线阅读：[SSHGuard 文档站](https://xiuzhenzhi.github.io/SSH/)。提供分类导航、本地搜索、浅深色和手机布局，与仓库 Markdown 自动同步。
+
+当前版本以根目录 [VERSION](https://github.com/xiuzhenzhi/SSH/blob/main/VERSION) 和 [正式 Release](https://github.com/xiuzhenzhi/SSH/releases/latest) 为准；本次文档核对日期为 2026-10-30。更新日志和验证记录保留历史版本，不能视为当前版本的验收结果。
 
 ## 安装、更新与日常管理
 
@@ -38,6 +40,7 @@ curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubu
 ## 开发、发布与证据
 
 - [开发与测试](DEVELOPMENT.md)：本地运行、构建、数据库测试及脚本回归。
+- [文档网站维护](DOCS-SITE.md)：本地预览、GitHub Pages 自动部署与内容编辑。
 - [API 参考](API.md) 与 [传输协议](TRANSPORT.md)：鉴权、请求格式、实时连接和数据确认。
 - [构建与发布](RELEASING.md)：版本准备、不可变标签、完整 CI 和产物。
 - [本版发布说明](RELEASE-NOTES.md)、[更新日志](../CHANGELOG.md) 与 [验证记录](VALIDATION.md)。

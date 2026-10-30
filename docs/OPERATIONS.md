@@ -36,7 +36,7 @@
 curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubusercontent.com/xiuzhenzhi/SSH/main/scripts/quick-start.sh -o sshguard-update.sh && sh sshguard-update.sh --update
 ```
 
-脚本从 `main` 更新，程序从正式 Release 更新；无需提前下载新版压缩包。更新后的文档位于 `/opt/sshguard/docs`，旧解压目录中的脚本和文档仍是原副本。详见 [拉取最新更新脚本](QUICKSTART.md#拉取最新更新脚本旧安装也可用)。
+脚本从 `main` 更新，程序从正式 Release 更新；无需提前下载新版压缩包。更新后的文档位于 `/opt/sshguard/docs`，旧解压目录中的脚本和文档仍是原副本。详见 [拉取最新更新脚本](QUICKSTART.md#拉取最新更新脚本)。
 
 Compose：在同一项目目录更新源码，保留 `.env` 和命名卷，执行 `docker compose up -d --build`。不要使用 `down -v`。更换数据库类型是迁移项目，不是常规升级。
 

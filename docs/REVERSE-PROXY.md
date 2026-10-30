@@ -5,7 +5,7 @@
 ## 已有 Nginx / OpenResty / 宝塔
 
 1. 在已有站点配置证书和 HTTPS 监听，保留面板管理的域名、证书与续期配置。
-2. 将 [server 块内反代模板](../deploy/native/nginx-existing.conf) 放入现有 server 块，替换原来的根 `location`。宝塔可在对应站点的反向代理配置中粘贴；不要再包一层 `server {}`。主控不是 8080 时修改 `proxy_pass`。
+2. 将 [server 块内反代模板](https://github.com/xiuzhenzhi/SSH/blob/main/deploy/native/nginx-existing.conf) 放入现有 server 块，替换原来的根 `location`。宝塔可在对应站点的反向代理配置中粘贴；不要再包一层 `server {}`。主控不是 8080 时修改 `proxy_pass`。
 3. 修改 `/etc/sshguard/api.env`，使外部地址与浏览器地址一致，例如：
 
    ```ini
@@ -41,7 +41,7 @@ Nginx 的 `$host` 不带客户端端口；主控使用显式 `PUBLIC_URL` 做同
 
 ## 完整托管 / Compose
 
-新服务器可显式选择 `--proxy managed`，使用 [完整原生模板](../deploy/native/nginx.conf)。升级不会覆盖你已有的托管站点配置，模板变化需手动合并、验证并重载。Compose 使用 [HTTPS 模板](../deploy/nginx.conf) 或 [本机 HTTP 模板](../deploy/nginx.local.conf)，配置见 [Compose 安装](INSTALL-COMPOSE.md)。
+新服务器可显式选择 `--proxy managed`，使用 [完整原生模板](https://github.com/xiuzhenzhi/SSH/blob/main/deploy/native/nginx.conf)。升级不会覆盖你已有的托管站点配置，模板变化需手动合并、验证并重载。Compose 使用 [HTTPS 模板](https://github.com/xiuzhenzhi/SSH/blob/main/deploy/nginx.conf) 或 [本机 HTTP 模板](https://github.com/xiuzhenzhi/SSH/blob/main/deploy/nginx.local.conf)，配置见 [Compose 安装](INSTALL-COMPOSE.md)。
 
 参考：[Nginx WebSocket 代理](https://nginx.org/en/docs/http/websocket.html)、[proxy_set_header](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_set_header)、[proxy_read_timeout](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_read_timeout)。
 

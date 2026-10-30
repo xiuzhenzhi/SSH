@@ -16,7 +16,7 @@ MaxMind 数据库从 [Loyalsoldier GeoIP](https://github.com/Loyalsoldier/geoip)
 
 「测试 GeoIP」使用已保存的提供商查询输入的公网 IPv4 / IPv6，并展示旗帜、国家 / 地区名称和代码。设置尚未保存、选择「无」或 MaxMind 尚未下载时，测试按钮不可用。新增的 `010_geoip.sql` 迁移仅创建设置、数据库和心跳公网来源三张表，不改写原有事件或服务器配置。
 
-NAT 地址的含义、外部探测与反代配置见 [Agent 手册](AGENTS.md#上报设置与-ip-地址)。Agent 与服务器 API 都过滤内网地址，兼容旧前端的 IP 字段也只返回公网地址。详情打开期间会跟随最新心跳刷新。SVG 旗帜使用 [flag-icons](https://github.com/lipis/flag-icons)，随前端打包，不依赖浏览器访问第三方旗帜服务；构建中包含其 [MIT 许可证](../web/public/assets/flag-icons-LICENSE.txt)。
+NAT 地址的含义、外部探测与反代配置见 [Agent 手册](AGENTS.md#上报设置与-ip-地址)。Agent 与服务器 API 都过滤内网地址，兼容旧前端的 IP 字段也只返回公网地址。详情打开期间会跟随最新心跳刷新。SVG 旗帜使用 [flag-icons](https://github.com/lipis/flag-icons)，随前端打包，不依赖浏览器访问第三方旗帜服务；构建中包含其 [MIT 许可证](https://github.com/xiuzhenzhi/SSH/blob/main/web/public/assets/flag-icons-LICENSE.txt)。
 
 ## SSH 事件与首页统计
 

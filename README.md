@@ -43,6 +43,8 @@ curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubu
 
 ## 文档
 
+[在线文档](https://xiuzhenzhi.github.io/SSH/)：分类导航、全文搜索、浅深色与手机阅读，与仓库自动同步。
+
 [文档总览](docs/README.md) · [安装与管理](docs/QUICKSTART.md) · [Compose 安装](docs/INSTALL-COMPOSE.md) · [Agent](docs/AGENTS.md) · [反代与 HTTPS](docs/REVERSE-PROXY.md) · [告警配置](docs/ALERTING.md) · [登录防护](docs/LOGIN-SECURITY.md)
 
 [更新日志](CHANGELOG.md) · [下载版本](https://github.com/xiuzhenzhi/SSH/releases) · [参与贡献](CONTRIBUTING.md) · [安全反馈](SECURITY.md)

@@ -23,6 +23,8 @@
 
 代理验证器跟随工作流提交，读取原标签的 Nginx 模板和候选程序，使用临时证书进行 HTTPS/WebSocket 检查。修正验证器不会替换发行包中的程序或部署配置。
 
+若仅 HTTPS 代理验证失败，可以运行「HTTPS proxy recheck」，填入原发布运行 ID。它核对程序和部署输入未变化，复用原安装包，只执行 HTTPS/WebSocket 检查，不重复构建或安装矩阵。这个流程不会自动发布；发布前还需核对原运行的其余必需检查均已通过。
+
 ## 手动打标签
 
 同步主控 `VERSION`、API 默认版本、安装示例和发布说明；仅 Agent 输入变化时更新 `AGENT_VERSION`、API 的 `AgentVersion`、Agent 默认版本和安装器，提交并等待 CI 通过后执行：

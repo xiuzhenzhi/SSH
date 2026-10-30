@@ -1,0 +1,55 @@
+name: HTTPS proxy recheck
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: Release run with an already built candidate
+        type: string
+        required: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  proxy:
+    name: HTTPS and WebSocket only
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24'
+      - name: Require unchanged release payload inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_RUN: ${{ inputs.candidate_run_id }}
+        run: |
+          case "$CANDIDATE_RUN" in ''|*[!0-9]*) exit 1 ;; esac
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN" > "$RUNNER_TEMP/candidate-run.json"
+          base=$(node -e 'const r=require(process.argv[1]); if(r.head_repository.full_name!==process.env.GITHUB_REPOSITORY || r.path!==".github/workflows/release.yml" || r.event!=="workflow_dispatch" || r.status!=="completed" || !/^[a-f0-9]{40}$/.test(r.head_sha))process.exit(1);console.log(r.head_sha)' "$RUNNER_TEMP/candidate-run.json")
+          git merge-base --is-ancestor "$base" HEAD
+          git diff --name-only "$base" HEAD > "$RUNNER_TEMP/changed-files"
+          node -e 'const fs=require("fs");const files=fs.readFileSync(process.argv[1],"utf8").trim().split("\n").filter(Boolean);if(files.some(p=>!p.startsWith(".github/workflows/")&&!p.startsWith("docs/")&&p!=="scripts/tests/test-reverse-proxy.mjs"))throw Error("Release inputs changed; candidate cannot be reused")' "$RUNNER_TEMP/changed-files"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: sshguard-build-candidate
+          path: dist/release
+          run-id: ${{ inputs.candidate_run_id }}
+          github-token: ${{ github.token }}
+      - name: Verify original candidate checksums
+        working-directory: dist/release
+        run: |
+          sha256sum -c SHA256SUMS
+          tar -xzf sshguard-linux-amd64.tar.gz -C ..
+      - name: Install test proxy
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y nginx
+      - name: Verify HTTPS and WebSockets with isolated certificates
+        run: |
+          mkdir -p .local/proxy
+          openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj /CN=localhost -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1' -keyout .local/proxy/key.pem -out .local/proxy/cert.pem
+          NODE_EXTRA_CA_CERTS="$PWD/.local/proxy/cert.pem" node scripts/tests/test-reverse-proxy.mjs dist/sshguard-linux-amd64/sshguard-api "$(command -v nginx)" .local/proxy/cert.pem .local/proxy/key.pem

@@ -4,7 +4,7 @@ title: SSHGuard 文档
 hero:
   name: SSHGuard
   text: 让每一次 SSH 登录<br>都有迹可循
-  tagline: 主控与 Agent 独立版本，按需升级；集中审计 SSH 登录、管理告警与服务器。支持 v0.3.14 及之后版本。
+  tagline: 主控与 Agent 独立版本，按需升级；集中审计 SSH 登录、管理告警与服务器。
   image:
     src: /sshguard.svg
     alt: SSHGuard 盾牌与终端标志

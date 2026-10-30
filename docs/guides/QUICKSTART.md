@@ -1,7 +1,5 @@
 # 安装与更新
 
-仅支持 v0.3.14 及之后版本的安装和升级；不再维护更早版本的兼容路径。主控和 Agent 使用独立版本。
-
 主控支持 Ubuntu / Debian + systemd，amd64 / arm64。
 
 ## 安装主控
@@ -37,7 +35,7 @@ sh /opt/sshguard/sshguard.sh --update
 
 ### 拉取最新更新脚本
 
-旧安装没有更新入口时，直接执行：
+仓库已更名为 `SSHGuard`。从 v0.3.14 / v0.3.15 升级时，先运行下方命令下载新更新脚本，避免本机脚本仍校验旧仓库地址：
 
 ```sh
 curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubusercontent.com/xiuzhenzhi/SSHGuard/main/sshguard.sh -o sshguard-update.sh && sh sshguard-update.sh --update
@@ -52,7 +50,7 @@ curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubu
 ### 指定版本
 
 ```sh
-SSHGUARD_VERSION=v0.3.15 sh /opt/sshguard/sshguard.sh --update
+SSHGUARD_VERSION=v0.3.16 sh /opt/sshguard/sshguard.sh --update
 ```
 
 ### 离线更新

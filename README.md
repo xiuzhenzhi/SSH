@@ -1,7 +1,5 @@
 # SSHGuard
 
-仅支持 v0.3.14 及之后版本的安装和升级；不再维护更早版本的兼容路径。主控和 Agent 使用独立版本。
-
 集中管理 Windows / Linux 服务器的 SSH 登录记录与安全告警。
 
 ## 功能
@@ -36,7 +34,7 @@ sh sshguard.sh --update
 
 已安装的主控也可运行 `sh /opt/sshguard/sshguard.sh --update`。管理菜单「1」安装，「9」更新。
 
-旧安装拉取最新更新脚本：
+从 v0.3.14 / v0.3.15 升级时，先拉取适配新仓库地址的更新脚本：
 
 ```sh
 curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubusercontent.com/xiuzhenzhi/SSHGuard/main/sshguard.sh -o sshguard-update.sh && sh sshguard-update.sh --update

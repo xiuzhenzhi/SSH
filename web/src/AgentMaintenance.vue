@@ -8,7 +8,7 @@ import 'element-plus/es/components/dropdown-menu/style/css';
 import 'element-plus/es/components/dropdown-item/style/css';
 const props = defineProps<{server: Record<string, any>}>();
 const emit = defineEmits<{changed: [], manual: [], revoke: []}>();
-const busy = ref(false), visible = ref(false), platform = ref('ubuntu');
+const busy = ref(false), visible = ref(false), platform = ref('linux');
 const commands = ref<Record<string,string>>({});
 const activeTask = computed(() => ['pending','running'].includes(props.server.update_status) && new Date(props.server.update_expires_at).getTime()>Date.now());
 const state = computed(() => {
@@ -27,7 +27,7 @@ async function update() {
 }
 async function uninstall() {
   busy.value=true;
-  try {commands.value=(await request('/agent/uninstall-commands')).commands;platform.value=/windows/i.test(props.server.distribution)?'windows':/alpine/i.test(props.server.distribution)?'alpine':'ubuntu';visible.value=true;}catch(e){ElMessage.error((e as Error).message);}finally{busy.value=false;}
+  try {commands.value=(await request('/agent/uninstall-commands')).commands;platform.value=/windows/i.test(props.server.distribution)?'windows':'linux';visible.value=true;}catch(e){ElMessage.error((e as Error).message);}finally{busy.value=false;}
 }
 async function copy() {try{await copyText(commands.value[platform.value]||'');ElMessage.success('卸载命令已复制');}catch{ElMessage.warning('请手动复制命令');}}
 </script>
@@ -45,7 +45,7 @@ async function copy() {try{await copyText(commands.value[platform.value]||'');El
   <el-dialog v-model="visible" title="卸载 Agent" width="min(780px, 94vw)" append-to-body @closed="commands = {}">
     <el-alert title="只生成命令，不会远程卸载。请在目标机器以管理员身份执行。" type="warning" :closable="false"/>
     <p>停止并移除 Agent 和更新维护服务，保留配置、采集队列与历史数据。卸载后请在平台撤销该机器的凭证；不会删除中央平台或其他机器。</p>
-    <el-select v-model="platform" aria-label="目标操作系统"><el-option label="Ubuntu / Debian（sudo）" value="ubuntu"/><el-option label="Alpine（root）" value="alpine"/><el-option label="Windows（管理员 PowerShell）" value="windows"/></el-select>
+    <el-select v-model="platform" aria-label="目标操作系统"><el-option label="Linux（Ubuntu / Debian / Alpine）" value="linux"/><el-option label="Windows（管理员 PowerShell）" value="windows"/></el-select>
     <el-input :model-value="commands[platform] || ''" type="textarea" :rows="7" readonly aria-label="卸载命令" style="margin:16px 0"/>
     <el-button type="primary" @click="copy">复制卸载命令</el-button>
   </el-dialog>

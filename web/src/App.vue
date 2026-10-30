@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
-import { ElMessage, ElMessageBox, ElIcon, ElForm, ElFormItem, ElInput, ElButton, ElAlert, ElSelect, ElOption, ElTable, ElTableColumn, ElDialog } from 'element-plus';
+import { ElMessage, ElMessageBox, ElIcon, ElForm, ElFormItem, ElInput, ElButton, ElAlert, ElSelect, ElOption, ElTable, ElTableColumn, ElDialog, ElDrawer } from 'element-plus';
 import 'element-plus/es/components/icon/style/css';
 import 'element-plus/es/components/form/style/css';
 import 'element-plus/es/components/form-item/style/css';
@@ -12,9 +12,11 @@ import 'element-plus/es/components/option/style/css';
 import 'element-plus/es/components/table/style/css';
 import 'element-plus/es/components/table-column/style/css';
 import 'element-plus/es/components/dialog/style/css';
+import 'element-plus/es/components/drawer/style/css';
 import 'element-plus/es/components/message/style/css';
 import 'element-plus/es/components/message-box/style/css';
-import { Monitor, Grid, Connection, Bell, Message, Filter, CircleCheck, Key, Promotion, DocumentChecked, User, Lock, Setting, MapLocation, Plus, Refresh, Search, ArrowRight, Moon, Sunny } from '@element-plus/icons-vue';
+import { Monitor, Grid, Connection, Bell, Message, Filter, CircleCheck, Key, Promotion, DocumentChecked, User, Lock, Setting, MapLocation, Plus, Refresh, Search, ArrowRight, Moon, Sunny, Expand, Close } from '@element-plus/icons-vue';
+import ConsoleNavigation from './ConsoleNavigation.vue';
 import Overview from './Overview.vue';
 import CountryFlag from './CountryFlag.vue';
 import AlertCenter from './AlertCenter.vue';
@@ -30,6 +32,11 @@ import { pageFromPath, pathForPage } from './routes';
 const stopTheme=observeTheme();
 onUnmounted(stopTheme);
 const setupRequired = ref(false);
+const mobileViewport = window.matchMedia('(max-width: 700px)');
+const isMobile = ref(mobileViewport.matches), navigationOpen = ref(false);
+function updateViewport(event: MediaQueryListEvent) {isMobile.value=event.matches;navigationOpen.value=false;}
+mobileViewport.addEventListener('change',updateViewport);
+onUnmounted(()=>mobileViewport.removeEventListener('change',updateViewport));
 const protectionPage=ref<InstanceType<typeof LoginProtection>>();
 const geoIPPage=ref<InstanceType<typeof GeoIPSettings>>();
 type Row = Record<string, any>;
@@ -49,12 +56,41 @@ watch(()=>!!user.value,value=>{if(!value&&!setupRequired.value)void loadProtecti
 const serverDialog = ref(false), userDialog = ref(false), commandDialog = ref(false), detail = ref<Row | null>(null);
 const passwordDialog = ref(false), updating = ref(false);
 const passwords = reactive({current_password: '', new_password: ''});
-const commands = ref<Record<string,string>>({}), platform = ref('ubuntu'), expires = ref('');
+const commands = ref<Record<string,string>>({}), platform = ref('linux'), expires = ref('');
 const commandEndpoint = ref(''), commandInsecure = ref(false);
 const command = computed(() => commands.value[platform.value] || '');
-const platformHint = computed(() => platform.value === 'windows' ? '在目标 Windows 的管理员 PowerShell 中执行。服务以 LocalService 身份运行。' : platform.value === 'alpine' ? '在目标 Alpine 的 root shell 中执行；使用 OpenRC，不需要 Bash 或 sudo。先安装 curl、ca-certificates。' : '在目标 Ubuntu / Debian 终端执行，需要 sudo、systemd、curl 和 ca-certificates。');
+const platformHint = computed(() => platform.value === 'windows' ? '在目标 Windows 的管理员 PowerShell 中执行。' : '适用于 Ubuntu / Debian / Alpine，自动识别系统与架构。使用 root 或具有 sudo 权限的终端，先安装 curl 和 ca-certificates。');
 const server = reactive({id: '', name: '', group_name: '', notes: ''});
-const commandServerID=ref(''),commandInterval=ref(5),initialCommandInterval=ref(5);
+const commandServerID=ref(''),commandInterval=ref(5),generatedCommandInterval=ref(0);
+const commandGenerating=ref(false),commandError=ref('');
+const validCommandInterval=computed(()=>Number.isInteger(commandInterval.value)&&commandInterval.value>=1&&commandInterval.value<=30);
+const commandReady=computed(()=>!!command.value&&(updating.value||(validCommandInterval.value&&!commandGenerating.value&&commandInterval.value===generatedCommandInterval.value&&!commandError.value)));
+let commandGeneration=0,commandTimer:ReturnType<typeof setTimeout>|undefined,enrollmentRequest:Promise<void>|undefined;
+function scheduleEnrollment(){
+  clearTimeout(commandTimer);commandError.value='';
+  if(commandDialog.value&&!updating.value&&validCommandInterval.value&&commandInterval.value!==generatedCommandInterval.value)commandTimer=setTimeout(()=>void refreshEnrollment(),350);
+}
+async function refreshEnrollment(){
+  if(enrollmentRequest)return enrollmentRequest;
+  commandGenerating.value=true;commandError.value='';
+  enrollmentRequest=(async()=>{
+    while(commandDialog.value&&!updating.value&&validCommandInterval.value&&commandInterval.value!==generatedCommandInterval.value){
+      const generation=commandGeneration,id=commandServerID.value,interval=commandInterval.value;
+      commands.value={};generatedCommandInterval.value=0;
+      try{
+        const result=await api('/servers/'+id+'/enrollment','POST',{report_interval_seconds:interval});
+        if(generation!==commandGeneration)continue;
+        clearTimeout(commandTimer);commands.value=result.commands;expires.value=result.expires_at;commandEndpoint.value=result.endpoint;commandInsecure.value=result.insecure_http;generatedCommandInterval.value=interval;
+      }catch(e){
+        if(generation===commandGeneration&&interval===commandInterval.value){commandError.value=(e as Error).message;break;}
+      }
+    }
+  })().finally(()=>{commandGenerating.value=false;enrollmentRequest=undefined;});
+  return enrollmentRequest;
+}
+watch(commandInterval,scheduleEnrollment);
+watch(commandDialog,open=>{if(!open){commandGeneration++;clearTimeout(commandTimer);commands.value={};commandError.value='';}},{flush:'sync'});
+onUnmounted(()=>{commandDialog.value=false;commandGeneration++;clearTimeout(commandTimer);});
 const newUser = reactive({username: '', password: '', role: 'viewer'});
 const admin = computed(() => user.value?.role === 'admin');
 const writer = computed(() => ['admin', 'operator'].includes(user.value?.role));
@@ -76,6 +112,7 @@ let generation = 0;
 let controller: AbortController | undefined;
 let loading = false;
 function clearSession() {
+  navigationOpen.value = false;
   stopLive(); overview.value = {};
   controller?.abort(); generation++; loading = false;
   user.value = null; rows.value = []; summary.value = {}; error.value = '';
@@ -86,13 +123,17 @@ function clearSession() {
   search.value = ''; outcome.value = ''; username.value = ''; ip.value = ''; serverID.value = '';
 }
 async function api(path: string, method = 'GET', body?: any, signal?: AbortSignal) {
+  const requestUser=user.value;
   const response = await fetch('/api/v1' + path, {method, signal, credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: body === undefined ? undefined : JSON.stringify(body)});
   const data = await response.json().catch(() => ({error: `HTTP ${response.status}`}));
-  if (!response.ok) { if (response.status === 401) clearSession(); throw Error(data.error || '请求失败'); }
+  if (!response.ok) { if (response.status === 401 && user.value===requestUser) clearSession(); throw Error(data.error || '请求失败'); }
   return data.data;
 }
 async function perform(fn: () => Promise<void>) {busy.value = true; try {await fn();} catch(e) {ElMessage.error((e as Error).message);} finally {busy.value = false;}}
-async function signIn() {loginError.value='';await perform(async () => {try{user.value = await api('/auth/login', 'POST', {...login,captcha:captchaAnswer.value});login.password='';restoreRoute();await nextTick();await load();startLive();}catch(e){loginError.value=(e as Error).message;throw e;}finally{captchaAnswer.value={};captchaWidget.value?.reset();if(!user.value)await loadProtection();}});}
+async function signIn() {
+  if(busy.value || !captchaReady.value || !login.username.trim() || !login.password)return;
+  loginError.value='';await perform(async () => {try{user.value = await api('/auth/login', 'POST', {...login,captcha:captchaAnswer.value});login.password='';restoreRoute();await nextTick();await load();startLive();}catch(e){loginError.value=(e as Error).message;throw e;}finally{captchaAnswer.value={};captchaWidget.value?.reset();if(!user.value)await loadProtection();}});
+}
 async function finishSetup(credentials: {username:string;password:string}) {
   setupRequired.value = false; login.username = credentials.username;
   await perform(async () => {
@@ -146,22 +187,27 @@ function restoreRoute() {
   if(user.value)writeRoute();
 }
 async function navigate(id:string) {
+  navigationOpen.value=false;
   controller?.abort();generation++;
   active.value=nav.value.some(item=>item.id===id)?id:'dashboard';page.value=1;rows.value=[];more.value=false;detail.value=null;
   writeRoute('push');await nextTick();if(user.value)await load();
 }
-async function onRouteChange(){controller?.abort();generation++;restoreRoute();await nextTick();if(user.value)await load();}
+async function onRouteChange(){navigationOpen.value=false;controller?.abort();generation++;restoreRoute();await nextTick();if(user.value)await load();}
 window.addEventListener('popstate',onRouteChange);
 async function refreshPage() {if(refreshing.value)return;refreshing.value=true;try{await load();}finally{refreshing.value=false;}}
 function filter() {page.value = 1;void load();}
 function editServer(row?: Row) {Object.assign(server, {id: row?.id || '',name: row?.name || '',group_name: row?.group_name || '',notes: row?.notes || ''});serverDialog.value = true;}
 async function saveServer() {await perform(async () => {const created = !server.id; const result = await api('/servers' + (server.id ? '/' + server.id : ''),server.id ? 'PATCH' : 'POST',server);serverDialog.value = false;ElMessage.success('服务器已保存');await load();if(created && admin.value) await enrollment({...server,id:result.id});});}
-async function enrollment(row: Row) {commandServerID.value=row.id;commandInterval.value=initialCommandInterval.value=row.report_interval_seconds||5;updating.value = false; await perform(async () => {const result = await api(`/servers/${row.id}/enrollment`,'POST',{report_interval_seconds:commandInterval.value});commands.value = result.commands;commandEndpoint.value = result.endpoint;commandInsecure.value = result.insecure_http;platform.value = /windows/i.test(row.distribution) ? 'windows' : /alpine/i.test(row.distribution) ? 'alpine' : /debian/i.test(row.distribution) ? 'debian' : 'ubuntu';expires.value = result.expires_at;commandDialog.value = true;});}
-async function updateAgent(row: Row) {commandServerID.value=row.id;commandInterval.value=initialCommandInterval.value=row.report_interval_seconds||5;updating.value = true; await perform(async () => {const result = await api('/agent/update-commands'); commands.value = result.commands;commandEndpoint.value = result.endpoint;commandInsecure.value = result.insecure_http;platform.value = /windows/i.test(row.distribution) ? 'windows' : /alpine/i.test(row.distribution) ? 'alpine' : 'ubuntu'; commandDialog.value = true;});}
+async function enrollment(row: Row) {
+  commandGeneration++;clearTimeout(commandTimer);commands.value={};commandError.value='';expires.value='';commandEndpoint.value='';commandInsecure.value=false;
+  commandServerID.value=row.id;commandInterval.value=row.report_interval_seconds||5;generatedCommandInterval.value=0;updating.value=false;platform.value=/windows/i.test(row.distribution)?'windows':'linux';commandDialog.value=true;
+  await refreshEnrollment();
+}
+async function updateAgent(row: Row) {commandGeneration++;clearTimeout(commandTimer);commands.value={};commandError.value='';updating.value=true;await perform(async () => {const result = await api('/agent/update-commands'); commands.value = result.commands;commandEndpoint.value = result.endpoint;commandInsecure.value = result.insecure_http;platform.value = /windows/i.test(row.distribution) ? 'windows' : 'linux'; commandDialog.value = true;});}
 async function changePassword() {await perform(async () => {await api('/auth/password','POST',passwords); clearSession(); ElMessage.success('密码已修改，所有旧会话已失效，请重新登录');});}
 async function revoke(row: Row) {try {await ElMessageBox.confirm(`撤销 ${row.name} 的 Agent 凭证后将拒绝其后续上报。`, '撤销凭证', {type:'warning',confirmButtonText:'撤销',cancelButtonText:'取消'});}catch{return;}await perform(async () => {await api(`/servers/${row.id}/revoke`,'POST',{});await load();});}
 async function saveUser() {await perform(async () => {await api('/users','POST',newUser);userDialog.value = false;newUser.password = '';await load();});}
-async function copyCommand() {try {if(!updating.value && commandInterval.value!==initialCommandInterval.value){const result=await api('/servers/'+commandServerID.value+'/enrollment','POST',{report_interval_seconds:commandInterval.value});commands.value=result.commands;expires.value=result.expires_at;initialCommandInterval.value=commandInterval.value;}await copyText(command.value);ElMessage.success('命令已复制');}catch(e){ElMessage.error((e as Error).message||'请手动复制命令');}}
+async function copyCommand() {if(!commandReady.value)return;try {await copyText(command.value);ElMessage.success('命令已复制');}catch(e){ElMessage.error((e as Error).message||'请手动复制命令');}}
 function history(row: Row) {serverID.value = row.id;navigate('events');}
 function showAllEvents(){username.value='';ip.value='';serverID.value='';outcome.value='';void navigate('events');}
 
@@ -185,7 +231,7 @@ function startLive() {
   socket=current;
   current.onopen=()=>{if(socket!==current)return;liveState.value='实时连接';retryDelay=1000;scheduleRefresh();};
   current.onmessage=event=>{if(socket!==current)return;try{if(JSON.parse(event.data).type==='refresh')scheduleRefresh();}catch{}};
-  current.onclose=()=>{if(socket!==current || !user.value)return;socket=null;liveState.value='定时同步';reconnect=setTimeout(startLive,retryDelay+Math.random()*1000);retryDelay=Math.min(30000,retryDelay*2);};
+  current.onclose=event=>{if(socket!==current || !user.value)return;if(event.code===1008){clearSession();return;}socket=null;liveState.value='定时同步';reconnect=setTimeout(startLive,retryDelay+Math.random()*1000);retryDelay=Math.min(30000,retryDelay*2);};
 }
 function onVisible(){if(!document.hidden && user.value)scheduleRefresh();}
 document.addEventListener('visibilitychange',onVisible);
@@ -200,12 +246,17 @@ onUnmounted(() => {stopLive();clearInterval(timer); controller?.abort();document
   <div v-if="booting" class="loading">正在连接 SSHGuard…</div>
   <SetupWizard v-else-if="setupRequired" @complete="finishSetup" />
   <main v-else-if="!user" class="login-screen">
-    <section class="login-intro"><div class="brand"><el-icon><Lock /></el-icon> SSHGuard <span>CONSOLE</span></div><div class="intro-copy"><div class="eyebrow">INFRASTRUCTURE SECURITY</div><h1>每一次连接，<br>都有迹可循。</h1><p>集中管理 Windows 与 Linux 服务器，<br>建立清晰、可追溯的 SSH 安全视图。</p><div class="intro-line"></div><small>SSH AUDIT · REAL-TIME ALERTS</small></div><footer>SSHGuard · 自托管服务器安全平台</footer></section>
-    <section class="login-form"><div class="eyebrow">WELCOME BACK</div><h2>登录管理控制台</h2><el-form label-position="top" @submit.prevent="signIn"><el-form-item label="用户名"><el-input v-model="login.username" autocomplete="username" size="large" /></el-form-item><el-form-item label="密码"><el-input v-model="login.password" type="password" show-password autocomplete="current-password" size="large" /></el-form-item><CaptchaWidget v-if="['turnstile','recaptcha','geetest'].includes(protection.provider)" :key="protection.provider+protection.site_key" ref="captchaWidget" :provider="protection.provider" :site-key="protection.site_key" @answer="value=>captchaAnswer=value"/><p v-if="loginError" class="captcha-error" role="alert">{{loginError}}</p><p v-if="protectionError" class="captcha-error" role="alert">{{protectionError}} <button type="button" class="text-action" @click="loadProtection">重试</button></p><el-button type="primary" size="large" native-type="submit" :disabled="!captchaReady" :loading="busy">安全登录 <el-icon><ArrowRight /></el-icon></el-button></el-form></section>
+    <section class="login-intro"><div class="brand"><el-icon><Lock /></el-icon> SSHGuard <span>控制台</span></div><div class="intro-copy"><div class="eyebrow">基础设施安全</div><h1>每一次连接，<br>都有迹可循。</h1><p>集中管理 Windows 与 Linux 服务器，<br>建立清晰、可追溯的 SSH 安全视图。</p><div class="intro-line"></div><small>SSH 审计 · 实时告警</small></div><footer>SSHGuard · 自托管服务器安全平台</footer></section>
+    <section class="login-form"><div class="eyebrow">欢迎回来</div><h2>登录管理控制台</h2><el-form label-position="top" @submit.prevent="signIn"><el-form-item label="用户名"><el-input v-model="login.username" autocomplete="username" size="large" /></el-form-item><el-form-item label="密码"><el-input v-model="login.password" type="password" show-password autocomplete="current-password" size="large" /></el-form-item><CaptchaWidget v-if="['turnstile','recaptcha','geetest'].includes(protection.provider)" :key="protection.provider+protection.site_key" ref="captchaWidget" :provider="protection.provider" :site-key="protection.site_key" @answer="value=>captchaAnswer=value"/><p v-if="loginError" class="captcha-error" role="alert">{{loginError}}</p><p v-if="protectionError" class="captcha-error" role="alert">{{protectionError}} <button type="button" class="text-action" @click="loadProtection">重试</button></p><el-button type="primary" size="large" native-type="submit" :disabled="!captchaReady || !login.username.trim() || !login.password" :loading="busy">安全登录 <el-icon><ArrowRight /></el-icon></el-button></el-form></section>
   </main>
   <div v-else class="shell">
-    <aside><div class="brand"><el-icon><Lock /></el-icon> SSHGuard</div><nav><button v-for="item in nav" :key="item.id" :class="{selected: active === item.id}" :aria-current="active===item.id?'page':undefined" @click="navigate(item.id)"><el-icon :class="['nav-icon','nav-icon-'+item.id]"><MapLocation v-if="item.id==='geoip'"/><component v-else :is="item.icon" :key="item.id"/></el-icon>{{ item.title }}</button></nav><div class="sidebar-bottom"><span class="dot"></span> {{ summary.version || 'SSHGuard' }}</div></aside>
-    <div class="main"><header><div class="breadcrumb"><span class="breadcrumb-root">控制台 /</span>{{ title }}</div><div class="account"><b>{{ user.role==='admin'?'Admin':user.username }}</b><span class="sync-status" :class="{connected:liveState==='实时连接'}"><i/>{{liveState}}</span><el-button class="header-tool refresh-tool" :class="{'is-refreshing':refreshing}" :icon="Refresh" :disabled="refreshing" title="刷新当前页面" aria-label="刷新当前页面" @click="refreshPage"/><el-button class="header-tool theme-toggle" :icon="isDark?Sunny:Moon" :title="isDark?'切换浅色模式':'切换深色模式'" :aria-label="isDark?'切换浅色模式':'切换深色模式'" @click="toggleTheme"/><el-button class="header-tool settings-tool" :icon="Setting" title="修改密码" aria-label="修改密码" @click="passwordDialog=true"/><el-button class="header-tool logout-tool" title="退出登录" aria-label="退出登录" :disabled="busy" @click="signOut"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h4"/><path class="logout-arrow" d="M13 8l4 4-4 4m-5-4h9"/></svg></el-button></div></header>
+    <aside v-if="!isMobile"><ConsoleNavigation :items="nav" :active="active" :version="summary.version" @navigate="navigate"/></aside>
+    <el-drawer v-else id="mobile-navigation" v-model="navigationOpen" class="mobile-navigation" direction="ltr" size="min(292px, 86vw)" title="导航菜单" :with-header="false" append-to-body destroy-on-close>
+      <ConsoleNavigation :items="nav" :active="active" :version="summary.version" @navigate="navigate">
+        <button class="navigation-toggle" type="button" aria-label="关闭导航菜单" @click="navigationOpen=false"><el-icon><Close/></el-icon></button>
+      </ConsoleNavigation>
+    </el-drawer>
+    <div class="main"><header class="console-header"><div class="header-location"><button v-if="isMobile" class="navigation-toggle" type="button" aria-label="打开导航菜单" aria-controls="mobile-navigation" :aria-expanded="navigationOpen" @click="navigationOpen=true"><el-icon><Expand/></el-icon></button><div class="breadcrumb"><span class="breadcrumb-root">控制台 /</span><span class="current-page">{{ title }}</span></div></div><div class="account"><b>{{ user.role==='admin'?'Admin':user.username }}</b><span class="sync-status" :class="{connected:liveState==='实时连接'}"><i/>{{liveState}}</span><el-button class="header-tool refresh-tool" :class="{'is-refreshing':refreshing}" :icon="Refresh" :disabled="refreshing" title="刷新当前页面" aria-label="刷新当前页面" @click="refreshPage"/><el-button class="header-tool theme-toggle" :icon="isDark?Sunny:Moon" :title="isDark?'切换浅色模式':'切换深色模式'" :aria-label="isDark?'切换浅色模式':'切换深色模式'" @click="toggleTheme"/><el-button class="header-tool settings-tool" :icon="Setting" title="修改密码" aria-label="修改密码" @click="passwordDialog=true"/><el-button class="header-tool logout-tool" title="退出登录" aria-label="退出登录" :disabled="busy" @click="signOut"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h4"/><path class="logout-arrow" d="M13 8l4 4-4 4m-5-4h9"/></svg></el-button></div></header>
     <section class="content"><div v-if="active!=='dashboard'" class="page-title"><h1>{{ title }}</h1><div class="actions"><el-button v-if="active === 'servers' && writer" type="primary" :icon="Plus" @click="editServer()">添加服务器</el-button><el-button v-if="active === 'users' && admin" type="primary" :icon="Plus" @click="userDialog = true">创建用户</el-button></div></div>
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="notice" />
     <Overview :api="api" v-if="active === 'dashboard'" :summary="summary" :overview="overview" :admin="admin" :range="trendRange" @range="(value:string)=>{trendRange=value;void load()}" @navigate="navigate" @show-event="event=>detail=event" @all-events="showAllEvents"/>
@@ -233,14 +284,15 @@ onUnmounted(() => {stopLive();clearInterval(timer); controller?.abort();document
   </div>
   <el-dialog v-model="serverDialog" :title="server.id ? '编辑服务器' : '添加服务器'" width="min(520px, 94vw)"><el-form label-position="top" @submit.prevent="saveServer"><el-form-item label="服务器名称"><el-input v-model="server.name" maxlength="128"/></el-form-item><el-form-item label="分组"><el-input v-model="server.group_name" maxlength="64" placeholder="例如：生产环境 / 华东"/></el-form-item><el-form-item label="备注"><el-input v-model="server.notes" type="textarea" maxlength="1024"/></el-form-item><div class="dialog-actions"><el-button @click="serverDialog=false">取消</el-button><el-button type="primary" native-type="submit" :loading="busy">{{!server.id && admin ? '保存并生成安装命令' : '保存服务器'}}</el-button></div></el-form></el-dialog>
   <el-dialog v-model="userDialog" title="创建用户" width="min(480px, 94vw)" @closed="newUser.password=''"><el-form label-position="top" @submit.prevent="saveUser"><el-form-item label="用户名（3–64 字符）"><el-input v-model="newUser.username"/></el-form-item><el-form-item label="密码（12–72 字节）"><el-input v-model="newUser.password" type="password" show-password/></el-form-item><el-form-item label="角色"><el-select v-model="newUser.role"><el-option label="只读用户" value="viewer"/><el-option label="操作员" value="operator"/><el-option label="管理员" value="admin"/></el-select></el-form-item><div class="dialog-actions"><el-button @click="userDialog=false">取消</el-button><el-button type="primary" native-type="submit" :loading="busy">创建用户</el-button></div></el-form></el-dialog>
-  <el-dialog v-model="commandDialog" :title="updating?'更新 Agent':'一键安装 Agent'" width="min(640px,94vw)" class="command-dialog" @closed="commands={}">
-   <div class="platform-tabs" role="tablist" aria-label="目标系统"><button v-for="(label,key) in {ubuntu:'Ubuntu',debian:'Debian',alpine:'Alpine',windows:'Windows'}" :key="key" role="tab" :aria-selected="platform===key" :class="{selected:platform===key}" @click="platform=key">{{label}}</button></div>
+  <el-dialog v-model="commandDialog" :title="updating?'更新 Agent':'一键安装 Agent'" width="min(640px,94vw)" class="command-dialog">
+   <div class="platform-tabs" role="tablist" aria-label="目标系统"><button v-for="(label,key) in {linux:'Linux',windows:'Windows'}" :key="key" role="tab" :aria-selected="platform===key" :class="{selected:platform===key}" @click="platform=key">{{label}}</button></div>
    <div :class="['command-options',{'update-options':updating}]"><label>主控地址<input :value="commandEndpoint" readonly/></label><label v-if="!updating">上报间隔（秒）<input v-model.number="commandInterval" type="number" min="1" max="30" required/></label></div>
    <el-alert v-if="commandInsecure" title="HTTP 传输未加密，请仅在可信网络使用。" type="warning" :closable="false"/>
-   <p class="command-hint">{{platformHint}}</p><label class="command-label">{{updating?'更新命令':'安装命令'}}</label><el-input :model-value="!updating && commandInterval!==initialCommandInterval ? '安装选项已更改，点击下方按钮生成并复制新命令。' : command" readonly type="textarea" :rows="5" aria-label="部署命令"/>
-   <div class="command-meta"><span v-if="!updating">单次有效 · {{time(expires)}} 到期</span><span v-else>保留身份与队列，失败自动恢复旧程序。</span></div>
+   <p class="command-hint">{{platformHint}}</p><label class="command-label">{{updating?'更新命令':'安装命令'}}</label><el-input :model-value="commandReady?command:''" :placeholder="commandError?'命令更新失败，请重试':!validCommandInterval?'请输入 1–30 之间的整数':'正在更新安装命令…'" readonly type="textarea" :rows="5" aria-label="部署命令"/>
+   <p v-if="commandError" class="captcha-error" role="alert">{{commandError}} <button type="button" class="text-action" @click="refreshEnrollment">重试</button></p>
+   <div class="command-meta" role="status"><span v-if="!updating&&commandReady">单次有效 · {{time(expires)}} 到期</span><span v-else-if="!updating">{{validCommandInterval?'安装命令随上报间隔自动更新。':'上报间隔须为 1–30 秒的整数。'}}</span><span v-else>保留身份与队列，失败自动恢复旧程序。</span></div>
    <details class="command-help"><summary>接入说明</summary><p>主控地址须能从目标服务器访问。上报间隔只在安装时写入 Agent 配置，更新保留原值。</p><p v-if="!updating">安装命令含短期凭证，请勿公开转发。重新生成会使旧命令失效。</p><p v-else>Alpine 采集权限修复需在目标服务器执行一次此更新命令。</p></details>
-   <el-button class="copy-command" type="primary" :disabled="!command||!Number.isInteger(commandInterval)||commandInterval<1||commandInterval>30" @click="copyCommand">{{updating?'复制更新命令':commandInterval!==initialCommandInterval?'生成并复制安装命令':'复制安装命令'}}</el-button>
+   <el-button class="copy-command" type="primary" :disabled="!commandReady" :loading="!updating&&commandGenerating" @click="copyCommand">{{updating?'复制更新命令':'复制安装命令'}}</el-button>
   </el-dialog>
   <el-dialog v-model="passwordDialog" title="修改密码" width="min(520px, 94vw)" class="password-dialog" :close-on-click-modal="false" @closed="passwords.current_password = ''; passwords.new_password = ''"><el-form label-position="top" @submit.prevent="changePassword"><el-form-item label="当前密码"><el-input v-model="passwords.current_password" type="password" autocomplete="current-password" placeholder="输入当前密码" show-password/></el-form-item><el-form-item label="新密码"><el-input v-model="passwords.new_password" type="password" autocomplete="new-password" placeholder="输入 12–72 字节的新密码" show-password/><span class="field-hint">修改后所有设备上的旧会话都会失效。</span></el-form-item><div class="dialog-actions"><el-button :disabled="busy" @click="passwordDialog=false">取消</el-button><el-button type="primary" native-type="submit" :disabled="!passwords.current_password||!passwords.new_password" :loading="busy">保存并重新登录</el-button></div></el-form></el-dialog>
   <el-dialog :model-value="!!detail" title="事件详情" width="min(700px, 94vw)" @close="detail = null"><pre class="detail">{{ JSON.stringify(detail,null,2) }}</pre></el-dialog>

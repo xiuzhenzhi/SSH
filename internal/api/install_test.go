@@ -8,7 +8,7 @@ import (
 func TestInstallCommandsPlatforms(t *testing.T) {
 	token := strings.Repeat("a", 64)
 	commands := installCommands("https://guard.example.com", token)
-	for _, os := range []string{"windows", "ubuntu", "debian", "alpine"} {
+	for _, os := range []string{"windows", "linux", "ubuntu", "debian", "alpine"} {
 		if !strings.Contains(commands[os], token) {
 			t.Fatalf("%s missing enrollment", os)
 		}
@@ -31,7 +31,7 @@ func TestInstallCommandsPlatforms(t *testing.T) {
 }
 func TestUpdateDoesNotEnroll(t *testing.T) {
 	commands := updateCommands("https://guard.example.com")
-	for _, platform := range []string{"ubuntu", "debian", "alpine"} {
+	for _, platform := range []string{"linux", "ubuntu", "debian", "alpine"} {
 		if !strings.Contains(commands[platform], "'--update'") {
 			t.Fatal("update flag missing", platform)
 		}

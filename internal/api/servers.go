@@ -101,10 +101,22 @@ func installCommands(origin, t string) map[string]string {
 		linuxOption, windowsOption = " --allow-insecure-http", " -AllowInsecureHttp"
 	}
 	linux := func(privilege string) string {
-		return fmt.Sprintf(`(f=$(mktemp) && trap 'rm -f "$f"' EXIT && curl --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 15 --max-time 60 --max-redirs 5 --max-filesize 1048576 -fLsS %s -o "$f" && %ssh "$f" %s %s%s)`, shellQuote(agentAsset("install-agent.sh")), privilege, shellQuote(origin), shellQuote(t), linuxOption)
+		return linuxAgentCommand("install-agent.sh", " "+shellQuote(origin)+" "+shellQuote(t)+linuxOption, privilege)
 	}
 	windows := fmt.Sprintf(`$f=Join-Path $env:TEMP ([guid]::NewGuid().ToString()+'.ps1'); $curl=Join-Path ([Environment]::SystemDirectory) 'curl.exe'; $shell=Join-Path ([Environment]::SystemDirectory) 'WindowsPowerShell\v1.0\powershell.exe'; try { & $curl --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 15 --max-time 60 --max-redirs 5 --max-filesize 1048576 -fLsS %s -o $f; if ($LASTEXITCODE -ne 0) { throw 'GitHub installer download failed' }; & $shell -NoProfile -File $f -Endpoint %s -EnrollmentToken %s%s; if ($LASTEXITCODE -ne 0) { throw 'Agent installation/update failed' } } finally { if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f } }`, powershellQuote(agentAsset("install-agent.ps1")), powershellQuote(origin), powershellQuote(t), windowsOption)
-	return map[string]string{"ubuntu": linux("sudo "), "debian": linux("sudo "), "alpine": linux(""), "windows": windows}
+	return map[string]string{"linux": linux("auto"), "ubuntu": linux("sudo "), "debian": linux("sudo "), "alpine": linux(""), "windows": windows}
+}
+
+// Root shells (including Alpine without sudo) run directly. Other shells use
+// sudo; the installer itself detects systemd/OpenRC and the CPU architecture.
+func linuxAgentCommand(asset, arguments, privilege string) string {
+	run := `sh "$f"` + arguments
+	if privilege == "auto" {
+		run = fmt.Sprintf(`if [ "$(id -u)" -eq 0 ]; then %s; else sudo %s; fi`, run, run)
+	} else {
+		run = privilege + run
+	}
+	return fmt.Sprintf(`(f=$(mktemp) && trap 'rm -f "$f"' EXIT && curl --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 15 --max-time 60 --max-redirs 5 --max-filesize 1048576 -fLsS %s -o "$f" && %s)`, shellQuote(agentAsset(asset)), run)
 }
 func (a *App) enrollment(c *gin.Context) {
 	var in struct {
@@ -146,7 +158,7 @@ func (a *App) enrollment(c *gin.Context) {
 		return
 	}
 	commands := installCommands(origin, t)
-	ok(c, gin.H{"command": commands["ubuntu"], "commands": commands, "expires_at": expires, "phase": "registration-and-heartbeat-only", "endpoint": origin, "insecure_http": strings.HasPrefix(origin, "http://")})
+	ok(c, gin.H{"command": commands["linux"], "commands": commands, "expires_at": expires, "phase": "registration-and-heartbeat-only", "endpoint": origin, "insecure_http": strings.HasPrefix(origin, "http://")})
 }
 func updateCommands(origin string) map[string]string {
 	commands := installCommands(origin, "--update")
@@ -155,10 +167,10 @@ func updateCommands(origin string) map[string]string {
 }
 func uninstallCommands(origin string) map[string]string {
 	linux := func(privilege string) string {
-		return fmt.Sprintf(`(f=$(mktemp) && trap 'rm -f "$f"' EXIT && curl --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 15 --max-time 60 --max-redirs 5 --max-filesize 1048576 -fLsS %s -o "$f" && %ssh "$f")`, shellQuote(agentAsset("uninstall-agent.sh")), privilege)
+		return linuxAgentCommand("uninstall-agent.sh", "", privilege)
 	}
 	windows := fmt.Sprintf(`$f=Join-Path $env:TEMP ([guid]::NewGuid().ToString()+'.ps1'); $curl=Join-Path ([Environment]::SystemDirectory) 'curl.exe'; $shell=Join-Path ([Environment]::SystemDirectory) 'WindowsPowerShell\v1.0\powershell.exe'; try { & $curl --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 15 --max-time 60 --max-redirs 5 --max-filesize 1048576 -fLsS %s -o $f; if ($LASTEXITCODE -ne 0) { throw 'GitHub uninstaller download failed' }; & $shell -NoProfile -File $f; if ($LASTEXITCODE -ne 0) { throw 'Agent uninstall failed' } } finally { if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f } }`, powershellQuote(agentAsset("uninstall-agent.ps1")))
-	return map[string]string{"ubuntu": linux("sudo "), "debian": linux("sudo "), "alpine": linux(""), "windows": windows}
+	return map[string]string{"linux": linux("auto"), "ubuntu": linux("sudo "), "debian": linux("sudo "), "alpine": linux(""), "windows": windows}
 }
 func (a *App) revoke(c *gin.Context) {
 	id := c.Param("id")

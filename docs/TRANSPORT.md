@@ -1,6 +1,8 @@
 # HTTP(S) + WebSocket 上报协议
 
-平台支持 HTTPS/WSS，以及原生直连模式显式授权的 HTTP/WS。HTTP 不提供传输加密，HTTPS 仍严格校验证书。Agent 使用 Authorization: Bearer 长期令牌；浏览器使用 HttpOnly 会话 Cookie，两种身份不能互换。Agent stream 拒绝浏览器 Origin，浏览器 live 要求 Origin 与配置的 PUBLIC_URL 完全相等；未配置 PUBLIC_URL 的直连模式按实际请求地址检查，不信任转发头。
+Agent 使用 Bearer 令牌，浏览器使用会话 Cookie。默认使用 HTTPS/WSS，直连模式可显式启用 HTTP/WS。
+
+浏览器 Origin 必须与 `PUBLIC_URL` 一致；未配置时按实际请求地址检查。Agent stream 不接受浏览器 Origin。
 
 ## 数据路径
 
@@ -10,7 +12,7 @@
 4. 新事件、命中告警、通知任务一起提交事务，提交成功才回复确认。
 5. Agent 校验请求 ID、状态码与批次计数，确认全部记录已接收才删除本地批次。
 
-确认丢失时原事件仍在队列中，HTTPS 重传使用同一事件 ID，重复记录不再创建告警。WebSocket 失败自动退避重连；HTTPS fallback 不要求负载均衡会话粘滞。单实例浏览器刷新提示是进程内广播，多 API 实例时仍有 30 秒轮询兜底。
+确认丢失时保留队列，重传沿用事件 ID。WebSocket 失败后自动重连，并回退到 HTTP(S) 上报。
 
 ## Agent WebSocket
 
@@ -55,7 +57,3 @@ HTTPS 使用 `POST /api/v1/agent/events/batch` 与 `POST /api/v1/agent/heartbeat
 `GET /api/v1/live`，每用户最多 4 个连接、每实例最多 256 个。消息仅为 `{"type":"refresh","at":"…"}`，不携带日志或密钥。服务端按每个会话 5 秒合并刷新，前端以 500 毫秒短延迟合并读取，再按角色访问普通 API；重连后重新读取快照。会话每 30 秒复核，退出时关闭连接，后台标签暂停数据刷新。
 
 随包 Nginx 模板为两条 stream 路由配置 HTTP/1.1、Upgrade/Connection、90 秒读取超时。自备反代须保留这些设置，不能缓存 API；配置错误时 Agent 会继续通过 HTTPS 工作。
-
-## 明确边界
-
-本地队列不是操作系统日志备份。断网超过日志保留时间、磁盘损坏、手工删除队列、日志截断竞态均可能导致缺口。队列满会停止推进读取位置；缺口与隔离记录需人工处理。外部通知是至少一次投递，渠道已接受但确认丢失时可能重复，不能保证第三方 exactly-once。

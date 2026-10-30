@@ -25,25 +25,23 @@ sh scripts/quick-start.sh
 
 打开安装器给出的地址，创建管理员。在「服务器管理」添加服务器，复制对应系统的安装命令，在目标机器执行即可。
 
-更新主控到最新正式版（自动下载、校验并保留配置和数据）：
+更新主控：
 
 ```sh
 sh scripts/update.sh
 ```
 
-安装后无需保留源码目录，也可运行 `sh /opt/sshguard/update.sh`。管理菜单中「1」安装主控，「9」下载最新正式版并更新；已安装时回车默认选择「9」。详细步骤和离线更新见 [安装与管理](docs/QUICKSTART.md)。
+已安装的主控也可运行 `sh /opt/sshguard/update.sh`。管理菜单「1」安装，「9」更新。
 
-旧安装没有更新入口，或需要拉取最新更新脚本时，直接执行：
+旧安装拉取最新更新脚本：
 
 ```sh
 curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubusercontent.com/xiuzhenzhi/SSH/main/scripts/quick-start.sh -o sshguard-update.sh && sh sshguard-update.sh --update
 ```
 
-这条命令从 `main` 获取最新脚本，主控程序仍从最新正式 Release 下载并校验。配置与数据保留，无需先下载新版压缩包。
-
 ## 文档
 
-[在线文档](https://xiuzhenzhi.github.io/SSH/)：分类导航、全文搜索、浅深色与手机阅读，与仓库自动同步。
+[在线文档](https://xiuzhenzhi.github.io/SSH/)
 
 [文档总览](docs/README.md) · [安装与管理](docs/QUICKSTART.md) · [Compose 安装](docs/INSTALL-COMPOSE.md) · [Agent](docs/AGENTS.md) · [反代与 HTTPS](docs/REVERSE-PROXY.md) · [告警配置](docs/ALERTING.md) · [登录防护](docs/LOGIN-SECURITY.md)
 

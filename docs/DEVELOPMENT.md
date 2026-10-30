@@ -1,74 +1,67 @@
 # 开发与测试
 
-Go 版本以 go.mod 为准；Node.js 24 LTS；数据库可选内嵌 SQLite、PostgreSQL 16 或 MySQL 8.4。依赖使用 go.sum / package-lock.json 锁定。
+需要 Go（版本见 `go.mod`）和 Node.js 24。
 
-```bash
+```sh
 git clone https://github.com/xiuzhenzhi/SSH.git
 cd SSH
 go mod download
 ```
 
-## 本地源码开发（无需 Docker）
+## 本地运行
 
-先创建本地数据库。两个终端分别执行：
+先创建开发数据库。终端一启动 API，以下为 PowerShell 示例：
 
 ```powershell
-# 终端 1：Windows PowerShell，PostgreSQL 示例
 $env:DB_DRIVER='postgres'
 $env:DATABASE_URL='postgres://sshguard:YOUR_PASSWORD@127.0.0.1:5432/sshguard?sslmode=disable'
 $env:PUBLIC_URL='http://localhost:5173'
 $env:LISTEN_ADDR='127.0.0.1:8080'
 $env:ADMIN_PASSWORD='REPLACE_WITH_RANDOM_12_TO_72_BYTE_PASSWORD'
-# Generate once and preserve it alongside your local database.
 $env:ENCRYPTION_KEY=(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))")
 go run ./cmd/api
 ```
 
+加密密钥首次生成后保存，后续启动沿用。直接运行 API 时通过环境变量配置，不自动读取 `.env`。
+
+终端二启动前端：
+
 ```powershell
-# 终端 2
 Set-Location web
 npm.cmd ci
 npm.cmd run dev
 ```
 
-打开 `http://localhost:5173`（须与 `PUBLIC_URL` 完全一致，包括主机名和端口）。Vite 将 API 请求代理到 8080。`.env` 由 Compose 自动读取；直接运行 Go 时通过 shell 环境或 systemd 环境文件注入，不自动读取 `.env`。
+打开 `http://localhost:5173`。
 
+## 检查
 
-## 构建与检查
-
-```bash
-# 仅构建四个 Agent
-node scripts/build-agents.mjs
-node scripts/check-agent-artifacts.mjs dist/agents
-# 中央平台构建（包含 Web 和全部 Agent）
-node scripts/build-release.mjs amd64
-node scripts/build-release.mjs arm64 --reuse-web --reuse-agents
-node scripts/package-release.mjs
-# 代码与依赖检查
+```sh
 go test ./...
 go vet ./...
 node --test scripts/ci-plan.test.mjs scripts/release-version.test.mjs scripts/prepare-release.test.mjs scripts/quick-start.test.mjs
 node scripts/check-docs.mjs
-go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 cd web
 npm ci
 npm run build
 npm audit
 ```
 
---reuse-web 仅可在 web/dist 已成功构建且前端未改动时使用。Windows 下构建前停止本项目 Vite，避免 npm ci 替换 esbuild 时文件被占用。
+未设置测试 DSN 时使用临时 SQLite。外部数据库测试使用独立测试库：
 
-`--reuse-agents` 只用于同一次构建的 arm64 包，复用已校验的 amd64 包中的四种 Agent。原生发行包同时携带 `deploy.sh`、`quick-start.sh`、`update.sh` 和完整文档，避免只更新二进制却遗漏菜单与说明。最新脚本拉取命令使用自包含的 `quick-start.sh`；更新器从正式 Release 取程序，不从 `main` 编译程序。
-
-未设置测试 DSN 时，集成测试自动创建临时 SQLite 数据库，测试结束自动清理，无需外部数据库服务。PostgreSQL / MySQL 测试必须使用独立测试库（写入测试账号/资产，不删库）：
-
-```bash
+```sh
 TEST_DB_DRIVER=postgres TEST_DATABASE_URL='postgres://USER:PASS@127.0.0.1:5432/sshguard_test?sslmode=disable' go test ./internal/api -run TestIntegration -count=1 -v
 TEST_DB_DRIVER=mysql TEST_DATABASE_URL='USER:PASS@tcp(127.0.0.1:3306)/sshguard_test?parseTime=true&loc=UTC&charset=utf8mb4' go test ./internal/api -run TestIntegration -count=1 -v
 ```
 
-Windows ACL helper 测试使用 scripts/test-windows-installer.ps1，只在工作区创建目录，不注册服务。测试局限见 [验证记录](VALIDATION.md)。
+## 构建
 
-CI 另有临时机器专用的完整安装测试：Windows 的 `scripts/test-windows-service.ps1` 注册真实 SCM 服务；Linux 的 `scripts/test-native-deploy.sh` 安装 PostgreSQL/Nginx/systemd 服务并启动 Alpine OpenRC 测试容器。这些脚本会修改固定系统路径，禁止在业务主机运行。工作流还执行固定工具版本的 govulncheck；不会自动忽略可达漏洞。
+```sh
+node scripts/build-release.mjs amd64
+node scripts/build-release.mjs arm64 --reuse-web --reuse-agents
+node scripts/package-release.mjs
+```
 
-日常 CI 按文档、前端和后端改动分流；完整 Linux 安装矩阵仅在发版或手动勾选 full_validation 时运行。完整构建复用本次检查过的前端，并让两个主控架构共用同一次构建的四个 Agent。见 [构建与发布](RELEASING.md)。
+真实服务安装测试只在一次性测试机器运行，脚本会修改系统服务与固定路径。
+
+[发布流程](RELEASING.md) · [文档站开发](DOCS-SITE.md)

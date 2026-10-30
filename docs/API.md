@@ -31,7 +31,12 @@
 | POST | /agent/heartbeat、/agent/events/batch | Agent Bearer |
 | GET | /events、/events/:id | 全角色 |
 
-所有 Web 写操作包括登录均要求与 `PUBLIC_URL` 一致的 Origin；默认直连未配置 PUBLIC_URL 时，按实际请求地址核对。CLI 写请求也必须携带 Origin。Agent 使用 Bearer 身份，不使用 Web Cookie。`GET /events` 支持 `server_id/source_ip/username/outcome/event_type/from/to/page/page_size`，时间为 RFC3339。`PATCH /servers/:id` 提交完整可编辑表单 `name/group_name/notes`，未提供分组和备注会清空它们。
+## 请求格式
+
+- Web 写请求携带 Origin，与 `PUBLIC_URL` 一致；未配置时按实际请求地址核对。
+- Agent 使用 `Authorization: Bearer <AGENT_TOKEN>`。
+- `GET /events` 支持 `server_id/source_ip/username/outcome/event_type/from/to/page/page_size`，时间为 RFC3339。
+- `PATCH /servers/:id` 提交 `name/group_name/notes`；省略分组或备注会清空对应字段。
 
 ```json
 {
@@ -48,7 +53,7 @@
 }
 ```
 
-向 `/api/v1/agent/events/batch` POST，头部 `Authorization: Bearer <AGENT_TOKEN>`。请将时间换为当前时间、事件 UUID 换为新 UUID；重试时必须保留同一 UUID。响应给出 `accepted/inserted/duplicates`，整批校验失败不会部分写入；服务端从凭证决定 server_id，不信任客户端声明。事件留存清理已实现，规则见 [运维手册](OPERATIONS.md)；原始日志备份与会话打开/关闭事件不在当前采集范围内。
+向 `/api/v1/agent/events/batch` POST。使用当前时间和新的事件 UUID，重试沿用同一 UUID。响应字段为 `accepted/inserted/duplicates`；校验失败时整批拒绝。
 
 
 ## 安装命令响应

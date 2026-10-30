@@ -49,7 +49,6 @@ export default defineConfig({
         { text: 'Docker Compose', link: '/docs/INSTALL-COMPOSE' },
         { text: '反向代理与 HTTPS', link: '/docs/REVERSE-PROXY' },
         { text: '升级、备份与恢复', link: '/docs/OPERATIONS' },
-        { text: '生产验收', link: '/docs/PRODUCTION' },
       ] },
       { text: '功能指南', collapsed: false, items: [
         { text: '告警与通知', link: '/docs/ALERTING' },
@@ -90,6 +89,6 @@ export default defineConfig({
     darkModeSwitchTitle: '切换到深色模式',
     returnToTopLabel: '返回顶部',
     notFound: { title: '页面未找到', quote: '这个页面可能已移动，请通过导航或搜索查找文档。', linkLabel: '返回首页', linkText: '返回文档首页' },
-    footer: { message: '自托管 SSH 登录审计与安全告警', copyright: 'SSHGuard · 文档与源码同步维护' },
+    footer: { message: '自托管 SSH 登录审计与安全告警' },
   },
 });

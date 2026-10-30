@@ -72,7 +72,6 @@ const passwords = reactive({current_password: '', new_password: ''});
 const commands = ref<Record<string,string>>({}), platform = ref('linux'), expires = ref('');
 const commandEndpoint = ref(''), commandInsecure = ref(false);
 const command = computed(() => commands.value[platform.value] || '');
-const platformHint = computed(() => platform.value === 'windows' ? '在目标 Windows 的管理员 PowerShell 中执行。' : '适用于 Ubuntu / Debian / Alpine，自动识别系统与架构。使用 root 或具有 sudo 权限的终端，先安装 curl 和 ca-certificates。');
 const server = reactive({id: '', name: '', group_name: '', notes: ''});
 const commandServerID=ref(''),commandInterval=ref(5),generatedCommandInterval=ref(0);
 const commandGenerating=ref(false),commandError=ref('');
@@ -382,7 +381,7 @@ onUnmounted(() => {stopLive();cancelWarm();responses.clear();clearInterval(timer
    <div class="platform-tabs" role="tablist" aria-label="目标系统"><button v-for="(label,key) in {linux:'Linux',windows:'Windows'}" :key="key" role="tab" :aria-selected="platform===key" :class="{selected:platform===key}" @click="platform=key">{{label}}</button></div>
    <div :class="['command-options',{'update-options':updating}]"><label>主控地址<input :value="commandEndpoint" readonly/></label><label v-if="!updating">上报间隔（秒）<input v-model.number="commandInterval" type="number" min="1" max="30" required/></label></div>
    <el-alert v-if="commandInsecure" title="HTTP 传输未加密，请仅在可信网络使用。" type="warning" :closable="false"/>
-   <p class="command-hint">{{platformHint}}</p><label class="command-label">{{updating?'更新命令':'安装命令'}}</label><el-input :model-value="commandReady?command:''" :placeholder="commandError?'命令更新失败，请重试':!validCommandInterval?'请输入 1–30 之间的整数':'正在更新安装命令…'" readonly type="textarea" :rows="5" aria-label="部署命令"/>
+   <label class="command-label">{{updating?'更新命令':'安装命令'}}</label><el-input :model-value="commandReady?command:''" :placeholder="commandError?'命令更新失败，请重试':!validCommandInterval?'请输入 1–30 之间的整数':'正在更新安装命令…'" readonly type="textarea" :rows="5" aria-label="部署命令"/>
    <p v-if="commandError" class="captcha-error" role="alert">{{commandError}} <button type="button" class="text-action" @click="refreshEnrollment">重试</button></p>
    <div class="command-meta" role="status"><span v-if="!updating&&commandReady">单次有效 · {{time(expires)}} 到期</span><span v-else-if="!updating">{{validCommandInterval?'安装命令随上报间隔自动更新。':'上报间隔须为 1–30 秒的整数。'}}</span><span v-else>保留身份与队列，失败自动恢复旧程序。</span></div>
    <details class="command-help"><summary>接入说明</summary><p>主控地址须能从目标服务器访问。上报间隔只在安装时写入 Agent 配置，更新保留原值。</p><p v-if="!updating">安装命令含短期凭证，请勿公开转发。重新生成会使旧命令失效。</p><p v-else>Alpine 采集权限修复需在目标服务器执行一次此更新命令。</p></details>

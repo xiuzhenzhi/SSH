@@ -7,7 +7,7 @@
 ## 安装主控
 
 ```sh
-curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubusercontent.com/xiuzhenzhi/SSH/main/sshguard.sh -o sshguard.sh
+curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubusercontent.com/xiuzhenzhi/SSHGuard/main/sshguard.sh -o sshguard.sh
 sh sshguard.sh
 ```
 
@@ -40,13 +40,13 @@ sh /opt/sshguard/sshguard.sh --update
 旧安装没有更新入口时，直接执行：
 
 ```sh
-curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubusercontent.com/xiuzhenzhi/SSH/main/sshguard.sh -o sshguard-update.sh && sh sshguard-update.sh --update
+curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubusercontent.com/xiuzhenzhi/SSHGuard/main/sshguard.sh -o sshguard-update.sh && sh sshguard-update.sh --update
 ```
 
 只下载脚本：
 
 ```sh
-curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubusercontent.com/xiuzhenzhi/SSH/main/sshguard.sh -o sshguard-update.sh
+curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubusercontent.com/xiuzhenzhi/SSHGuard/main/sshguard.sh -o sshguard-update.sh
 ```
 
 ### 指定版本

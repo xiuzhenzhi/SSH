@@ -15,7 +15,7 @@ mkdirSync(out,{recursive:true});
 const platformVersion = process.env.SSHGUARD_VERSION || readFileSync('VERSION','utf8').trim();
 if (version !== platformVersion && !process.env.SSHGUARD_AGENT_VERSION) {
   if (agentChanged(version)) throw Error('Agent sources changed: bump AGENT_VERSION before releasing');
-  execFileSync('gh',['release','download','v'+version,'--repo','xiuzhenzhi/SSH','--pattern','sshguard-agent-*','--dir',out,'--clobber'],{stdio:'inherit'});
+  execFileSync('gh',['release','download','v'+version,'--repo','xiuzhenzhi/SSHGuard','--pattern','sshguard-agent-*','--dir',out,'--clobber'],{stdio:'inherit'});
   execFileSync(process.execPath,['scripts/checks/check-agent-artifacts.mjs',out],{stdio:'inherit'});
   console.log('Reused published Agent '+version+'; skipped cross compilation');
 } else for (const os of ['linux','windows']) for (const arch of ['amd64','arm64']) {

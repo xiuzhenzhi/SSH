@@ -43,14 +43,14 @@ set -eu
 printf 'curl %s\n' "$*" >> "$FIXTURE/network"
 case "$*" in *'/releases/latest'*)
   [ "$LOOKUP_FAIL" = 0 ] || exit 22
-  printf '%s' "\${LATEST_URL:-https://github.com/xiuzhenzhi/SSH/releases/tag/$TARGET_TAG}"
+  printf '%s' "\${LATEST_URL:-https://github.com/xiuzhenzhi/SSHGuard/releases/tag/$TARGET_TAG}"
   exit 0 ;;
 esac
 url=''; output=''
 while [ "$#" -gt 0 ]; do
   case "$1" in https://*) url=$1; shift ;; -o) output=$2; shift 2 ;; *) shift ;; esac
 done
-case "$url" in "https://github.com/xiuzhenzhi/SSH/releases/download/$TARGET_TAG/"*) ;; *) exit 22 ;; esac
+case "$url" in "https://github.com/xiuzhenzhi/SSHGuard/releases/download/$TARGET_TAG/"*) ;; *) exit 22 ;; esac
 cp "$FIXTURE/\${url##*/}" "$output"
 if [ "$CORRUPT" = 1 ] && [ "\${url##*/}" != SHA256SUMS ]; then printf tampered > "$output"; fi
 `);

@@ -31,4 +31,4 @@ npm run docs:preview
 
 推送到 `main` 后，**Documentation** 工作流自动部署到 GitHub Pages。普通文档修改不需要增加程序版本。
 
-站点路径为 `/SSH/`，更换域名或仓库名时同步修改配置中的 `base` 和图标路径。
+站点路径为 `/SSHGuard/`，更换域名或仓库名时同步修改配置中的 `base` 和图标路径。

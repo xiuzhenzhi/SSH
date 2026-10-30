@@ -3,8 +3,8 @@
 需要 Docker Engine、Compose 2.24.4+ 和 Node.js。
 
 ```sh
-git clone https://github.com/xiuzhenzhi/SSH.git
-cd SSH
+git clone https://github.com/xiuzhenzhi/SSHGuard.git
+cd SSHGuard
 ```
 
 ## 本机体验

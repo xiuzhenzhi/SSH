@@ -20,7 +20,7 @@
 主控使用 Ubuntu / Debian，默认通过 IP + 端口访问，使用 SQLite，无需域名或 Docker。
 
 ```sh
-curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubusercontent.com/xiuzhenzhi/SSH/main/sshguard.sh -o sshguard.sh
+curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubusercontent.com/xiuzhenzhi/SSHGuard/main/sshguard.sh -o sshguard.sh
 sh sshguard.sh
 ```
 
@@ -39,13 +39,13 @@ sh sshguard.sh --update
 旧安装拉取最新更新脚本：
 
 ```sh
-curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubusercontent.com/xiuzhenzhi/SSH/main/sshguard.sh -o sshguard-update.sh && sh sshguard-update.sh --update
+curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubusercontent.com/xiuzhenzhi/SSHGuard/main/sshguard.sh -o sshguard-update.sh && sh sshguard-update.sh --update
 ```
 
 ## 文档
 
-[在线文档](https://xiuzhenzhi.github.io/SSH/)
+[在线文档](https://xiuzhenzhi.github.io/SSHGuard/)
 
 [文档总览](docs/README.md) · [安装与管理](docs/guides/QUICKSTART.md) · [Compose 安装](docs/deployment/INSTALL-COMPOSE.md) · [Agent](docs/guides/AGENTS.md) · [反代与 HTTPS](docs/deployment/REVERSE-PROXY.md) · [告警配置](docs/guides/ALERTING.md) · [登录防护](docs/guides/LOGIN-SECURITY.md) · [数据库维护](docs/guides/DATABASE.md)
 
-[更新日志](CHANGELOG.md) · [下载版本](https://github.com/xiuzhenzhi/SSH/releases) · [参与贡献](CONTRIBUTING.md) · [安全反馈](SECURITY.md)
+[更新日志](CHANGELOG.md) · [下载版本](https://github.com/xiuzhenzhi/SSHGuard/releases) · [参与贡献](CONTRIBUTING.md) · [安全反馈](SECURITY.md)

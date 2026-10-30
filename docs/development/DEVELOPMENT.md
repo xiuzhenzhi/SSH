@@ -3,8 +3,8 @@
 需要 Go（版本见 `go.mod`）和 Node.js 24。
 
 ```sh
-git clone https://github.com/xiuzhenzhi/SSH.git
-cd SSH
+git clone https://github.com/xiuzhenzhi/SSHGuard.git
+cd SSHGuard
 go mod download
 ```
 
@@ -95,8 +95,8 @@ node scripts/build/package-release.mjs
 普通 `git clone` 包含文档。只需要程序源码时可使用稀疏检出：
 
 ```sh
-git clone --filter=blob:none --no-checkout https://github.com/xiuzhenzhi/SSH.git
-cd SSH
+git clone --filter=blob:none --no-checkout https://github.com/xiuzhenzhi/SSHGuard.git
+cd SSHGuard
 git sparse-checkout set --cone cmd internal web deploy scripts .github
 git checkout main
 ```

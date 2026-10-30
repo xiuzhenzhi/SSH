@@ -500,7 +500,7 @@ fi
 if [ "$proxy_mode" = standalone ] && ! "$builtin_tls" && [ "${public_origin#http://}" != "$public_origin" ]; then
     printf '\n请在云安全组 / 防火墙中放行 TCP %s；若使用 NAT，请使用对应公网 IP 与映射端口。\n直连 HTTP 的登录、Agent 上报与下载未加密；可按需配置 HTTPS。\n' "$app_port"
 fi
-printf '\n一键更新：sh /opt/sshguard/sshguard.sh --update\n管理命令：sudo sh /opt/sshguard/sshguard.sh\n安装与可选配置：https://github.com/xiuzhenzhi/SSH/blob/main/docs/guides/QUICKSTART.md\n'
+printf '\n一键更新：sh /opt/sshguard/sshguard.sh --update\n管理命令：sudo sh /opt/sshguard/sshguard.sh\n安装与可选配置：https://github.com/xiuzhenzhi/SSHGuard/blob/main/docs/guides/QUICKSTART.md\n'
 
 )
 download_release() (
@@ -522,7 +522,7 @@ case "${1:-}" in
         if [ "$(id -u)" -ne 0 ]; then exec sudo sh "$0" "$@"; fi
         deploy_platform "$@"; exit $? ;;
 esac
-version=${SSHGUARD_VERSION:-v0.3.15}
+version=${SSHGUARD_VERSION:-v0.3.16}
 for arg in "$@"; do
     if [ "$arg" = --update ] && [ -z "${SSHGUARD_VERSION:-}" ]; then version=latest; fi
 done
@@ -541,11 +541,11 @@ github_curl() { curl --proto '=https' --proto-redir '=https' --tlsv1.2 --connect
 if [ "$version" = latest ]; then
     message 36 '[准备]' '查询最新正式版…'
     if "$github_cli"; then
-        version=$(gh release view --repo xiuzhenzhi/SSH --json tagName --jq .tagName) || { echo '无法查询最新发行版，请检查 GitHub 登录和仓库访问权限。' >&2; exit 1; }
+        version=$(gh release view --repo xiuzhenzhi/SSHGuard --json tagName --jq .tagName) || { echo '无法查询最新发行版，请检查 GitHub 登录和仓库访问权限。' >&2; exit 1; }
     else
-        latest_url=$(github_curl --head --output /dev/null --write-out '%{url_effective}' https://github.com/xiuzhenzhi/SSH/releases/latest) || { echo '无法查询最新发行版，请检查网络；私有仓库请先执行 gh auth login。' >&2; exit 1; }
+        latest_url=$(github_curl --head --output /dev/null --write-out '%{url_effective}' https://github.com/xiuzhenzhi/SSHGuard/releases/latest) || { echo '无法查询最新发行版，请检查网络；私有仓库请先执行 gh auth login。' >&2; exit 1; }
         case "$latest_url" in
-            https://github.com/xiuzhenzhi/SSH/releases/tag/*) version=${latest_url##*/} ;;
+            https://github.com/xiuzhenzhi/SSHGuard/releases/tag/*) version=${latest_url##*/} ;;
             *) echo '无法解析最新发行版，请检查仓库是否已有正式 Release；私有仓库请先执行 gh auth login。' >&2; exit 1 ;;
         esac
     fi
@@ -557,9 +557,9 @@ trap 'rm -rf -- "$tmp"' EXIT
 trap 'exit 1' HUP INT TERM
 asset="sshguard-linux-$arch.tar.gz"
 if "$github_cli"; then
-    gh release download "$version" --repo xiuzhenzhi/SSH --pattern "$asset" --pattern SHA256SUMS --dir "$tmp"
+    gh release download "$version" --repo xiuzhenzhi/SSHGuard --pattern "$asset" --pattern SHA256SUMS --dir "$tmp"
 else
-    base="https://github.com/xiuzhenzhi/SSH/releases/download/$version"
+    base="https://github.com/xiuzhenzhi/SSHGuard/releases/download/$version"
     for name in "$asset" SHA256SUMS; do
         github_curl "$base/$name" -o "$tmp/$name" || {
             echo '[错误] 下载失败，请检查网络；私有仓库请先执行 gh auth login。' >&2

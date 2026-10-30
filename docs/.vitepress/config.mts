@@ -8,7 +8,7 @@ export default defineConfig({
   lang: 'zh-CN',
   title: 'SSHGuard',
   description: 'SSH 登录审计、安全告警与服务器管理。SSHGuard 官方使用文档。',
-  base: '/SSH/',
+  base: '/SSHGuard/',
   srcDir: '..',
   srcExclude: ['.git/**', '.local/**', 'node_modules/**', 'web/**', 'dist/**', 'cmd/**', 'internal/**', 'migrations/**', 'scripts/**', 'deploy/**', '.github/**', 'docs/.vitepress/**'],
   rewrites: { 'docs/index.md': 'index.md' },
@@ -16,7 +16,7 @@ export default defineConfig({
   cacheDir: fileURLToPath(new URL('../../.local/docs-site/cache', import.meta.url)),
   lastUpdated: true,
   head: [
-    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/SSH/sshguard.svg' }],
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/SSHGuard/sshguard.svg' }],
     ['meta', { name: 'theme-color', content: '#3563e9' }],
   ],
   vite: { publicDir: root + 'docs/public' },
@@ -31,7 +31,7 @@ export default defineConfig({
       { text: '版本与发布', items: [
         { text: '发布说明', link: '/docs/RELEASE-NOTES' },
         { text: '更新日志', link: '/CHANGELOG' },
-        { text: '下载发行包', link: 'https://github.com/xiuzhenzhi/SSH/releases/latest' },
+        { text: '下载发行包', link: 'https://github.com/xiuzhenzhi/SSHGuard/releases/latest' },
       ] },
     ],
     sidebar: [
@@ -78,8 +78,8 @@ export default defineConfig({
           footer: { selectText: '选择', navigateText: '切换', closeText: '关闭' } },
       } } } },
     },
-    socialLinks: [{ icon: 'github', link: 'https://github.com/xiuzhenzhi/SSH' }],
-    editLink: { pattern: 'https://github.com/xiuzhenzhi/SSH/edit/main/:path', text: '在 GitHub 上编辑此页' },
+    socialLinks: [{ icon: 'github', link: 'https://github.com/xiuzhenzhi/SSHGuard' }],
+    editLink: { pattern: 'https://github.com/xiuzhenzhi/SSHGuard/edit/main/:path', text: '在 GitHub 上编辑此页' },
     lastUpdated: { text: '最后更新', formatOptions: { dateStyle: 'medium' } },
     docFooter: { prev: '上一篇', next: '下一篇' },
     sidebarMenuLabel: '文档导航',

@@ -143,7 +143,7 @@ func shellQuote(s string) string      { return "'" + strings.ReplaceAll(s, "'", 
 func powershellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
 
 func agentAsset(name string) string {
-	return "https://github.com/xiuzhenzhi/SSH/releases/download/" + url.PathEscape("v"+AgentVersion) + "/" + url.PathEscape(name)
+	return "https://github.com/xiuzhenzhi/SSHGuard/releases/download/" + url.PathEscape("v"+AgentVersion) + "/" + url.PathEscape(name)
 }
 func installCommands(origin, t string) map[string]string {
 	linuxOption, windowsOption := "", ""

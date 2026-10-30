@@ -17,7 +17,7 @@ hero:
       link: /docs/guides/QUICKSTART#更新中央平台
     - theme: alt
       text: 查看 GitHub
-      link: https://github.com/xiuzhenzhi/SSH
+      link: https://github.com/xiuzhenzhi/SSHGuard
 features:
   - title: 一键安装与更新
     details: 无需域名、Docker 或额外数据库，即可通过 IP 和端口开始使用；已有配置和数据在更新时保留。

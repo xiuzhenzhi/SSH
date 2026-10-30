@@ -45,6 +45,7 @@ Dependabot 按周分组提交 Go/npm 的 minor/patch 更新，不自动合并；
 | sshguard-agent-windows-amd64.exe / windows-arm64.exe | Windows 原生服务二进制 |
 | install-agent.sh / install-agent.ps1 | 后台安装命令所下载的脚本 |
 | uninstall-agent.sh / uninstall-agent.ps1 | 保留配置与日志的服务卸载脚本 |
+| deploy.sh / quick-start.sh / update.sh / uninstall.sh | 主控安装、菜单管理、一键更新与卸载入口；同时包含在原生发行包中 |
 | 单个 .sha256 / SHA256SUMS | 单文件及总清单完整性校验 |
 
 Actions Artifact 是一次构建快照，保存 14 天；Release 是命名版本供部署使用。仓库私有时两者都需要访问权限。自动构建成功不代表已经在每个目标系统实机安装验证；ARM64 默认交叉编译。
@@ -66,7 +67,7 @@ Actions Artifact 是一次构建快照，保存 14 天；Release 是命名版本
 
 ### 手动提交与打标签
 
-1. 修改 `VERSION`、`scripts/quick-start.sh` 默认标签及版本文档，例如 `0.3.10`，版本长度不超过 32。
+1. 修改 `VERSION`、`scripts/quick-start.sh` 首次安装默认标签及版本文档，例如 `0.3.10`，版本长度不超过 32。更新入口默认解析最新正式 Release，不依赖这个安装标签。
 2. 更新 CHANGELOG、docs/RELEASE-NOTES.md 和验收记录。
 3. 提交到 main，等待 CI 全部通过。
 4. 在对应提交创建并推送标签：

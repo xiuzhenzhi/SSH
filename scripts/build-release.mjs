@@ -40,6 +40,8 @@ cpSync('docs',`${out}/docs`,{recursive:true});
 // The manifest must match the binary and Agents, including preview overrides.
 writeFileSync(`${out}/VERSION`,version+'\n');
 cpSync('scripts/deploy.sh',`${out}/deploy.sh`);
+cpSync('scripts/quick-start.sh',`${out}/quick-start.sh`);
+cpSync('scripts/update.sh',`${out}/update.sh`);
 cpSync('scripts/uninstall.sh',`${out}/uninstall.sh`);
 for (const name of ['CHANGELOG.md','CONTRIBUTING.md','SECURITY.md']) cpSync(name,`${out}/${name}`);
 console.log(`Native Linux release ready: ${out}`);

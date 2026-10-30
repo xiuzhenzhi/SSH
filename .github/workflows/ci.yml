@@ -50,7 +50,7 @@ jobs:
           FULL_VALIDATION: ${{ inputs.full_validation == true }}
         run: node scripts/ci-plan.mjs
       - run: node scripts/check-docs.mjs
-      - run: node --test scripts/ci-plan.test.mjs scripts/release-version.test.mjs scripts/prepare-release.test.mjs
+      - run: node --test scripts/ci-plan.test.mjs scripts/release-version.test.mjs scripts/prepare-release.test.mjs scripts/quick-start.test.mjs
   go:
     name: Go / ${{ matrix.os }}
     needs: scope
@@ -94,6 +94,7 @@ jobs:
           sh -n scripts/uninstall.sh
           sh -n scripts/deploy.sh
           sh -n scripts/quick-start.sh
+          sh -n scripts/update.sh
       - name: Validate GitHub Actions workflows
         if: runner.os == 'Linux'
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 -shellcheck= -pyflakes= .github/workflows/ci.yml .github/workflows/release.yml

@@ -25,11 +25,13 @@ sh scripts/quick-start.sh
 
 打开安装器给出的地址，创建管理员。在「服务器管理」添加服务器，复制对应系统的安装命令，在目标机器执行即可。
 
-更新主控：
+更新主控到最新正式版（自动下载、校验并保留配置和数据）：
 
 ```sh
-sh scripts/quick-start.sh --update
+sh scripts/update.sh
 ```
+
+安装后无需保留源码目录，也可运行 `sh /opt/sshguard/update.sh`。管理菜单中「1」安装主控，「9」下载最新正式版并更新；已安装时回车默认选择「9」。详细步骤和离线更新见 [安装与管理](docs/QUICKSTART.md)。
 
 ## 文档
 

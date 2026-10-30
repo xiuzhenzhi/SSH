@@ -14,7 +14,7 @@ sh scripts/quick-start.sh
 
 最后一条命令下载固定版本 `v0.3.10` 的对应架构发行包，校验 SHA256，再调用安装向导。下载使用当前用户的 GitHub 登录，只有安装时调用 sudo。不要把 GitHub Token 放进命令行或发给 Agent。
 
-运行安装脚本后进入编号菜单，选择「1 安装 / 更新主控」，输入端口（回车使用 8080）即可；也可使用 `sh scripts/quick-start.sh --port 8081`。已有 Nginx / OpenResty 不影响此流程。首次交互安装显示初始化链接，打开后创建管理员，随后自动登录并进入服务器管理。默认使用 SQLite，无需额外数据库服务；仅在需要时展开「存储设置」选择 MySQL / PostgreSQL，并预先创建专用空数据库。初始化口令通过链接片段传递，不进入 HTTP 访问日志；同一标签页刷新时保留到初始化完成，完成后清除。
+运行安装脚本后进入编号菜单，首次安装选择「1 安装主控」，输入端口（回车使用 8080）即可；已有安装选择「9 更新主控（下载最新正式版）」，回车默认选「9」。也可使用 `sh scripts/quick-start.sh --port 8081` 安装。已有 Nginx / OpenResty 不影响此流程。首次交互安装显示初始化链接，打开后创建管理员，随后自动登录并进入服务器管理。默认使用 SQLite，无需额外数据库服务；仅在需要时展开「存储设置」选择 MySQL / PostgreSQL，并预先创建专用空数据库。初始化口令通过链接片段传递，不进入 HTTP 访问日志；同一标签页刷新时保留到初始化完成，完成后清除。
 
 忘记链接时，在主控终端执行 `sudo sh /opt/sshguard/deploy.sh --setup-link`，或菜单选择「8 查看初始化链接」。口令只在交互终端显示，CI/重定向日志不会包含。初始化已完成时不会重新开放入口。
 
@@ -124,15 +124,31 @@ API 强制连接字符集 utf8mb4、时间解析和会话 UTC，并禁用多 SQL
 
 ## 更新中央平台
 
-先备份数据库和 `/etc/sshguard`，阅读目标版本迁移说明，再下载新版本：
+先备份数据库、`/var/lib/sshguard-api/setup.json`（如有）和 `/etc/sshguard`，阅读目标版本迁移说明。在主控执行一条命令，自动查询最新正式 Release、下载当前架构的发行包、校验 SHA256 和包内版本后更新，无需先 `git pull` 或手动解压：
 
 ```sh
-SSHGUARD_VERSION=v0.3.10 sh scripts/quick-start.sh --update
-# 或使用已解压的新包：
+sh /opt/sshguard/update.sh
+# 源码目录中的等效入口（旧安装还没有 update.sh 时也可用）：
+sh scripts/update.sh
+# 兼容原命令，同样默认更新到最新正式版：
+sh scripts/quick-start.sh --update
+```
+
+也可以运行 `sudo sh /opt/sshguard/deploy.sh`，选择「9 更新主控」；在解压目录运行 `sudo sh deploy.sh` 选择「9」同样会下载新版，不会仅重装当前包。「1」只负责安装，已有安装会提示使用更新选项。非交互入口为 `sudo sh deploy.sh --update-latest`。
+
+私有仓库先以运行更新入口的用户执行 `gh auth login`。推荐普通用户运行 `update.sh`，下载使用该用户的 GitHub 登录，验证完成后才通过 sudo 部署；若在 root 管理菜单中更新，root 也需要仓库读取权限。公开仓库可直接通过 curl 下载。查询或下载失败会停止更新，不会使用脚本内的旧版本作为替代。
+
+指定版本或离线更新：
+
+```sh
+SSHGUARD_VERSION=v0.3.10 sh /opt/sshguard/update.sh
+# 离线包先按上文校验 SHA256 并解压，再从新包目录执行：
 sudo sh sshguard-linux-amd64/deploy.sh --update
 ```
 
-更新保留配置、管理员、服务器、Agent 凭证和数据库。先检查数据库并迁移，再原子切换 `/opt/sshguard` 符号链接和重启 API；启动或健康检查失败会恢复更新前的程序。程序备份保留在 `/opt/sshguard-releases/`，不自动删除。
+默认只跟随最新正式版，预发布需通过 `SSHGUARD_VERSION` 显式指定。离线更新从已解压的新包运行 `deploy.sh --update`，不访问 GitHub；从已安装的 `/opt/sshguard/deploy.sh --update` 运行则下载最新正式版。手工部署的旧 `/opt/sshguard` 目录需要先按迁移流程处理，自动更新仅支持向导管理的安装。
+
+更新保留配置、端口、管理员、服务器、Agent 凭证和数据库，不重新初始化。下载、校验和程序预检查完成前不会停止当前 API；先检查数据库并迁移，再原子切换 `/opt/sshguard` 符号链接和重启 API，启动或健康检查失败会恢复更新前的程序。程序备份保留在 `/opt/sshguard-releases/`，不自动删除。
 
 **数据库迁移不会自动回退。** 数据库结构变更后的恢复使用完整备份。Agent 可在「服务器管理」发起平台更新，或复制更新命令到目标机器执行。
 
@@ -147,7 +163,7 @@ sudo sh /opt/sshguard/deploy.sh --restart
 curl -fsS https://guard.example.com/api/v1/health
 ```
 
-也可用 `sh scripts/quick-start.sh --status`（或 `--logs` / `--restart`），这些管理命令直接操作已安装服务，无需重新下载。管理菜单的更新只安装当前包；升级到新版本仍按上文下载并校验新包后执行 `--update`。
+也可用 `sh scripts/quick-start.sh --status`（或 `--logs` / `--restart`），这些管理命令直接操作已安装服务，无需重新下载。管理菜单的「9 更新主控」会下载最新正式版，独立更新入口为 `sh /opt/sshguard/update.sh`。
 
 托管 Nginx 模式自动申请证书会配置 Certbot 续期和 reload hook；手动证书更新 `/etc/sshguard/certs/` 后 reload Nginx。独立 HTTPS 的证书位于 `/etc/sshguard/tls/`，续期后保持 root:sshguard-api 所有权和 0640 权限并重启 API。复用模式由现有面板管理证书。向导不调整防火墙，不覆盖其他虚拟主机。
 

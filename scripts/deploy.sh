@@ -17,22 +17,24 @@ direct_origin() {
     printf 'http://%s:%s' "$server_ip" "$1"
 }
 if [ "${1:-}" = --help ] || [ "${1:-}" = -h ]; then
-    printf 'SSHGuard 主控安装与管理\n\n安装：sh deploy.sh [--port 8080] [--config 文件]\n更新：sh deploy.sh --update\n状态：sh deploy.sh --status\n初始化链接：sh deploy.sh --setup-link\n日志：sh deploy.sh --logs\n重启：sh deploy.sh --restart\n\n默认 IP + 端口直连，SQLite，无需域名、Docker 或 Nginx。\n安装完成后，在网页创建管理员即可接入 Agent。\n可选：--proxy standalone|external|managed；HTTPS / 外部数据库见配置示例。\n'
+    printf 'SSHGuard 主控安装与管理\n\n安装：sh deploy.sh [--port 8080] [--config 文件]\n更新到最新正式版：sh deploy.sh --update-latest\n使用当前发行包更新：sh deploy.sh --update（已安装目录中运行则下载最新正式版）\n状态：sh deploy.sh --status\n初始化链接：sh deploy.sh --setup-link\n日志：sh deploy.sh --logs\n重启：sh deploy.sh --restart\n\n默认 IP + 端口直连，SQLite，无需域名、Docker 或 Nginx。\n安装完成后，在网页创建管理员即可接入 Agent。\n可选：--proxy standalone|external|managed；HTTPS / 外部数据库见配置示例。\n'
     exit 0
 fi
 [ "$(id -u)" -eq 0 ] || die 'Run with sudo sh deploy.sh.'
 if [ "$#" -eq 0 ] && [ -t 0 ]; then
     printf '\n============== SSHGuard 管理菜单 ==============\n'
-    if [ -f /etc/sshguard/deploy-managed ]; then printf '状态：已安装\n'; else printf '状态：未安装\n'; fi
-    printf '  1) 安装 / 更新主控\n  2) 查看状态与访问地址\n  3) 查看日志\n  4) 重启\n  5) 启动\n  6) 停止\n  7) 卸载主控（保留数据）\n  8) 查看初始化链接\n  0) 退出\n请选择 [默认 1]: '
+    default_choice=1
+    if [ -L /opt/sshguard ] && [ -f /etc/sshguard/deploy-managed ]; then printf '状态：已安装\n'; default_choice=9; else printf '状态：未安装\n'; fi
+    printf '  1) 安装主控\n  2) 查看状态与访问地址\n  3) 查看日志\n  4) 重启\n  5) 启动\n  6) 停止\n  7) 卸载主控（保留数据）\n  8) 查看初始化链接\n  9) 更新主控（下载最新正式版）\n  0) 退出\n请选择 [默认 %s]: ' "$default_choice"
     IFS= read -r choice
-    case "${choice:-1}" in
-        1) if [ -L /opt/sshguard ] && [ -f /etc/sshguard/deploy-managed ]; then set -- --update; fi ;;
+    case "${choice:-$default_choice}" in
+        1) set -- --install ;; 9) set -- --update-latest ;;
         2) set -- --status ;; 3) set -- --logs ;; 4) set -- --restart ;;
         5) set -- --start ;; 6) set -- --stop ;; 7) set -- --uninstall ;; 8) set -- --setup-link ;; 0) exit 0 ;; *) die '无效选项。' ;;
     esac
 fi
 case "${1:-}" in
+    --update-latest) shift; exec sh "$(dirname "$0")/update.sh" "$@" ;;
     --uninstall) shift; exec sh "$(dirname "$0")/uninstall.sh" "$@" ;;
     --status|--logs|--restart|--start|--stop|--setup-link)
         [ "$#" -eq 1 ] && [ -f /etc/sshguard/deploy-managed ] || die '未找到向导管理的安装，或参数无效。'
@@ -65,7 +67,15 @@ case "${1:-}" in
         printf '日志：sh /opt/sshguard/deploy.sh --logs\n'
         exit 0 ;;
 esac
-bundle=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+bundle=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
+# The installed management entry downloads a new release. An extracted bundle
+# still deploys its own verified payload, including during offline upgrades.
+for arg in "$@"; do
+    if [ "$arg" = --update ] && [ -f "$bundle/quick-start.sh" ] && [ -L /opt/sshguard ] &&
+        [ "$bundle" = "$(CDPATH='' cd /opt/sshguard && pwd -P)" ]; then
+        exec sh "$bundle/quick-start.sh" "$@"
+    fi
+done
 [ -f "$bundle/sshguard-api" ] && [ -f "$bundle/web/index.html" ] || die 'Run deploy.sh from an extracted native release, not the source scripts directory.'
 version=$(cat "$bundle/VERSION")
 printf '%s' "$version" | grep -Eq '^[A-Za-z0-9.+_-]{1,32}$' || die 'Invalid release version.'
@@ -106,7 +116,7 @@ done
 if [ -e /opt/sshguard ] && [ ! -L /opt/sshguard ]; then die 'Existing /opt/sshguard is a directory. Follow the legacy migration instructions before using this updater.'; fi
 if [ "$mode" = update ]; then
     [ -L /opt/sshguard ] && [ -f /etc/sshguard/deploy-managed ] || die 'No wizard-managed installation found.'
-elif [ -L /opt/sshguard ]; then die 'Already installed. Use --update.'; fi
+elif [ -L /opt/sshguard ]; then die '主控已安装。请在菜单选择「9 更新主控」，或使用 --update-latest；安装已下载的发行包使用 --update。'; fi
 printf '\n============================================================\n'
 printf '  SSHGuard %s · 主控安装\n' "$version"
 printf '============================================================\n'
@@ -313,7 +323,7 @@ stage=$(mktemp -d "/opt/sshguard-releases/$version.XXXXXX")
 # A bundle may be extracted inside an existing panel website. Copy only release
 # payloads, never unrelated site files, deploy.conf or certificate private keys.
 for item in sshguard-api web deploy VERSION; do cp -R "$bundle/$item" "$stage/$item"; done
-for item in deploy.sh uninstall.sh README.md CHANGELOG.md CONTRIBUTING.md SECURITY.md docs; do
+for item in deploy.sh quick-start.sh update.sh uninstall.sh README.md CHANGELOG.md CONTRIBUTING.md SECURITY.md docs; do
     [ ! -e "$bundle/$item" ] || cp -R "$bundle/$item" "$stage/$item"
 done
 # Public binaries/assets must be readable; configuration stays in /etc with 600.
@@ -395,7 +405,8 @@ switched=false
 if [ "$public_origin" = "http://SERVER_IP:$app_port" ]; then
     public_origin=$(direct_origin "$app_port")
 fi
-printf '\n安装完成 · SSHGuard %s\n访问地址：%s\n' "$version" "$public_origin"
+if [ "$mode" = update ]; then printf '\n更新完成 · SSHGuard %s\n访问地址：%s\n' "$version" "$public_origin"
+else printf '\n安装完成 · SSHGuard %s\n访问地址：%s\n' "$version" "$public_origin"; fi
 if grep -Fq '"status":"setup_required"' <<EOF
 $health
 EOF
@@ -421,4 +432,4 @@ fi
 if [ "$proxy_mode" = standalone ] && ! "$builtin_tls" && [ "${public_origin#http://}" != "$public_origin" ]; then
     printf '\n请在云安全组 / 防火墙中放行 TCP %s；若使用 NAT，请使用对应公网 IP 与映射端口。\n直连 HTTP 的登录、Agent 上报与下载未加密；可按需配置 HTTPS。\n' "$app_port"
 fi
-printf '\n管理命令：sudo sh /opt/sshguard/deploy.sh\n安装与可选配置：https://github.com/xiuzhenzhi/SSH/blob/main/docs/QUICKSTART.md\n'
+printf '\n一键更新：sh /opt/sshguard/update.sh\n管理命令：sudo sh /opt/sshguard/deploy.sh\n安装与可选配置：https://github.com/xiuzhenzhi/SSH/blob/main/docs/QUICKSTART.md\n'

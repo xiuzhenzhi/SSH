@@ -71,6 +71,47 @@ before=$(sha256sum /etc/sshguard/api.env)
 PATH="$tmp/bin:$PATH" sh "$bundle/deploy.sh" --update
 [ "$before" = "$(sha256sum /etc/sshguard/api.env)" ]
 curl -fsS http://127.0.0.1:8080/api/v1/health >/dev/null
+# Exercise the actual interactive download path without publishing a release.
+# GitHub alone is mocked; extraction, deployment, systemd and health checks run.
+test -s /opt/sshguard/update.sh
+test -s /opt/sshguard/quick-start.sh
+mkdir "$tmp/release"
+tar -czf "$tmp/release/sshguard-linux-amd64.tar.gz" -C "$(dirname "$bundle")" "$(basename "$bundle")"
+(cd "$tmp/release" && sha256sum sshguard-linux-amd64.tar.gz > SHA256SUMS)
+printf 'v%s\n' "$(cat "$bundle/VERSION")" > "$tmp/release/tag"
+cat > "$tmp/bin/gh" <<'SH'
+#!/bin/sh
+set -eu
+case "$1 $2" in
+    'auth status') exit 0 ;;
+    'release view') cat "$SSHGUARD_UPDATE_FIXTURE/tag" ;;
+    'release download')
+        [ "$3" = "$(cat "$SSHGUARD_UPDATE_FIXTURE/tag")" ] || exit 1
+        while [ "$#" -gt 0 ]; do
+            case "$1" in --dir) output=$2; break ;; *) shift ;; esac
+        done
+        cp "$SSHGUARD_UPDATE_FIXTURE/sshguard-linux-amd64.tar.gz" "$SSHGUARD_UPDATE_FIXTURE/SHA256SUMS" "$output/" ;;
+    *) exit 1 ;;
+esac
+SH
+chmod 755 "$tmp/bin/gh"
+export SSHGUARD_UPDATE_FIXTURE="$tmp/release"
+old=$(readlink /opt/sshguard)
+if printf '1\n' | PATH="$tmp/bin:$PATH" script -q -e -c "sh '$bundle/deploy.sh'" "$tmp/already-installed.log" >/dev/null; then
+    echo 'Install option must reject an existing installation' >&2; exit 1
+fi
+[ "$old" = "$(readlink /opt/sshguard)" ]
+grep -q '9 更新主控' "$tmp/already-installed.log"
+printf '9\n' | PATH="$tmp/bin:$PATH" script -q -e -c "sh '$bundle/deploy.sh'" "$tmp/update-menu.log" >/dev/null
+[ "$old" != "$(readlink /opt/sshguard)" ]
+grep -q '9) 更新主控' "$tmp/update-menu.log"
+old=$(readlink /opt/sshguard)
+printf '\n' | PATH="$tmp/bin:$PATH" script -q -e -c 'sh /opt/sshguard/deploy.sh' "$tmp/default-update.log" >/dev/null
+[ "$old" != "$(readlink /opt/sshguard)" ]
+grep -q '默认 9' "$tmp/default-update.log"
+[ "$before" = "$(sha256sum /etc/sshguard/api.env)" ]
+curl -fsS http://127.0.0.1:8080/api/v1/health >/dev/null
+unset SSHGUARD_UPDATE_FIXTURE
 test -s /var/lib/sshguard-api/setup.json
 node scripts/test-native-api.mjs verify
 sh /usr/local/lib/sshguard/uninstall-agent.sh

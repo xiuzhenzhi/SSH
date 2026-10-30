@@ -21,12 +21,14 @@
 
 ## 升级中央平台
 
-原生部署：
+向导管理的原生部署：
 
-1. 阅读目标版本变更，备份数据库与 `/etc/sshguard/api.env`，记录当前版本。
-2. 在独立测试数据库上启动新版，验证迁移及基本读写。
-3. 维护窗口停止 `sshguard-api`，替换 `/opt/sshguard/sshguard-api`、Web 文件和下载目录，保留环境文件、证书。
-4. 启动 API，检查日志及 health；执行 nginx -t 后 reload，验证登录、资产和一台测试 Agent。
+1. 阅读目标版本变更，备份数据库、`/etc/sshguard` 和 `/var/lib/sshguard-api/setup.json`（如有），记录当前版本。
+2. 在独立测试环境验证新版迁移及基本读写。
+3. 在主控执行 `sh /opt/sshguard/update.sh`，或在源码目录执行 `sh scripts/update.sh`；也可打开 `deploy.sh` 菜单选择「9 更新主控」。已安装时默认选「9」，「1」只用于安装。更新入口自动获取最新正式 Release 并校验，保留原配置和数据。
+4. 检查日志及 health，验证登录、资产和一台测试 Agent。程序启动或健康检查失败会自动恢复旧程序，数据库迁移不会回退。
+
+私有仓库先以运行更新脚本的用户执行 `gh auth login`；建议普通用户运行 `update.sh`，校验后才提权。可用 `SSHGUARD_VERSION=v目标版本 sh /opt/sshguard/update.sh` 指定版本；离线包从新包目录运行 `sudo sh deploy.sh --update`。详情见 [一键更新](QUICKSTART.md#更新中央平台)。手工部署不使用自动向导，继续在维护窗口替换 API、Web 与下载目录，并保留配置和证书。
 
 Compose：在同一项目目录更新源码，保留 `.env` 和命名卷，执行 `docker compose up -d --build`。不要使用 `down -v`。更换数据库类型是迁移项目，不是常规升级。
 

@@ -88,6 +88,8 @@ sudo journalctl -u sshguard-api -n 100 --no-pager
 
 登录 PUBLIC_URL 后按 [Agent 安装](AGENTS.md) 接入服务器，日常升级和备份见 [运维手册](OPERATIONS.md)。
 
+通过一键向导安装的主控可执行 `sh /opt/sshguard/update.sh` 下载最新正式版并更新，或在管理菜单选择「9 更新主控」；「1」仅安装。更新保留配置与数据，具体步骤、指定版本及离线方式见 [更新中央平台](QUICKSTART.md#更新中央平台)。本文的手工部署不由向导管理，不直接使用自动更新器。
+
 ## 通知加密密钥
 
 手工部署须设置 ENCRYPTION_KEY=64位随机十六进制值（openssl rand -hex 32 生成），保存在 root 专用 api.env；后续更新保持不变。原生向导会自动补充缺失密钥。随数据库一起备份密钥，详见 [告警配置](ALERTING.md)。

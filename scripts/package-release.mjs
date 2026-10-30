@@ -10,6 +10,8 @@ const downloads='dist/sshguard-linux-amd64/web/downloads';
 for (const name of readdirSync(downloads)) cpSync(`${downloads}/${name}`,`dist/release/${name}`);
 cpSync('VERSION','dist/release/VERSION');
 cpSync('scripts/deploy.sh','dist/release/deploy.sh');
+cpSync('scripts/quick-start.sh','dist/release/quick-start.sh');
+cpSync('scripts/update.sh','dist/release/update.sh');
 cpSync('scripts/uninstall.sh','dist/release/uninstall.sh');
 cpSync('docs/RELEASE-NOTES.md','dist/release/RELEASE-NOTES.md');
 const names=readdirSync('dist/release').filter(n=>n!=='SHA256SUMS').sort();

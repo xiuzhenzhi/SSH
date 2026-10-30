@@ -22,7 +22,7 @@
 .el-dialog .dialog-actions>.el-button:not(.el-button--primary):hover,.el-dialog .secondary-action:hover{border-color:var(--line)}
 .el-dialog .primary-action,.el-dialog .secondary-action{min-height:36px;min-width:88px;border-radius:7px}
 .password-dialog .field-hint{font-size:12px;margin-top:9px;color:var(--text-muted)}
-.el-message-box{padding:0;border:1px solid var(--line);border-radius:8px;background:var(--surface);max-width:94vw;overflow:hidden;box-shadow:0 20px 70px rgb(0 0 0 / 18%)}
+.el-message-box{width:480px;max-width:calc(100vw - 32px);padding:0;border:1px solid var(--line);border-radius:8px;background:var(--surface);overflow:hidden;box-shadow:0 20px 70px rgb(0 0 0 / 18%)}
 .el-message-box__content{padding:24px;color:var(--text-strong);line-height:1.8}
 .el-message-box__btns{padding:0 24px 24px;gap:12px}
 .el-message-box__btns .el-button{min-width:88px;height:36px;margin:0}

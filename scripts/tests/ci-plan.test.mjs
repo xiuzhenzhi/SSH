@@ -83,3 +83,21 @@ test('all 128 module combinations preserve the exact union of affected checks',(
   assert.deepEqual(planCI(files),expected,JSON.stringify(files));
  }
 });
+
+test('real Git diffs keep frontend-only and Agent + database + docs releases isolated',async()=>{
+ const {mkdtempSync,mkdirSync,writeFileSync,rmSync}=await import('node:fs');
+ const {tmpdir}=await import('node:os');const {join,dirname}=await import('node:path');
+ const {execFileSync}=await import('node:child_process');const {fileURLToPath}=await import('node:url');
+ const root=mkdtempSync(join(tmpdir(),'sshguard-ci-scope-'));
+ const git=(...args)=>execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
+ const put=(path,text)=>{mkdirSync(dirname(join(root,path)),{recursive:true});writeFileSync(join(root,path),text);};
+ const commit=()=>{git('add','.');git('-c','user.name=CI fixture','-c','user.email=fixture@example.invalid','commit','-m','fixture');return git('rev-parse','HEAD');};
+ const run=base=>JSON.parse(execFileSync(process.execPath,[fileURLToPath(new URL('../checks/ci-plan.mjs',import.meta.url))],{cwd:root,encoding:'utf8',env:{...process.env,BEFORE_SHA:base,PR_BASE_SHA:'',SOURCE_SHA:git('rev-parse','HEAD'),SELECTIVE_RELEASE:'false',FULL_VALIDATION:'false',GITHUB_OUTPUT:join(root,'result.txt')}}));
+ try{
+  git('init');put('.gitignore','result.txt\n');put('VERSION','0.3.16\n');put('AGENT_VERSION','0.3.16\n');put('internal/api/routes.go','package api\nvar Version = "0.3.16"\nvar AgentVersion = "0.3.16"\n');put('web/src/App.vue','old');put('internal/storage/storage.go','package storage\n');put('docs/index.md','old');
+  const before=commit();put('VERSION','0.3.17\n');put('internal/api/routes.go','package api\nvar Version = "0.3.17"\nvar AgentVersion = "0.3.16"\n');put('web/src/App.vue','new');const frontend=commit();
+  const first=run(before);for(const key of Object.keys(none))assert.equal(first[key],key==='web',key);
+  put('AGENT_VERSION','0.3.18\n');put('internal/api/routes.go','package api\nvar Version = "0.3.17"\nvar AgentVersion = "0.3.18"\n');put('internal/storage/storage.go','package storage\n// changed storage\n');put('docs/index.md','new');commit();
+  const second=run(frontend);for(const key of Object.keys(none))assert.equal(second[key],['agent','database','docs'].includes(key),key);
+ }finally{rmSync(root,{recursive:true,force:true});}
+});

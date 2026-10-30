@@ -30,7 +30,7 @@ type App struct {
 	geo            geoIPState
 }
 
-var Version = "0.3.20"
+var Version = "0.3.21"
 var AgentVersion = "0.3.20"
 
 func New(db *storage.DB, cfg Config) *gin.Engine {

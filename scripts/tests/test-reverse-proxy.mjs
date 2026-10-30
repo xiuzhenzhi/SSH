@@ -50,8 +50,7 @@ try{
   for(const file of ['deploy/native/nginx.conf','deploy/nginx.conf','deploy/nginx.local.conf']){
     const template=readFileSync(file,'utf8').replaceAll('http://api:8080','http://127.0.0.1:'+upstream)
       .replaceAll('http://127.0.0.1:8080','http://127.0.0.1:'+upstream)
-      .replaceAll('/etc/sshguard/certs/fullchain.pem','"'+posix(cert)+'"').replaceAll('/etc/sshguard/certs/privkey.pem','"'+posix(key)+'"')
-      .replaceAll('/etc/nginx/certs/fullchain.pem','"'+posix(cert)+'"').replaceAll('/etc/nginx/certs/privkey.pem','"'+posix(key)+'"')
+      .replace(/^(\s*ssl_certificate(_key)?\s+)[^;]+;/gm,(_,directive,isKey)=>directive+'"'+posix(isKey?key:cert)+'";')
       .replaceAll('/usr/share/nginx/html','"'+posix(webDir)+'"')
       .replaceAll('listen 80;','listen 127.0.0.1:18080;').replaceAll('listen 443 ssl;','listen 127.0.0.1:18443 ssl;');
     const check=join(root,'syntax.conf');writeFileSync(check,wrap(template));

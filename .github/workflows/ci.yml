@@ -383,12 +383,21 @@ jobs:
           tar -xzf sshguard-linux-amd64.tar.gz -C ..
       - name: Verify installation, upgrades, permissions and recovery
         run: sudo env "PATH=$PATH" GITHUB_ACTIONS=true SSHGUARD_NATIVE_DB=${{ matrix.database }} SSHGUARD_NATIVE_PROXY=${{ matrix.proxy }} sh scripts/tests/test-native-deploy.sh dist/sshguard-linux-amd64
+      - name: Load proxy verifier from the workflow revision
+        if: matrix.proxy == 'managed' && matrix.database == 'sqlite'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          path: .local/proxy-verifier
+          sparse-checkout: scripts/tests/test-reverse-proxy.mjs
+          sparse-checkout-cone-mode: false
       - name: Verify all proxy templates and real HTTPS WebSockets
         if: matrix.proxy == 'managed' && matrix.database == 'sqlite'
         run: |
           mkdir -p .local/proxy
           openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj /CN=localhost -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1' -keyout .local/proxy/key.pem -out .local/proxy/cert.pem
-          NODE_EXTRA_CA_CERTS="$PWD/.local/proxy/cert.pem" node scripts/tests/test-reverse-proxy.mjs dist/sshguard-linux-amd64/sshguard-api "$(command -v nginx)" .local/proxy/cert.pem .local/proxy/key.pem
+          NODE_EXTRA_CA_CERTS="$PWD/.local/proxy/cert.pem" node .local/proxy-verifier/scripts/tests/test-reverse-proxy.mjs dist/sshguard-linux-amd64/sshguard-api "$(command -v nginx)" .local/proxy/cert.pem .local/proxy/key.pem
   artifacts:
     name: Verified release assets
     needs: [build, native, scope]

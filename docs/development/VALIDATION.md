@@ -4,7 +4,7 @@
 
 | 版本 | 结果 |
 |---|---|
-| v0.3.18 | 本地国旗生产打包及浏览器验证通过；覆盖 128 种模块组合、版本独立、校验复用与缺少历史时拒绝复用。发布验证由工作流执行 |
+| [v0.3.18](https://github.com/xiuzhenzhi/SSHGuard/actions/runs/41106462928) | 发布工作流全部通过：主控与 Agent 的 Linux / Windows 检查、SQLite / PostgreSQL / MySQL 矩阵、前端、Docker 和五组安装升级验证。23 个公开文件，校验清单中 22 个摘要全部匹配。国旗生产打包及浏览器验证通过；脚本测试覆盖 128 种模块组合、独立版本、产物校验复用与取消任务后的改动覆盖 |
 | v0.3.17（未发布） | 安装测试误用主控版本比较 Agent，超时后被发布门禁拦截；已改为读取 AGENT_VERSION 并补充版本不同的回归测试 |
 | [v0.3.15](https://github.com/xiuzhenzhi/SSHGuard/actions/runs/41094867830) | CI、文档、Windows 服务、数据库矩阵、五组原生安装升级全部通过；23 个公开产物、22 个校验摘要匹配 |
 | [v0.3.14](https://github.com/xiuzhenzhi/SSHGuard/actions/runs/41089566576) | 本地 Go 测试、vet、28 项脚本与请求缓存测试、前端与文档构建通过；浏览器覆盖导航缓存、超时重试、实时刷新保留未保存设置和数据库维护。完整发布工作流通过 Linux / Windows、竞态检测、SQLite / PostgreSQL / MySQL 5.6 与 8.4、Docker 构建和五组原生安装更新恢复测试；22 个 Release 文件已发布，校验清单中 21 个文件摘要均匹配 |

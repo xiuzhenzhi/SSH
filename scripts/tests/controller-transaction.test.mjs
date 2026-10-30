@@ -1,0 +1,25 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,existsSync} from 'node:fs';
+import {join} from 'node:path';
+import {tmpdir} from 'node:os';
+import {spawnSync} from 'node:child_process';
+for(const failure of ['backup','replace','after']) test('controller rollback preserves data and original programs: '+failure,t=>{
+ const root=mkdtempSync(join(tmpdir(),'sshguard-transaction-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
+ const shell=process.platform==='win32'?join(process.env.ProgramFiles,'Git/bin/sh.exe'):'sh';
+ const unix=spawnSync(shell,['-c','cd "$TEST_ROOT" && pwd -P'],{env:{...process.env,TEST_ROOT:root},encoding:'utf8'}).stdout.trim();assert.ok(unix.startsWith('/'));
+ const put=(p,v)=>{mkdirSync(join(root,p,'..'),{recursive:true});writeFileSync(join(root,p),v);};
+ for(const [p,v] of Object.entries({'opt/SSHGuard/Server/sshguard-api':'old-api','opt/SSHGuard/Server/web/index.html':'old-web','opt/SSHGuard/Server/api.env':'secret','opt/SSHGuard/Server/data/sshguard.db':'database','opt/.SSHGuard-stage.aaaaaa/sshguard-api':'new-api','opt/.SSHGuard-stage.aaaaaa/web/index.html':'new-web','opt/.SSHGuard-stage.aaaaaa/sshguard-api.service':'new-unit'}))put(p,v);
+ mkdirSync(join(root,'run/sshguard-deploy.lock'),{recursive:true});mkdirSync(join(root,'etc/systemd/system'),{recursive:true});
+ const source=readFileSync('sshguard.sh','utf8');
+ const helpers=source.slice(source.indexOf('remove_release_payload() ('),source.indexOf('management_action() {'));
+ const cleanup=source.slice(source.indexOf('cleanup() {'),source.indexOf('trap cleanup EXIT'));
+ const start=source.indexOf('backup=$(mktemp -d /opt/.SSHGuard-backup.XXXXXX)');
+ const transaction=source.slice(start,source.indexOf('cp /opt/SSHGuard/Server/sshguard-api.service',start));
+ let script=`set -eu\n${helpers}\n${cleanup}\nhidden=false; switched=true; backup=''; replaced=''; new_items=''; unit_backup=''; nginx_changed=false; nginx_backup=''; mode=update; stage=/opt/.SSHGuard-stage.aaaaaa\nsystemctl() { :; }\nmountpoint() { return 1; }\ndie() { exit 1; }\nmv() {\n if [ "$FAILURE" = backup ] && [ "$2" = /opt/SSHGuard/Server/web ]; then return 1; fi\n if [ "$FAILURE" = replace ] && [ "$2" = /opt/.SSHGuard-stage.aaaaaa/web ]; then return 1; fi\n command mv "$@"\n}\ntrap cleanup EXIT\n${transaction}\nexit 1\n`;
+ script=script.replace(/\/(?:opt|etc|run)(?=\/)/g,m=>unix+m);put('test.sh',script);
+ const result=spawnSync(shell,[join(root,'test.sh')],{env:{...process.env,FAILURE:failure},encoding:'utf8',timeout:15000});assert.equal(result.status,1,result.stdout+result.stderr);
+ for(const [p,v] of Object.entries({'sshguard-api':'old-api','web/index.html':'old-web','api.env':'secret','data/sshguard.db':'database'}))assert.equal(readFileSync(join(root,'opt/SSHGuard/Server',p),'utf8'),v);
+ assert.equal(existsSync(join(root,'opt/SSHGuard/Server/sshguard-api.service')),false);
+ assert.equal(existsSync(join(root,'run/sshguard-deploy.lock')),false);
+});

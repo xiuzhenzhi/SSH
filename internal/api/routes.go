@@ -6,6 +6,7 @@ import (
 	"errors"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/sync/singleflight"
 	"log"
 	"net/http"
 	"sshguard/internal/geoip"
@@ -23,10 +24,12 @@ type App struct {
 	hub            *liveHub
 	dashboardMu    sync.Mutex
 	dashboardCache map[string]dashboardSnapshot
+	countryFlights singleflight.Group
+	countryEpoch   uint64
 	geo            geoIPState
 }
 
-var Version = "0.3.9"
+var Version = "0.3.10"
 
 func New(db *storage.DB, cfg Config) *gin.Engine {
 	return NewApp(db, cfg).Router()
@@ -98,6 +101,7 @@ func (a *App) Router() *gin.Engine {
 		}
 	})
 	web.GET("/dashboard/overview", a.overview)
+	web.GET("/dashboard/country-ranking", a.countryRanking)
 	web.GET("/live", a.live)
 	web.GET("/rules", role("admin"), a.rules)
 	web.GET("/ip-allowlist", role("admin"), a.allowlist)
@@ -106,6 +110,7 @@ func (a *App) Router() *gin.Engine {
 	web.POST("/rules", role("admin"), a.saveRule)
 	web.PATCH("/rules/:id", role("admin"), a.saveRule)
 	web.GET("/alerts", a.alerts)
+	web.POST("/alerts/acknowledge", role("admin", "operator"), a.acknowledgeAlerts)
 	web.POST("/alerts/:id/acknowledge", role("admin", "operator"), a.acknowledgeAlert)
 	web.GET("/channels", role("admin"), a.channels)
 	web.GET("/channels/:id", role("admin"), a.channel)

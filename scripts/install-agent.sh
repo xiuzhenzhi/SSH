@@ -2,7 +2,7 @@
 # Ubuntu/Debian: systemd. Alpine: OpenRC. No bash, Python, Node or container.
 set -eu
 umask 077
-RELEASE_VERSION='0.3.9'
+RELEASE_VERSION='0.3.10'
 die() { echo "$*" >&2; exit 1; }
 case "${1:-}" in
     --help|-h) printf '安装：sudo sh install-agent.sh ORIGIN ONE_TIME_TOKEN [--allow-insecure-http]\n更新：sudo sh install-agent.sh ORIGIN --update [--allow-insecure-http]\n离线卸载：sudo sh /usr/local/lib/sshguard/uninstall-agent.sh\n'; exit 0 ;;

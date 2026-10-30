@@ -132,6 +132,7 @@ func (a *App) saveGeoIPSettings(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	a.invalidateCountryRanking()
 	a.hub.publish()
 	a.geoIPSettings(c)
 }
@@ -193,6 +194,7 @@ func (a *App) updateGeoIPDatabase(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	a.invalidateCountryRanking()
 	a.hub.publish()
 	ok(c, gin.H{"database_ready": true, "database_updated_at": updated})
 }
@@ -214,6 +216,10 @@ func (a *App) lookupGeoIP(ctx context.Context, cfg geoip.Config, address, revisi
 		}
 	}
 	pending := a.geo.flights.DoChan(key, func() (any, error) {
+		// All callers share this lookup. One page changing or timing out must
+		// not cancel another page's lookup or cache a caller-budget failure.
+		lookupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 6*time.Second)
+		defer cancel()
 		if cfg.Provider == "ip-api" && cfg.Token == "" {
 			a.geo.mu.Lock()
 			now := time.Now()
@@ -241,7 +247,7 @@ func (a *App) lookupGeoIP(ctx context.Context, cfg geoip.Config, address, revisi
 			if a.geo.reader == nil || a.geo.revision != revision {
 				var raw []byte
 				var current string
-				if err := a.db.Row(ctx, `SELECT content,revision FROM geoip_database WHERE id=1`).Scan(&raw, &current); err != nil {
+				if err := a.db.Row(lookupCtx, `SELECT content,revision FROM geoip_database WHERE id=1`).Scan(&raw, &current); err != nil {
 					return location, err
 				}
 				reader, err := geoip.ValidateDatabase(raw)
@@ -255,7 +261,7 @@ func (a *App) lookupGeoIP(ctx context.Context, cfg geoip.Config, address, revisi
 			}
 			return geoip.LookupDatabase(a.geo.reader, address)
 		}
-		location, err = geoip.Lookup(ctx, a.geo.client, cfg, address)
+		location, err = geoip.Lookup(lookupCtx, a.geo.client, cfg, address)
 		a.geo.mu.Lock()
 		defer a.geo.mu.Unlock()
 		if a.geo.cache == nil || len(a.geo.cache) >= 8192 {
@@ -265,7 +271,7 @@ func (a *App) lookupGeoIP(ctx context.Context, cfg geoip.Config, address, revisi
 		if err != nil {
 			ttl = time.Minute
 		}
-		if !errors.Is(ctx.Err(), context.Canceled) {
+		if lookupCtx.Err() == nil {
 			a.geo.cache[key] = geoCacheEntry{location: location, err: err, expires: time.Now().Add(ttl)}
 		}
 		return location, err

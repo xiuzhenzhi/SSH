@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox, ElIcon, ElForm, ElFormItem, ElInput, ElButton, ElAlert, ElSelect, ElOption, ElTable, ElTableColumn, ElDialog } from 'element-plus';
 import 'element-plus/es/components/icon/style/css';
 import 'element-plus/es/components/form/style/css';
@@ -16,6 +16,7 @@ import 'element-plus/es/components/message/style/css';
 import 'element-plus/es/components/message-box/style/css';
 import { Monitor, Grid, Connection, Bell, Message, Filter, CircleCheck, Key, Promotion, DocumentChecked, User, Lock, Setting, MapLocation, Plus, Refresh, Search, ArrowRight, Moon, Sunny } from '@element-plus/icons-vue';
 import Overview from './Overview.vue';
+import CountryFlag from './CountryFlag.vue';
 import AlertCenter from './AlertCenter.vue';
 import ServerList from './ServerList.vue';
 import Allowlist from './Allowlist.vue';
@@ -25,6 +26,7 @@ import CaptchaWidget from './CaptchaWidget.vue';
 import SetupWizard from './SetupWizard.vue';
 import { copyText } from './clipboard';
 import { isDark, toggleTheme, observeTheme } from './theme';
+import { pageFromPath, pathForPage } from './routes';
 const stopTheme=observeTheme();
 onUnmounted(stopTheme);
 const setupRequired = ref(false);
@@ -32,7 +34,7 @@ const protectionPage=ref<InstanceType<typeof LoginProtection>>();
 const geoIPPage=ref<InstanceType<typeof GeoIPSettings>>();
 type Row = Record<string, any>;
 const user = ref<Row | null>(null), booting = ref(true), busy = ref(false), error = ref('');
-const active = ref('dashboard'), rows = ref<Row[]>([]), summary = ref<Row>({}), page = ref(1), more = ref(false);
+const active = ref<string>(pageFromPath(location.pathname)), rows = ref<Row[]>([]), summary = ref<Row>({}), page = ref(1), more = ref(false);
 const overview = ref<Row>({});
 const trendRange=ref('24h');
 const management = computed(() => ['alerts','channels','rules','notifications'].includes(active.value));
@@ -64,8 +66,10 @@ const nav = computed(() => [
 const title = computed(() => nav.value.find(x => x.id === active.value)?.title || '安全总览');
 const roleNames:Row={admin:'管理员',operator:'操作员',viewer:'只读用户'};
 const auditNames:Row={'auth.login':'登录','auth.logout':'退出登录','auth.password.change':'修改密码','user.create':'创建用户','server.create':'添加服务器','server.update':'编辑服务器','server.reporting.update':'修改上报间隔','agent.enrolled':'Agent 注册','agent.enrollment.create':'生成安装命令','agent.revoke':'撤销 Agent 凭证','agent.update.request':'请求更新 Agent','agent.update.success':'Agent 更新成功','agent.update.failed':'Agent 更新失败','channel.create':'添加通知渠道','channel.update':'编辑通知渠道','channel.test':'测试通知渠道','notification.retry':'重试通知投递','rule.save':'保存检测规则','alert.acknowledge':'确认告警','auth.ip.block':'封禁登录来源','auth.ip.unblock':'解除登录封禁','auth.protection.update':'更新登录防护','allowlist.create':'添加 IP 白名单','allowlist.delete':'移除 IP 白名单'};
+const countryNames=new Intl.DisplayNames(['zh-CN'],{type:'region'});
+const countryName=(row:Row)=>row.country_code?(countryNames.of(row.country_code)||row.country_name||row.country_code):(row.source_is_public===false?'内网 / 保留地址':'未知');
 const sourceAddress=(row:Row)=>row.source_port?(String(row.source_ip).includes(':')?'['+row.source_ip+']':row.source_ip)+':'+row.source_port:row.source_ip;
-Object.assign(auditNames,{'geoip.settings.update':'更新地理位置设置','geoip.database.update':'更新 GeoIP 数据库'});
+Object.assign(auditNames,{'geoip.settings.update':'更新地理位置设置','geoip.database.update':'更新 GeoIP 数据库','alert.acknowledge.batch':'批量确认告警'});
 const statusName: Row = {online: '在线', offline: '离线', pending: '待接入', revoked: '已撤销'};
 const time = (s: any) => s ? new Date(s).toLocaleString('zh-CN', {hour12: false}) : '尚无记录';
 let generation = 0;
@@ -88,19 +92,20 @@ async function api(path: string, method = 'GET', body?: any, signal?: AbortSigna
   return data.data;
 }
 async function perform(fn: () => Promise<void>) {busy.value = true; try {await fn();} catch(e) {ElMessage.error((e as Error).message);} finally {busy.value = false;}}
-async function signIn() {loginError.value='';await perform(async () => {try{user.value = await api('/auth/login', 'POST', {...login,captcha:captchaAnswer.value});login.password='';await load();startLive();}catch(e){loginError.value=(e as Error).message;throw e;}finally{captchaAnswer.value={};captchaWidget.value?.reset();if(!user.value)await loadProtection();}});}
+async function signIn() {loginError.value='';await perform(async () => {try{user.value = await api('/auth/login', 'POST', {...login,captcha:captchaAnswer.value});login.password='';restoreRoute();await nextTick();await load();startLive();}catch(e){loginError.value=(e as Error).message;throw e;}finally{captchaAnswer.value={};captchaWidget.value?.reset();if(!user.value)await loadProtection();}});}
 async function finishSetup(credentials: {username:string;password:string}) {
   setupRequired.value = false; login.username = credentials.username;
   await perform(async () => {
     try {
       user.value = await api('/auth/login', 'POST', credentials);
-      active.value = 'servers'; await load(); startLive();
+      await navigate('servers'); startLive();
       ElMessage.success('主控已就绪，添加第一台服务器开始采集');
     } finally { credentials.password = ''; }
   });
 }
 async function signOut() {controller?.abort(); generation++; await perform(async () => {await api('/auth/logout','POST');clearSession();});}
 async function load() {
+  if(user.value)writeRoute();
   controller?.abort(); controller = new AbortController(); const signal = controller.signal;
   const request = ++generation; error.value = ''; loading = true;
   try {
@@ -116,7 +121,37 @@ async function load() {
   } catch (e) {if (request === generation && !signal.aborted) error.value = (e as Error).message;}
   finally {if (request === generation) loading = false;}
 }
-function navigate(id: string) {active.value = id;page.value = 1;rows.value = [];void load();}
+function writeRoute(mode:'push'|'replace'='replace') {
+  const params=new URLSearchParams();
+  if(active.value==='dashboard') {if(trendRange.value!=='24h')params.set('range',trendRange.value);}
+  else if(page.value>1)params.set('page',String(page.value));
+  if(active.value==='servers'&&search.value)params.set('q',search.value);
+  if(active.value==='events')for(const [key,value] of Object.entries({username:username.value,source_ip:ip.value,server_id:serverID.value,outcome:outcome.value}))if(value)params.set(key,value);
+  const query=params.toString(),path=pathForPage(active.value)+(query?'?'+query:'');
+  if(path!==location.pathname+location.search)window.history[mode==='push'?'pushState':'replaceState'](null,'',path);
+}
+function restoreRoute() {
+  const id=pageFromPath(location.pathname),params=new URLSearchParams(location.search);
+  active.value=!user.value||nav.value.some(item=>item.id===id)?id:'dashboard';
+  const number=Number(params.get('page')||1);
+  page.value=Number.isSafeInteger(number)&&number>0?number:1;
+  search.value=active.value==='servers'?params.get('q')||'':'';
+  username.value=active.value==='events'?params.get('username')||'':'';
+  ip.value=active.value==='events'?params.get('source_ip')||'':'';
+  serverID.value=active.value==='events'?params.get('server_id')||'':'';
+  outcome.value=active.value==='events'?params.get('outcome')||'':'';
+  const range=params.get('range')||'24h';
+  trendRange.value=active.value==='dashboard'&&['24h','7d','14d','30d'].includes(range)?range:'24h';
+  rows.value=[];more.value=false;detail.value=null;
+  if(user.value)writeRoute();
+}
+async function navigate(id:string) {
+  controller?.abort();generation++;
+  active.value=nav.value.some(item=>item.id===id)?id:'dashboard';page.value=1;rows.value=[];more.value=false;detail.value=null;
+  writeRoute('push');await nextTick();if(user.value)await load();
+}
+async function onRouteChange(){controller?.abort();generation++;restoreRoute();await nextTick();if(user.value)await load();}
+window.addEventListener('popstate',onRouteChange);
 async function refreshPage() {if(refreshing.value)return;refreshing.value=true;try{await load();}finally{refreshing.value=false;}}
 function filter() {page.value = 1;void load();}
 function editServer(row?: Row) {Object.assign(server, {id: row?.id || '',name: row?.name || '',group_name: row?.group_name || '',notes: row?.notes || ''});serverDialog.value = true;}
@@ -128,6 +163,7 @@ async function revoke(row: Row) {try {await ElMessageBox.confirm(`撤销 ${row.n
 async function saveUser() {await perform(async () => {await api('/users','POST',newUser);userDialog.value = false;newUser.password = '';await load();});}
 async function copyCommand() {try {if(!updating.value && commandInterval.value!==initialCommandInterval.value){const result=await api('/servers/'+commandServerID.value+'/enrollment','POST',{report_interval_seconds:commandInterval.value});commands.value=result.commands;expires.value=result.expires_at;initialCommandInterval.value=commandInterval.value;}await copyText(command.value);ElMessage.success('命令已复制');}catch(e){ElMessage.error((e as Error).message||'请手动复制命令');}}
 function history(row: Row) {serverID.value = row.id;navigate('events');}
+function showAllEvents(){username.value='';ip.value='';serverID.value='';outcome.value='';void navigate('events');}
 
 let socket: WebSocket | null = null;
 let reconnect: ReturnType<typeof setTimeout> | undefined;
@@ -155,8 +191,8 @@ function onVisible(){if(!document.hidden && user.value)scheduleRefresh();}
 document.addEventListener('visibilitychange',onVisible);
 
 let timer: ReturnType<typeof setInterval>;
-onMounted(async () => {try {setupRequired.value = (await api('/setup/status')).required;if(!setupRequired.value){user.value = await api('/auth/me');await load();startLive();}}catch{}finally{if(!user.value&&!setupRequired.value)await loadProtection();booting.value = false;}timer = setInterval(() => {if (user.value && !document.hidden && !busy.value && !loading && ['dashboard','servers','events','alerts','notifications'].includes(active.value)) void load();},30000);});
-onUnmounted(() => {stopLive();clearInterval(timer); controller?.abort();document.removeEventListener('visibilitychange',onVisible);});
+onMounted(async () => {try {setupRequired.value = (await api('/setup/status')).required;if(!setupRequired.value){user.value = await api('/auth/me');restoreRoute();await load();startLive();}}catch{}finally{if(!user.value&&!setupRequired.value)await loadProtection();booting.value = false;}timer = setInterval(() => {if (user.value && !document.hidden && !busy.value && !loading && ['dashboard','servers','events','alerts','notifications'].includes(active.value)) void load();},30000);});
+onUnmounted(() => {stopLive();clearInterval(timer); controller?.abort();document.removeEventListener('visibilitychange',onVisible);window.removeEventListener('popstate',onRouteChange);});
 </script>
 
 <template>
@@ -172,7 +208,7 @@ onUnmounted(() => {stopLive();clearInterval(timer); controller?.abort();document
     <div class="main"><header><div class="breadcrumb"><span class="breadcrumb-root">控制台 /</span>{{ title }}</div><div class="account"><b>{{ user.role==='admin'?'Admin':user.username }}</b><span class="sync-status" :class="{connected:liveState==='实时连接'}"><i/>{{liveState}}</span><el-button class="header-tool refresh-tool" :class="{'is-refreshing':refreshing}" :icon="Refresh" :disabled="refreshing" title="刷新当前页面" aria-label="刷新当前页面" @click="refreshPage"/><el-button class="header-tool theme-toggle" :icon="isDark?Sunny:Moon" :title="isDark?'切换浅色模式':'切换深色模式'" :aria-label="isDark?'切换浅色模式':'切换深色模式'" @click="toggleTheme"/><el-button class="header-tool settings-tool" :icon="Setting" title="修改密码" aria-label="修改密码" @click="passwordDialog=true"/><el-button class="header-tool logout-tool" title="退出登录" aria-label="退出登录" :disabled="busy" @click="signOut"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h4"/><path class="logout-arrow" d="M13 8l4 4-4 4m-5-4h9"/></svg></el-button></div></header>
     <section class="content"><div v-if="active!=='dashboard'" class="page-title"><h1>{{ title }}</h1><div class="actions"><el-button v-if="active === 'servers' && writer" type="primary" :icon="Plus" @click="editServer()">添加服务器</el-button><el-button v-if="active === 'users' && admin" type="primary" :icon="Plus" @click="userDialog = true">创建用户</el-button></div></div>
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="notice" />
-    <Overview v-if="active === 'dashboard'" :summary="summary" :overview="overview" :admin="admin" :range="trendRange" @range="(value:string)=>{trendRange=value;void load()}" @navigate="navigate"/>
+    <Overview :api="api" v-if="active === 'dashboard'" :summary="summary" :overview="overview" :admin="admin" :range="trendRange" @range="(value:string)=>{trendRange=value;void load()}" @navigate="navigate" @show-event="event=>detail=event" @all-events="showAllEvents"/>
     <LoginProtection v-else-if="active==='login-protection'" ref="protectionPage" :api="api"/>
     <GeoIPSettings v-else-if="active==='geoip'" ref="geoIPPage" :api="api"/>
     <Allowlist v-else-if="active==='ip-allowlist'" :rows="rows" :api="api" @refresh="load"/>
@@ -180,7 +216,15 @@ onUnmounted(() => {stopLive();clearInterval(timer); controller?.abort();document
     <div v-else class="panel"><div v-if="active==='servers'" class="panel-heading server-toolbar"><div class="filters"><el-input v-model="search" placeholder="搜索名称、主机名或分组" :prefix-icon="Search" clearable @keyup.enter="filter" @clear="filter"/><el-button @click="filter">查询</el-button></div></div>
     <div v-if="active === 'events'" class="event-filters"><el-input v-model="username" placeholder="用户名" clearable/><el-input v-model="ip" placeholder="来源 IP" clearable/><el-input v-model="serverID" placeholder="服务器 ID" clearable/><el-select v-model="outcome" placeholder="全部结果" clearable><el-option label="成功" value="success"/><el-option label="失败" value="failure"/></el-select><el-button type="primary" @click="filter">筛选</el-button></div>
     <ServerList v-if="active==='servers'" :rows="rows" :admin="admin" :writer="writer" :busy="busy" @history="history" @edit="editServer" @enroll="enrollment" @update="updateAgent" @revoke="revoke" @changed="load"/>
-    <el-table v-else-if="active === 'events' || active === 'dashboard'" :data="rows" empty-text="暂无 SSH 事件，请检查 Agent 采集状态并发起一次 SSH 登录。" @row-click="(row: Row) => detail = row"><el-table-column label="发生时间" min-width="180"><template #default="{row}">{{ time(row.occurred_at) }}</template></el-table-column><el-table-column prop="server_name" label="服务器" min-width="150"/><el-table-column prop="username" label="用户" min-width="100"/><el-table-column label="来源 IP / 端口" min-width="210"><template #default="{row}">{{sourceAddress(row)}}</template></el-table-column><el-table-column label="认证方式" min-width="110"><template #default="{row}">{{({password:'密码',publickey:'公钥','keyboard-interactive':'交互认证'} as Row)[row.auth_method]||row.auth_method||'—'}}</template></el-table-column><el-table-column label="结果" width="100"><template #default="{row}"><span :class="['status', row.outcome === 'success' ? 'online' : 'failed']">{{ row.outcome === 'success' ? '成功' : '失败' }}</span></template></el-table-column></el-table>
+    <el-table v-else-if="active === 'events' || active === 'dashboard'" :data="rows" empty-text="暂无 SSH 事件，请检查 Agent 采集状态并发起一次 SSH 登录。" @row-click="(row: Row) => detail = row">
+      <el-table-column label="发生时间" min-width="180"><template #default="{row}">{{ time(row.occurred_at) }}</template></el-table-column>
+      <el-table-column prop="server_name" label="服务器" min-width="150"/>
+      <el-table-column prop="username" label="用户" min-width="100"/>
+      <el-table-column label="国家 / 地区" min-width="150"><template #default="{row}"><span class="event-country"><CountryFlag :code="row.country_code" :name="countryName(row)"/>{{countryName(row)}}</span></template></el-table-column>
+      <el-table-column label="来源 IP / 端口" min-width="210"><template #default="{row}">{{sourceAddress(row)}}</template></el-table-column>
+      <el-table-column label="认证方式" min-width="110"><template #default="{row}">{{({password:'密码',publickey:'公钥','keyboard-interactive':'交互认证'} as Row)[row.auth_method]||row.auth_method||'—'}}</template></el-table-column>
+      <el-table-column label="结果" width="100"><template #default="{row}"><span :class="['status', row.outcome === 'success' ? 'online' : 'failed']">{{ row.outcome === 'success' ? '成功' : '失败' }}</span></template></el-table-column>
+    </el-table>
     <el-table v-else-if="active === 'audit-logs'" :data="rows" empty-text="暂无审计记录"><el-table-column label="时间" min-width="185"><template #default="{row}">{{ time(row.created_at) }}</template></el-table-column><el-table-column label="操作人" min-width="120"><template #default="{row}">{{ row.actor || 'Agent / 系统' }}</template></el-table-column><el-table-column label="动作" min-width="150"><template #default="{row}">{{auditNames[row.action]||'其他操作'}}</template></el-table-column><el-table-column label="来源 IP" min-width="150"><template #default="{row}">{{row.source_ip||'—'}}</template></el-table-column><el-table-column label="浏览器 / UA" min-width="210" show-overflow-tooltip><template #default="{row}">{{row.user_agent||'—'}}</template></el-table-column><el-table-column prop="target" label="目标 ID" min-width="300"/></el-table>
     <el-table v-else-if="active === 'users'" :data="rows" empty-text="暂无用户"><el-table-column prop="username" label="用户名"/><el-table-column label="角色"><template #default="{row}">{{roleNames[row.role]||row.role}}</template></el-table-column><el-table-column label="创建时间"><template #default="{row}">{{ time(row.created_at) }}</template></el-table-column></el-table>
     <div v-if="active !== 'dashboard'" class="pagination"><span>第 {{ page }} 页 · 每页 20 条</span><el-button :disabled="page <= 1" @click="page--;load()">上一页</el-button><el-button :disabled="!more" @click="page++;load()">下一页</el-button></div></div>

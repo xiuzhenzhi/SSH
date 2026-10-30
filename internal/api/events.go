@@ -34,7 +34,19 @@ func (a *App) events(c *gin.Context) {
 			args = append(args, t.UTC())
 		}
 	}
-	a.list(c, q+` ORDER BY e.occurred_at DESC,e.id DESC LIMIT ? OFFSET ?`, args...)
+	size, offset := page(c)
+	args = append(args, size+1, offset)
+	rows, err := a.db.List(c.Request.Context(), q+` ORDER BY e.occurred_at DESC,e.id DESC LIMIT ? OFFSET ?`, args...)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	more := len(rows) > size
+	if more {
+		rows = rows[:size]
+	}
+	a.decorateEventCountries(c.Request.Context(), rows)
+	ok(c, gin.H{"items": rows, "has_more": more})
 }
 func (a *App) event(c *gin.Context) {
 	rows, e := a.db.List(c.Request.Context(), `SELECT e.*,s.name AS server_name FROM ssh_events e JOIN servers s ON e.server_id=s.id WHERE e.id=?`, c.Param("id"))
@@ -46,5 +58,6 @@ func (a *App) event(c *gin.Context) {
 		bad(c, 404, "事件不存在")
 		return
 	}
+	a.decorateEventCountries(c.Request.Context(), rows)
 	ok(c, rows[0])
 }

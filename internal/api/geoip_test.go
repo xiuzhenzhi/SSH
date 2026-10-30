@@ -11,6 +11,7 @@ import (
 	"sshguard/internal/storage"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -82,6 +83,46 @@ func TestGeoIPWaiterHonorsCancellation(t *testing.T) {
 	once.Do(func() { close(release) })
 	if err := <-ownerDone; err != nil {
 		t.Fatal("waiter cancelled the owner's lookup", err)
+	}
+}
+
+func TestGeoIPCancelledOwnerDoesNotCancelSharedLookup(t *testing.T) {
+	started, release := make(chan struct{}), make(chan struct{})
+	var requests atomic.Int64
+	var once sync.Once
+	defer once.Do(func() { close(release) })
+	app := &App{geo: geoIPState{client: &http.Client{Transport: captchaRoundTrip(func(r *http.Request) (*http.Response, error) {
+		if requests.Add(1) == 1 {
+			close(started)
+		}
+		select {
+		case <-release:
+		case <-r.Context().Done():
+			return nil, r.Context().Err()
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"country_code":"NL"}`))}, nil
+	})}}}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ownerDone := make(chan error, 1)
+	go func() {
+		_, err := app.lookupGeoIP(ctx, geoip.Config{Provider: "geojs"}, "8.8.8.8", "", true)
+		ownerDone <- err
+	}()
+	<-started
+	cancel()
+	select {
+	case err := <-ownerDone:
+		if err != context.Canceled {
+			t.Fatal("cancelled owner did not return promptly", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("owner request ignored cancellation")
+	}
+	once.Do(func() { close(release) })
+	location, err := app.lookupGeoIP(context.Background(), geoip.Config{Provider: "geojs"}, "8.8.8.8", "", true)
+	if err != nil || location.Code != "NL" || requests.Load() != 1 {
+		t.Fatal("cancelled owner poisoned another caller or triggered a duplicate lookup", location, err, requests.Load())
 	}
 }
 

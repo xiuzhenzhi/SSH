@@ -12,7 +12,7 @@ cd SSH
 sh scripts/quick-start.sh
 ```
 
-最后一条命令下载固定版本 `v0.3.9` 的对应架构发行包，校验 SHA256，再调用安装向导。下载使用当前用户的 GitHub 登录，只有安装时调用 sudo。不要把 GitHub Token 放进命令行或发给 Agent。
+最后一条命令下载固定版本 `v0.3.10` 的对应架构发行包，校验 SHA256，再调用安装向导。下载使用当前用户的 GitHub 登录，只有安装时调用 sudo。不要把 GitHub Token 放进命令行或发给 Agent。
 
 运行安装脚本后进入编号菜单，选择「1 安装 / 更新主控」，输入端口（回车使用 8080）即可；也可使用 `sh scripts/quick-start.sh --port 8081`。已有 Nginx / OpenResty 不影响此流程。首次交互安装显示初始化链接，打开后创建管理员，随后自动登录并进入服务器管理。默认使用 SQLite，无需额外数据库服务；仅在需要时展开「存储设置」选择 MySQL / PostgreSQL，并预先创建专用空数据库。初始化口令通过链接片段传递，不进入 HTTP 访问日志；同一标签页刷新时保留到初始化完成，完成后清除。
 
@@ -127,7 +127,7 @@ API 强制连接字符集 utf8mb4、时间解析和会话 UTC，并禁用多 SQL
 先备份数据库和 `/etc/sshguard`，阅读目标版本迁移说明，再下载新版本：
 
 ```sh
-SSHGUARD_VERSION=v0.3.9 sh scripts/quick-start.sh --update
+SSHGUARD_VERSION=v0.3.10 sh scripts/quick-start.sh --update
 # 或使用已解压的新包：
 sudo sh sshguard-linux-amd64/deploy.sh --update
 ```

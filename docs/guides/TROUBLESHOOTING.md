@@ -4,7 +4,7 @@
 
 | 问题 | 处理 |
 |---|---|
-| 旧菜单没有更新选项 | [拉取最新更新脚本](QUICKSTART.md#拉取最新更新脚本)，之后使用 `/opt/sshguard/deploy.sh` |
+| 旧菜单没有更新选项 | [拉取最新更新脚本](QUICKSTART.md#更新中央平台)，之后使用 `/opt/sshguard/deploy.sh` |
 | GitHub 下载失败或 404 | 检查网络和版本；私有仓库先执行 `gh auth login` |
 | 登录或保存返回 403 | 检查 `PUBLIC_URL` 是否与浏览器的协议、主机、端口一致 |
 | 密码错误 | 使用初始化时创建的账号；修改 `ADMIN_PASSWORD` 不会重置现有密码 |
@@ -15,7 +15,7 @@
 | Nginx 502 | 检查 API 服务及 `proxy_pass` 端口 |
 | 反代初始化超时 | 将代理、CDN 或负载均衡超时设为至少 90 秒 |
 | 自定义 HTTPS 端口不能登录 | 在 `PUBLIC_URL` 中填写完整外部端口，见 [端口配置](../deployment/REVERSE-PROXY.md#自定义端口提示) |
-| 重新注册或主控地址变更后本地状态不匹配 | 新版 Agent 会自动清空旧状态并按新凭证采集；旧版需先更新 Agent，再按 [地址迁移步骤](AGENTS.md#http-地址迁移到-https) 重新接入 |
+| 重新注册或主控地址变更后本地状态不匹配 | Agent 会自动清空旧状态并按新凭证采集，按 [地址迁移步骤](AGENTS.md#http-地址迁移到-https) 重新接入 |
 | 提示 cannot initialize durable Agent state | 查看 Agent 日志或控制台采集异常详情中的具体原因，检查数据库占用、文件权限、磁盘空间或文件损坏 |
 | 独立模式网页 404 | 检查程序旁的 `web/index.html` 或 `WEB_DIR` |
 | MySQL 时间字段读取失败 | 在 DSN 中加入 `parseTime=true&loc=UTC` |

@@ -21,7 +21,7 @@ sudo sh /opt/sshguard/sshguard.sh --restart
 sh /opt/sshguard/sshguard.sh --update
 ```
 
-旧安装使用 [拉取最新更新脚本](../guides/QUICKSTART.md#拉取最新更新脚本)。Compose 按 [Compose 更新](INSTALL-COMPOSE.md#更新) 操作。
+旧安装使用 [拉取最新更新脚本](../guides/QUICKSTART.md#更新中央平台)。Compose 按 [Compose 更新](INSTALL-COMPOSE.md#更新) 操作。
 
 更新前备份，更新后检查登录、服务器状态和事件。程序启动失败会回退旧程序；数据库恢复需使用备份。
 

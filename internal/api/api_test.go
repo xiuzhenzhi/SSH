@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"sshguard/internal/storage"
-	"sshguard/internal/storage/migrations"
 	"strings"
 	"testing"
 	"time"
@@ -63,23 +62,6 @@ func TestIntegration(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer db.Close()
-	if driver == "mysql" && os.Getenv("SSHGUARD_TEST_SCHEMA") == "legacy" {
-		// Reproduce old deployments whose foreign-key UUID columns use utf8mb4_bin.
-		for _, name := range []string{"001_init.sql", "002_events.sql"} {
-			data, e := migrations.Files.ReadFile("mysql/" + name)
-			if e != nil {
-				t.Fatal(e)
-			}
-			for _, query := range strings.Split(strings.ReplaceAll(string(data), "utf8mb4_unicode_ci", "utf8mb4_bin"), ";") {
-				if strings.TrimSpace(query) == "" {
-					continue
-				}
-				if _, e = db.Exec(ctx, query); e != nil {
-					t.Fatal("legacy schema fixture", e)
-				}
-			}
-		}
-	}
 	if e = storage.Migrate(ctx, db); e != nil {
 		t.Fatal(e)
 	}
@@ -98,12 +80,7 @@ func TestIntegration(t *testing.T) {
 			t.Fatal("MySQL session settings", zone, charset, e)
 		}
 		t.Log("MySQL tested:", version)
-		if os.Getenv("SSHGUARD_TEST_SCHEMA") == "legacy" {
-			var collation string
-			if e = db.Row(ctx, `SELECT COLLATION_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='servers' AND COLUMN_NAME='id'`).Scan(&collation); e != nil || collation != "utf8mb4_bin" {
-				t.Fatal("legacy fixture collation not preserved", collation, e)
-			}
-		}
+
 	}
 	cfg := Config{Driver: driver, PublicURL: "https://guard.example.com", AdminUsername: "admin", AdminPassword: "integration-password-2026", SecureCookie: true, EncryptionKey: strings.Repeat("ab", 32)}
 	if e = Bootstrap(ctx, db, cfg); e != nil {

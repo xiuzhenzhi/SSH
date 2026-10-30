@@ -4,8 +4,7 @@ $ErrorActionPreference = 'Stop'
 function Test-FixedUpdaterTask($Task, [string]$Shell, [string]$Runner) {
     if (-not $Task) { return $true }
     $allowedArguments = @(
-        ('-NoProfile -NonInteractive -File "{0}"' -f $Runner),
-        ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"' -f $Runner)
+        ('-NoProfile -NonInteractive -File "{0}"' -f $Runner)
     )
     return $Task.Actions.Count -eq 1 -and $Task.Actions[0].Execute -eq $Shell -and $allowedArguments -contains $Task.Actions[0].Arguments
 }

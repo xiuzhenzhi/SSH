@@ -49,7 +49,7 @@ curl -fsS https://guard.example.com/api/v1/health
 
 ## Cloudflare 与 CSP
 
-v0.3.13 起，控制台为每次 HTML 响应生成新的 CSP nonce，兼容 Cloudflare JavaScript Detections；仅允许统计脚本的 beacon 路径及 RUM 上报地址。应用入口带有 `data-cfasync="false"`，避免被 Rocket Loader 改写。参见 [Cloudflare nonce 支持](https://developers.cloudflare.com/cloudflare-challenges/challenge-types/javascript-detections/#if-you-have-a-content-security-policy-csp) 和 [Rocket Loader 排除规则](https://developers.cloudflare.com/speed/optimization/content/rocket-loader/ignore-javascripts/)。
+控制台为每次 HTML 响应生成新的 CSP nonce，兼容 Cloudflare JavaScript Detections；仅允许统计脚本的 beacon 路径及 RUM 上报地址。应用入口带有 `data-cfasync="false"`，避免被 Rocket Loader 改写。参见 [Cloudflare nonce 支持](https://developers.cloudflare.com/cloudflare-challenges/challenge-types/javascript-detections/#if-you-have-a-content-security-policy-csp) 和 [Rocket Loader 排除规则](https://developers.cloudflare.com/speed/optimization/content/rocket-loader/ignore-javascripts/)。
 
 使用自有 Nginx / 宝塔配置时，让主控返回 CSP，移除旧的固定 CSP 响应头；多个 CSP 会同时生效，旧规则仍会拦截新 nonce。随包的原生与 Docker 代理模板已分别处理。Docker 模板仅对 HTML 禁用缓存，保留静态资源的缓存规则。
 

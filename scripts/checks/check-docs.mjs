@@ -10,5 +10,10 @@ for (const file of files) {
     if (!existsSync(resolve(dirname(file),target))) {console.error(`${file}: missing ${target}`);broken++;}
   }
 }
+// Homepage YAML links bypass Markdown link parsing; validate their canonical pages too.
+for (const match of readFileSync('docs/index.md','utf8').matchAll(/^\s+link: (\/[^\s#]+)(?:#[^\s]+)?$/gm)) {
+ const path=match[1].slice(1)+'.md';
+ if(!existsSync(resolve(path))) {console.error('docs/index.md: missing '+path);broken++;}
+}
 if(broken)process.exit(1);
 console.log(`Relative links verified in ${files.length} Markdown documents.`);

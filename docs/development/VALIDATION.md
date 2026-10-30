@@ -4,11 +4,8 @@
 
 | 版本 | 结果 |
 |---|---|
+| [v0.3.15](https://github.com/xiuzhenzhi/SSH/actions/runs/41094867830) | CI、文档、Windows 服务、数据库矩阵、五组原生安装升级全部通过；23 个公开产物、22 个校验摘要匹配 |
 | [v0.3.14](https://github.com/xiuzhenzhi/SSH/actions/runs/41089566576) | 本地 Go 测试、vet、28 项脚本与请求缓存测试、前端与文档构建通过；浏览器覆盖导航缓存、超时重试、实时刷新保留未保存设置和数据库维护。完整发布工作流通过 Linux / Windows、竞态检测、SQLite / PostgreSQL / MySQL 5.6 与 8.4、Docker 构建和五组原生安装更新恢复测试；22 个 Release 文件已发布，校验清单中 21 个文件摘要均匹配 |
-| v0.3.12 | 本地 Go 测试、vet、前端与文档构建、24 项安装更新及版本脚本测试通过；覆盖手机抽屉导航、连续登录提交、中文组件提示、会话失效清理及安装间隔自动更新；完整发布矩阵由「构建与发布」工作流执行 |
-| [v0.3.11](https://github.com/xiuzhenzhi/SSH/actions/runs/41036558635) | 跨平台、数据库、前端、打包与五组原生安装升级通过；覆盖菜单安装、下载更新、默认更新及配置保留 |
-| v0.3.10 | 本地 Go 测试、vet、前端构建、数据库集成、批量告警与国家统计回归通过 |
-| [v0.3.9](https://github.com/xiuzhenzhi/SSH/actions/runs/40922078881) | 发布成功，覆盖 Linux / Windows、SQLite / PostgreSQL / MySQL 和 Agent 更新恢复 |
 
 ## 文档站
 

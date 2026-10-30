@@ -86,7 +86,7 @@ node scripts/build/package-release.mjs
 - `scripts/build/`：构建与打包；`release/`：版本发布；`checks/`：静态检查；`tests/`：回归与安装测试；`dev/`：开发环境工具。
 - `docs/`：按 guides、deployment、development 分类，仅用于源码开发与在线文档站，不随运行包安装。
 
-主控唯一管理入口为根目录 `sshguard.sh`，包含安装、下载更新、服务管理与卸载。`--deploy` 用于部署已校验的本地发行包；普通 `--update` 下载最新正式版。`scripts/` 下的旧主控脚本仅兼容历史命令，不再独立维护实现。Agent 安装脚本继续按 Linux / Windows 分开，因为执行环境及服务管理不同。
+主控唯一管理入口为根目录 `sshguard.sh`，包含安装、下载更新、服务管理与卸载。`--deploy` 用于部署已校验的本地发行包；普通 `--update` 下载最新正式版。`scripts/` 下的主控脚本是 v0.3.14+ 发行包的管理入口，统一转交 `sshguard.sh`。Agent 安装脚本继续按 Linux / Windows 分开，因为执行环境及服务管理不同。
 
 前端启动先确认初始化与会话状态，随后显示页面；总览数据及验证码配置不阻塞全屏启动。读取请求有 10 秒超时，写入请求有 30 秒超时，保留页面切换取消能力，连接失败可重试。
 

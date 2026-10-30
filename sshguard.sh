@@ -50,7 +50,7 @@ if [ -L /opt/sshguard ]; then
     target=$(readlink -f /opt/sshguard) || die '无法解析程序路径。'
     case "$target" in /opt/sshguard-releases/*) ;; *) die '程序链接指向非标准路径，停止自动卸载。' ;; esac
 elif [ -d /opt/sshguard ]; then
-    target=/opt/sshguard
+    die '不支持旧的目录式安装；仅支持 v0.3.14 及之后的标准安装。'
 fi
 if [ -n "$target" ]; then
     [ ! -L "$target/sshguard-api" ] || die '程序文件为符号链接，请人工检查。'
@@ -137,7 +137,7 @@ case "${1:-}" in
         exit 0 ;;
 esac
 bundle=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
-# Preserve the legacy installed deploy.sh --update behavior.
+# Keep the deployed v0.3.14+ management entry updating from the release channel.
 for arg in "$@"; do
     if [ "$arg" = --update ] && [ -L /opt/sshguard ] &&
         [ "$bundle" = "$(CDPATH='' cd /opt/sshguard && pwd -P)" ]; then
@@ -181,7 +181,7 @@ prompt() { printf '%s' "$1" >&2; IFS= read -r answer; }
 for path in /opt/sshguard-releases /etc/sshguard /etc/sshguard/api.env /etc/sshguard/deploy-managed /etc/sshguard/proxy-mode /etc/sshguard/nginx-existing.conf; do
     [ ! -L "$path" ] || die "Refusing symlink: $path"
 done
-if [ -e /opt/sshguard ] && [ ! -L /opt/sshguard ]; then die 'Existing /opt/sshguard is a directory. Follow the legacy migration instructions before using this updater.'; fi
+if [ -e /opt/sshguard ] && [ ! -L /opt/sshguard ]; then die 'Existing /opt/sshguard is a directory. Only standard v0.3.14+ installations are supported.'; fi
 if [ "$mode" = update ]; then
     [ -L /opt/sshguard ] && [ -f /etc/sshguard/deploy-managed ] || die 'No wizard-managed installation found.'
 elif [ -L /opt/sshguard ]; then die '主控已安装。请在菜单选择「9 更新主控」，或使用 --update-latest；安装已下载的发行包使用 --update。'; fi

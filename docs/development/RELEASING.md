@@ -49,7 +49,7 @@ node scripts/build/package-release.mjs
 | `sshguard-agent-*` | Linux / Windows、amd64 / arm64 Agent |
 | `install-agent.*` / `uninstall-agent.*` | Agent 安装与卸载脚本 |
 | `sshguard.sh` | 统一安装、更新与服务管理入口 |
-| `deploy.sh` / `quick-start.sh` / `update.sh` / `uninstall.sh` | 旧命令兼容入口，转交统一脚本 |
+| `deploy.sh` / `quick-start.sh` / `update.sh` / `uninstall.sh` | v0.3.14+ 发行包管理入口，转交统一脚本 |
 | `.sha256` / `SHA256SUMS` | 校验清单 |
 
 完整发布流程包含跨平台测试、数据库测试和五组原生安装升级。验证结果见 [验证记录](VALIDATION.md)。

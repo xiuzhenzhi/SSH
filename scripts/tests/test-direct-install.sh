@@ -121,11 +121,8 @@ test ! -e /opt/sshguard
 test -s /var/lib/sshguard-api/setup.json
 test -s /var/lib/sshguard-api/sshguard.db
 test -s /etc/sshguard/api.env
-# Legacy directory installation: standalone uninstaller works without upgrading.
+# Obsolete directory installations must be rejected without deleting their files.
 mkdir /opt/sshguard
-printf 'legacy binary\n' > /opt/sshguard/sshguard-api
-printf 'keep me\n' > /opt/sshguard/legacy-data
-sh "$bundle/uninstall.sh" --yes
-test ! -e /opt/sshguard/sshguard-api
-test -s /opt/sshguard/legacy-data
-sh "$bundle/uninstall.sh" --yes
+printf 'unsupported binary\n' > /opt/sshguard/sshguard-api
+if sh "$bundle/uninstall.sh" --yes; then echo 'Obsolete installation accepted' >&2; exit 1; fi
+test -s /opt/sshguard/sshguard-api

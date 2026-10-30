@@ -29,14 +29,15 @@ foreach ($scriptName in @('install-agent.ps1','uninstall-agent.ps1')) {
     $testShell='C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
     $testRunner='C:\Program Files\SSHGuardAgent\poll-update.ps1'
     foreach ($testArguments in @(
-        ('-NoProfile -NonInteractive -File "{0}"' -f $testRunner),
-        ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"' -f $testRunner)
+        ('-NoProfile -NonInteractive -File "{0}"' -f $testRunner)
     )) {
         $testTask=[PSCustomObject]@{Actions=@([PSCustomObject]@{Execute=$testShell;Arguments=$testArguments})}
-        if(-not (Test-FixedUpdaterTask $testTask $testShell $testRunner)){throw 'Owned legacy/current updater was rejected'}
+        if(-not (Test-FixedUpdaterTask $testTask $testShell $testRunner)){throw 'Owned current updater was rejected'}
         if(Test-FixedUpdaterTask $testTask $testShell 'C:\unrelated\poll-update.ps1'){throw 'Unrelated updater path was accepted'}
+        $testTask.Actions[0].Arguments = ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"' -f $testRunner)
+        if(Test-FixedUpdaterTask $testTask $testShell $testRunner){throw 'Obsolete bypass task accepted'}
         $testTask.Actions[0].Arguments+=' -Command evil'
         if(Test-FixedUpdaterTask $testTask $testShell $testRunner){throw 'Unexpected updater command was accepted'}
     }
 }
-Write-Output 'Windows installer checks passed: protected ACLs, current/legacy updater ownership and command tampering rejection.'
+Write-Output 'Windows installer checks passed: protected ACLs, current updater ownership and command tampering rejection.'

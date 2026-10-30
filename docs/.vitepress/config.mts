@@ -1,41 +1,10 @@
 import { defineConfig } from 'vitepress';
-import { mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
 import { tokenize } from './search.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 
-const legacyPages: Record<string, string> = {
-  'docs/QUICKSTART': 'docs/guides/QUICKSTART',
-  'docs/INSTALLATION-FLOW': 'docs/guides/INSTALLATION-FLOW',
-  'docs/AGENTS': 'docs/guides/AGENTS',
-  'docs/TROUBLESHOOTING': 'docs/guides/TROUBLESHOOTING',
-  'docs/ALERTING': 'docs/guides/ALERTING',
-  'docs/GEOIP': 'docs/guides/GEOIP',
-  'docs/LOGIN-SECURITY': 'docs/guides/LOGIN-SECURITY',
-  'docs/INSTALL-NATIVE': 'docs/deployment/INSTALL-NATIVE',
-  'docs/INSTALL-COMPOSE': 'docs/deployment/INSTALL-COMPOSE',
-  'docs/REVERSE-PROXY': 'docs/deployment/REVERSE-PROXY',
-  'docs/OPERATIONS': 'docs/deployment/OPERATIONS',
-  'docs/DEVELOPMENT': 'docs/development/DEVELOPMENT',
-  'docs/API': 'docs/development/API',
-  'docs/TRANSPORT': 'docs/development/TRANSPORT',
-  'docs/DOCS-SITE': 'docs/development/DOCS-SITE',
-  'docs/RELEASING': 'docs/development/RELEASING',
-  'docs/VALIDATION': 'docs/development/VALIDATION',
-  'docs/ROADMAP': 'docs/development/ROADMAP'
-};
-
 export default defineConfig({
-  async buildEnd(site) {
-    for (const [oldPath, newPath] of Object.entries(legacyPages)) {
-      const file = join(site.outDir, oldPath + ".html");
-      mkdirSync(dirname(file), {recursive: true});
-      const target = site.site.base + newPath + ".html";
-      writeFileSync(file, `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=${target}"><title>文档已移动</title><a href="${target}">打开文档</a></html>`);
-    }
-  },
   lang: 'zh-CN',
   title: 'SSHGuard',
   description: 'SSH 登录审计、安全告警与服务器管理。SSHGuard 官方使用文档。',

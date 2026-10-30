@@ -29,7 +29,7 @@ type App struct {
 	geo            geoIPState
 }
 
-var Version = "0.3.12"
+var Version = "0.3.13"
 
 func New(db *storage.DB, cfg Config) *gin.Engine {
 	return NewApp(db, cfg).Router()
@@ -127,6 +127,7 @@ func (a *App) Router() *gin.Engine {
 	web.GET("/servers/:id", a.server)
 	web.POST("/servers", role("admin", "operator"), a.saveServer)
 	web.PATCH("/servers/:id", role("admin", "operator"), a.saveServer)
+	web.DELETE("/servers/:id", role("admin"), a.deleteServer)
 	web.POST("/servers/:id/enrollment", role("admin"), a.enrollment)
 	web.POST("/servers/:id/revoke", role("admin"), a.revoke)
 	web.POST("/servers/:id/update", role("admin"), a.queueAgentUpdate)

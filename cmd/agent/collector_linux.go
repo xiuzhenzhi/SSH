@@ -20,21 +20,30 @@ func fileIdentity(f *os.File) (string, error) {
 	if e != nil {
 		return "", e
 	}
+	return fileIdentityFromInfo(f, info)
+}
+func fileIdentityFromInfo(_ *os.File, info os.FileInfo) (string, error) {
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {
 		return "", errors.New("cannot identify SSH log")
 	}
 	return fmt.Sprintf("%d:%d", stat.Dev, stat.Ino), nil
 }
+func journalAvailable() bool {
+	if _, err := os.Stat("/run/systemd/journal/socket"); err != nil {
+		return false
+	}
+	_, err := exec.LookPath("journalctl")
+	return err == nil
+}
+
 func collectPlatform(ctx context.Context, s *spool, explicit string) (time.Time, error) {
 	if explicit != "" {
 		return collectFile(ctx, s, explicit)
 	}
 	// Prefer the active system journal over potentially stale files left by a removed syslog daemon.
-	if _, e := os.Stat("/run/systemd/journal/socket"); e == nil {
-		if _, e = exec.LookPath("journalctl"); e == nil {
-			return collectJournal(ctx, s)
-		}
+	if journalAvailable() {
+		return collectJournal(ctx, s)
 	}
 	var unreadable string
 	for _, path := range []string{"/var/log/sshguard/auth.log", "/var/log/auth.log", "/var/log/secure", "/var/log/messages"} {
@@ -66,22 +75,30 @@ type journalRecord struct {
 	Message   string `json:"MESSAGE"`
 }
 
-func collectJournal(ctx context.Context, s *spool) (time.Time, error) {
+func journalArguments(s *spool) (cursor, []string, error) {
 	previous, e := s.position()
 	if e != nil {
-		return time.Time{}, e
+		return cursor{}, nil, e
 	}
 	args := []string{"--no-pager", "--quiet", "--output=json", "--output-fields=__CURSOR,__REALTIME_TIMESTAMP,MESSAGE", "--identifier=sshd", "--identifier=sshd-session"}
 	if previous.Kind != "journal" {
 		previous = cursor{Kind: "journal", At: time.Now().UTC()}
 		if e = s.append(nil, previous); e != nil {
-			return time.Time{}, e
+			return cursor{}, nil, e
 		}
 	}
 	if previous.Position != "" {
 		args = append(args, "--after-cursor="+previous.Position)
 	} else {
 		args = append(args, "--since="+previous.At.Format("2006-01-02 15:04:05.000000 MST"))
+	}
+	return previous, args, nil
+}
+
+func collectJournal(ctx context.Context, s *spool) (time.Time, error) {
+	previous, args, e := journalArguments(s)
+	if e != nil {
+		return time.Time{}, e
 	}
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()

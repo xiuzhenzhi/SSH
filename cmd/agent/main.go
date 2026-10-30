@@ -16,15 +16,18 @@ import (
 	"sshguard/internal/originurl"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
-var version = "0.3.12"
+var version = "0.3.13"
 
 type Config struct {
 	Endpoint              string `json:"endpoint"`
 	AllowInsecureHTTP     bool   `json:"allow_insecure_http,omitempty"`
 	Token                 string `json:"token"`
 	ServerID              string `json:"server_id"`
+	EnrollmentID          string `json:"enrollment_id,omitempty"`
 	LogFile               string `json:"log_file,omitempty"`
 	ReportIntervalSeconds int    `json:"report_interval_seconds,omitempty"`
 }
@@ -122,6 +125,9 @@ func enrollAgent(ctx context.Context, path, endpoint, t string, allowHTTP bool) 
 	}
 	response.Data.Endpoint = endpoint
 	response.Data.AllowInsecureHTTP = allowHTTP && strings.HasPrefix(endpoint, "http://")
+	// A successful registration starts fresh local collection even for the same server.
+	// Keep this marker stable across restarts and binary updates.
+	response.Data.EnrollmentID = uuid.NewString()
 	if e = json.NewEncoder(f).Encode(response.Data); e != nil {
 		return e
 	}

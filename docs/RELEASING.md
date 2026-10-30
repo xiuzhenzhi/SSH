@@ -22,8 +22,8 @@
 同步 `VERSION`、API / Agent 默认版本、安装器、安装示例和发布说明，提交并等待 CI 通过后执行：
 
 ```sh
-git tag -a v0.3.12 -m "SSHGuard 0.3.12"
-git push origin v0.3.12
+git tag -a v0.3.13 -m "SSHGuard 0.3.13"
+git push origin v0.3.13
 ```
 
 标签须与 `VERSION` 一致。包含连字符的版本会发布为预发布版。

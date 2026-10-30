@@ -84,7 +84,32 @@ try{
   for(const path of ['/api.env','/setup.json','/downloads/.secret'])assert.equal((await fetch(origin+path)).status,404,path);
   const page=await fetch(origin+'/');assert.equal(page.status,200,'Console HTML unavailable');
   assert(page.headers.get('content-security-policy')?.includes("frame-ancestors 'none'"));
+  const originPolicy=page.headers.get('content-security-policy');
+  assert.equal(originPolicy.match(/default-src/g)?.length,1,'Proxy adds conflicting CSP headers');
+  assert(originPolicy.includes("'nonce-"),'Origin HTML has no CSP nonce');
+  const html=await page.text();
+  assert.match(html,/<script\b[^>]*data-cfasync="false"[^>]*\bsrc=/,'Entry module is exposed to Rocket Loader rewriting');
+  const staticPort=await freePort();
+  const staticTemplate=readFileSync('deploy/nginx.local.conf','utf8')
+    .replaceAll('http://api:8080','http://127.0.0.1:'+upstream)
+    .replaceAll('/usr/share/nginx/html','"'+posix(webDir)+'"')
+    .replaceAll('listen 80;','listen 127.0.0.1:'+staticPort+';');
+  const staticConfig=join(root,'static.conf');
+  writeFileSync(staticConfig,wrap(staticTemplate).replace('nginx.pid','static-nginx.pid'));
+  launch(nginxPath,['-p',posix(root)+'/', '-c',posix(staticConfig),'-g','daemon off; master_process off;']);
+  let staticPage;
+  for(let i=0;i<100;i++){try{staticPage=await fetch('http://127.0.0.1:'+staticPort+'/dashboard');if(staticPage.ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
+  assert(staticPage?.ok,'Static proxy did not start');
+  const staticPolicy=staticPage.headers.get('content-security-policy');
+  const nonce=staticPolicy?.match(/'nonce-([a-f0-9]+)'/)?.[1];
+  assert(nonce&&nonce.length>=32,'Static proxy has no per-request nonce');
+  assert.equal(staticPage.headers.get('cache-control'),'no-store','Nonce-bearing HTML can be cached');
+  assert(staticPolicy.includes('https://static.cloudflareinsights.com/beacon.min.js/'));
+  assert(!staticPolicy.match(/script-src [^;]+/)[0].includes("'unsafe-inline'"));
+  const nextStaticPage=await fetch('http://127.0.0.1:'+staticPort+'/dashboard');
+  assert(!nextStaticPage.headers.get('content-security-policy').includes("'nonce-"+nonce+"'"),'Static proxy reuses CSP nonces');
   console.log('Real Nginx HTTPS proxy passed: setup, Secure cookie, Origin rejection, browser and Agent WebSockets, exact PUBLIC_URL and file confinement.');
+  console.log('Cloudflare CSP checks passed: fresh origin/static nonces, no conflicting policy, no cached HTML and Rocket Loader exclusion.');
 }finally{
   for(const child of children.reverse())if(child.pid && child.exitCode===null){const done=new Promise(r=>child.once('exit',r));child.kill();await done;}
   rmSync(root,{recursive:true,force:true});

@@ -109,7 +109,8 @@ func TestIntegration(t *testing.T) {
 	if e = Bootstrap(ctx, db, cfg); e != nil {
 		t.Fatal(e)
 	}
-	handler := New(db, cfg)
+	app := NewApp(db, cfg)
+	handler := app.Router()
 	remoteAddr := "192.0.2.1:1234"
 	call := func(method, path string, body any, cookie, agent string, origin bool, want int) (map[string]any, *httptest.ResponseRecorder) {
 		t.Helper()
@@ -138,6 +139,7 @@ func TestIntegration(t *testing.T) {
 		return value, rec
 	}
 	call("GET", "/servers", nil, "", "", false, 401)
+	call("DELETE", "/servers/missing", nil, "", "", true, 401)
 	call("POST", "/auth/login", map[string]string{"username": "admin", "password": cfg.AdminPassword}, "", "", false, 403)
 	_, res := call("POST", "/auth/login", map[string]string{"username": "admin", "password": cfg.AdminPassword}, "", "", true, 200)
 	cookie := res.Result().Cookies()[0]
@@ -285,6 +287,7 @@ func TestIntegration(t *testing.T) {
 			{"POST", "/rules"}, {"PATCH", "/rules/00000000-0000-4000-8000-000000000001"},
 			{"GET", "/notifications"}, {"POST", "/notifications/missing/retry"},
 			{"POST", "/servers/" + id + "/revoke"},
+			{"DELETE", "/servers/" + id},
 		} {
 			call(route.method, route.path, map[string]any{}, s, "", true, 403)
 		}
@@ -321,6 +324,7 @@ func TestIntegration(t *testing.T) {
 		t.Fatal("expired session retained", e)
 	}
 	call("GET", "/auth/me", nil, session, "", false, 200)
+	testServerDeletion(t, app, session, call)
 	call("POST", "/servers/"+id+"/revoke", map[string]string{}, session, "", true, 200)
 	call("POST", "/agent/heartbeat", nil, "", agent, false, 401)
 	call("POST", "/agent/update/poll", map[string]string{}, "", agent, false, 401)

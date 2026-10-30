@@ -28,6 +28,8 @@ func fileIdentity(f *os.File) (string, error) {
 	return fmt.Sprintf("%d:%d:%d", info.VolumeSerialNumber, info.FileIndexHigh, info.FileIndexLow), nil
 }
 
+func fileIdentityFromInfo(f *os.File, _ os.FileInfo) (string, error) { return fileIdentity(f) }
+
 type windowsEvent struct {
 	System struct {
 		RecordID uint64 `xml:"EventRecordID"`

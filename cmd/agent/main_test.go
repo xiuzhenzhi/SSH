@@ -37,6 +37,12 @@ func TestEnrollmentAndReplacement(t *testing.T) {
 	client = server.Client()
 	client.Timeout = time.Second
 	path := filepath.Join(t.TempDir(), "config", "agent.json")
+	state, err := openSpool(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.db.Close()
+	previousEnrollment := ""
 	for _, value := range []string{strings.Repeat("b", 64), strings.Repeat("c", 64)} {
 		credential = value
 		if e := enrollAgent(context.Background(), path, server.URL, strings.Repeat("a", 64), false); e != nil {
@@ -45,6 +51,19 @@ func TestEnrollmentAndReplacement(t *testing.T) {
 		cfg, e := loadConfig(path)
 		if e != nil || cfg.Token != credential || cfg.Endpoint != server.URL {
 			t.Fatal("config replacement failed", e)
+		}
+		if cfg.EnrollmentID == "" || cfg.EnrollmentID == previousEnrollment {
+			t.Fatal("successful reenrollment did not create a new state generation")
+		}
+		previousEnrollment = cfg.EnrollmentID
+		if e = state.bindIdentity(cfg); e != nil {
+			t.Fatal(e)
+		}
+		if q, _ := state.counts(); q != 0 {
+			t.Fatal("same-server reenrollment retained the old queue")
+		}
+		if e = state.append([]SSHEvent{{ID: "pending-event"}}, cursor{Position: "pending"}); e != nil {
+			t.Fatal(e)
 		}
 	}
 	before, _ := os.ReadFile(path)
@@ -55,6 +74,16 @@ func TestEnrollmentAndReplacement(t *testing.T) {
 	after, _ := os.ReadFile(path)
 	if string(before) != string(after) {
 		t.Fatal("failed enrollment destroyed prior config")
+	}
+	cfg, err := loadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = state.bindIdentity(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if q, _ := state.counts(); q != 1 {
+		t.Fatal("failed enrollment cleared the existing queue")
 	}
 	files, _ := filepath.Glob(filepath.Join(filepath.Dir(path), ".agent-*.tmp"))
 	if len(files) != 0 {

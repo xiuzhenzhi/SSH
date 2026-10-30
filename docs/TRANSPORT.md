@@ -2,6 +2,8 @@
 
 Agent 使用 Bearer 令牌，浏览器使用会话 Cookie。默认使用 HTTPS/WSS，直连模式可显式启用 HTTP/WS。
 
+发行版 Agent 使用 HTTP/1.1 进行 HTTPS 请求和 WebSocket 升级，以缩小体积；代理须支持 HTTP/1.1，主控的浏览器访问协议不受影响。
+
 浏览器 Origin 必须与 `PUBLIC_URL` 一致；未配置时按实际请求地址检查。Agent stream 不接受浏览器 Origin。
 
 ## 数据路径

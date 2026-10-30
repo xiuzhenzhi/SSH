@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -51,6 +52,55 @@ func TestPublicDiscoveryDoesNotBlockHeartbeat(t *testing.T) {
 	r.mu.Unlock()
 	if time.Until(next) < 14*time.Minute {
 		t.Fatal("discovery not cached")
+	}
+}
+
+func TestLocalAddressesAreCachedAndIsolated(t *testing.T) {
+	calls := 0
+	r := addressResolver{next: time.Now().Add(time.Hour), interfaces: func() []string {
+		calls++
+		return []string{"8.8.8.8"}
+	}}
+	values := r.addresses(context.Background())
+	values[0] = "mutated"
+	for i := 0; i < 20; i++ {
+		if values := r.addresses(context.Background()); len(values) != 1 || values[0] != "8.8.8.8" {
+			t.Fatal("caller mutated the address cache", values)
+		}
+	}
+	if calls != 1 {
+		t.Fatal("interfaces enumerated on every heartbeat", calls)
+	}
+	r.localNext = time.Time{}
+	r.addresses(context.Background())
+	if calls != 2 {
+		t.Fatal("interface cache did not refresh")
+	}
+}
+
+func TestPublicDiscoverySchedulesFamiliesIndependently(t *testing.T) {
+	var calls [2]atomic.Int64
+	r := addressResolver{}
+	probe := func(_ context.Context, family int) (string, error) {
+		calls[family].Add(1)
+		if family == 0 {
+			return "8.8.8.8", nil
+		}
+		return "", errors.New("no IPv6 route")
+	}
+	r.refresh(context.Background(), probe)
+	if calls[0].Load() != 1 || calls[1].Load() != 1 {
+		t.Fatal("initial discovery did not probe both families")
+	}
+	for i := 0; i < 5; i++ {
+		r.nextProbe[1] = time.Time{}
+		r.refresh(context.Background(), probe)
+	}
+	if calls[0].Load() != 1 || calls[1].Load() != 6 {
+		t.Fatal("missing IPv6 repeatedly probed healthy IPv4")
+	}
+	if time.Until(r.nextProbe[1]) < 14*time.Minute {
+		t.Fatal("unavailable address family did not back off")
 	}
 }
 

@@ -2,8 +2,12 @@
 .env
 .local
 bin
+dist
 web/node_modules
 node_modules
+docs/.vitepress/.temp
+docs/.vitepress/cache
+docs/.vitepress/dist
 web/dist
 deploy/certs
 *.zip

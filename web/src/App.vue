@@ -106,6 +106,7 @@ const countryNames=new Intl.DisplayNames(['zh-CN'],{type:'region'});
 const countryName=(row:Row)=>row.country_code?(countryNames.of(row.country_code)||row.country_name||row.country_code):(row.source_is_public===false?'内网 / 保留地址':'未知');
 const sourceAddress=(row:Row)=>row.source_port?(String(row.source_ip).includes(':')?'['+row.source_ip+']':row.source_ip)+':'+row.source_port:row.source_ip;
 Object.assign(auditNames,{'geoip.settings.update':'更新地理位置设置','geoip.database.update':'更新 GeoIP 数据库','alert.acknowledge.batch':'批量确认告警'});
+Object.assign(auditNames,{'server.delete':'删除服务器'});
 const statusName: Row = {online: '在线', offline: '离线', pending: '待接入', revoked: '已撤销'};
 const time = (s: any) => s ? new Date(s).toLocaleString('zh-CN', {hour12: false}) : '尚无记录';
 let generation = 0;
@@ -206,6 +207,20 @@ async function enrollment(row: Row) {
 async function updateAgent(row: Row) {commandGeneration++;clearTimeout(commandTimer);commands.value={};commandError.value='';updating.value=true;await perform(async () => {const result = await api('/agent/update-commands'); commands.value = result.commands;commandEndpoint.value = result.endpoint;commandInsecure.value = result.insecure_http;platform.value = /windows/i.test(row.distribution) ? 'windows' : 'linux'; commandDialog.value = true;});}
 async function changePassword() {await perform(async () => {await api('/auth/password','POST',passwords); clearSession(); ElMessage.success('密码已修改，所有旧会话已失效，请重新登录');});}
 async function revoke(row: Row) {try {await ElMessageBox.confirm(`撤销 ${row.name} 的 Agent 凭证后将拒绝其后续上报。`, '撤销凭证', {type:'warning',confirmButtonText:'撤销',cancelButtonText:'取消'});}catch{return;}await perform(async () => {await api(`/servers/${row.id}/revoke`,'POST',{});await load();});}
+async function deleteServer(row: Row) {
+  if(busy.value)return;
+  try {await ElMessageBox.confirm(`确定删除服务器“${row.name}”？该服务器的 SSH 事件、告警和通知投递记录将永久删除，安装及 Agent 凭证立即失效。操作审计保留。此操作无法撤销；目标机器上的 Agent 需另行卸载。`, '删除服务器', {type:'warning',confirmButtonText:'确认删除',cancelButtonText:'取消',confirmButtonClass:'el-button--danger',closeOnClickModal:false});}catch{return;}
+  await perform(async () => {
+    await api(`/servers/${row.id}`,'DELETE');
+    ElMessage.success('服务器已删除');
+    if(active.value==='servers'){
+      rows.value=rows.value.filter(item=>item.id!==row.id);
+      if(!rows.value.length&&page.value>1)page.value--;
+    }
+    summary.value={};
+    await load();
+  });
+}
 async function saveUser() {await perform(async () => {await api('/users','POST',newUser);userDialog.value = false;newUser.password = '';await load();});}
 async function copyCommand() {if(!commandReady.value)return;try {await copyText(command.value);ElMessage.success('命令已复制');}catch(e){ElMessage.error((e as Error).message||'请手动复制命令');}}
 function history(row: Row) {serverID.value = row.id;navigate('events');}
@@ -266,7 +281,7 @@ onUnmounted(() => {stopLive();clearInterval(timer); controller?.abort();document
     <AlertCenter v-else-if="management" :key="active" :mode="active" :rows="rows" :admin="admin" :writer="writer" :api="api" @refresh="load"/>
     <div v-else class="panel"><div v-if="active==='servers'" class="panel-heading server-toolbar"><div class="filters"><el-input v-model="search" placeholder="搜索名称、主机名或分组" :prefix-icon="Search" clearable @keyup.enter="filter" @clear="filter"/><el-button @click="filter">查询</el-button></div></div>
     <div v-if="active === 'events'" class="event-filters"><el-input v-model="username" placeholder="用户名" clearable/><el-input v-model="ip" placeholder="来源 IP" clearable/><el-input v-model="serverID" placeholder="服务器 ID" clearable/><el-select v-model="outcome" placeholder="全部结果" clearable><el-option label="成功" value="success"/><el-option label="失败" value="failure"/></el-select><el-button type="primary" @click="filter">筛选</el-button></div>
-    <ServerList v-if="active==='servers'" :rows="rows" :admin="admin" :writer="writer" :busy="busy" @history="history" @edit="editServer" @enroll="enrollment" @update="updateAgent" @revoke="revoke" @changed="load"/>
+    <ServerList v-if="active==='servers'" :rows="rows" :admin="admin" :writer="writer" :busy="busy" @history="history" @edit="editServer" @enroll="enrollment" @update="updateAgent" @revoke="revoke" @remove="deleteServer" @changed="load"/>
     <el-table v-else-if="active === 'events' || active === 'dashboard'" :data="rows" empty-text="暂无 SSH 事件，请检查 Agent 采集状态并发起一次 SSH 登录。" @row-click="(row: Row) => detail = row">
       <el-table-column label="发生时间" min-width="180"><template #default="{row}">{{ time(row.occurred_at) }}</template></el-table-column>
       <el-table-column prop="server_name" label="服务器" min-width="150"/>

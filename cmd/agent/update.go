@@ -6,13 +6,55 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"runtime"
+	"strings"
 	"time"
 )
 
-var updateVersionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?$`)
-var updateIDPattern = regexp.MustCompile(`^[a-f0-9-]{36}$`)
+func validUpdateVersion(version string) bool {
+	if len(version) == 0 || len(version) > 32 {
+		return false
+	}
+	core, suffix, prerelease := strings.Cut(version, "-")
+	dots, digits := 0, 0
+	for i := 0; i < len(core); i++ {
+		if core[i] >= '0' && core[i] <= '9' {
+			digits++
+		} else if core[i] == '.' && digits > 0 {
+			dots++
+			digits = 0
+		} else {
+			return false
+		}
+	}
+	if dots != 2 || digits == 0 || prerelease && suffix == "" {
+		return false
+	}
+	for i := 0; i < len(suffix); i++ {
+		c := suffix[i]
+		if !asciiLetter(c) && !(c >= '0' && c <= '9') && c != '.' && c != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+func validUpdateID(id string) bool {
+	if len(id) != 36 {
+		return false
+	}
+	for i := 0; i < len(id); i++ {
+		c := id[i]
+		if i == 8 || i == 13 || i == 18 || i == 23 {
+			if c != '-' {
+				return false
+			}
+		} else if !(c >= 'a' && c <= 'f') && !(c >= '0' && c <= '9') {
+			return false
+		}
+	}
+	return true
+}
 
 type updateTask struct {
 	ID      string `json:"id"`
@@ -20,11 +62,11 @@ type updateTask struct {
 }
 
 func updateCommand(cfg Config, task updateTask) (string, []string, error) {
-	if !validEndpoint(cfg.Endpoint, cfg.AllowInsecureHTTP) || !updateIDPattern.MatchString(task.ID) || !updateVersionPattern.MatchString(task.Version) {
+	if !validEndpoint(cfg.Endpoint, cfg.AllowInsecureHTTP) || !validUpdateID(task.ID) || !validUpdateVersion(task.Version) {
 		return "", nil, fmt.Errorf("invalid fixed update request")
 	}
 	if runtime.GOOS == "windows" {
-		args := []string{"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", filepath.Join(os.Getenv("ProgramFiles"), "SSHGuardAgent", "update-agent.ps1"), "-Endpoint", cfg.Endpoint, "-Update"}
+		args := []string{"-NoProfile", "-NonInteractive", "-File", filepath.Join(os.Getenv("ProgramFiles"), "SSHGuardAgent", "update-agent.ps1"), "-Endpoint", cfg.Endpoint, "-Update"}
 		if cfg.AllowInsecureHTTP {
 			args = append(args, "-AllowInsecureHttp")
 		}

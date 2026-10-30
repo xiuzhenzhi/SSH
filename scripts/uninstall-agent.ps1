@@ -1,6 +1,14 @@
 #Requires -Version 5.1
 #Requires -RunAsAdministrator
 $ErrorActionPreference = 'Stop'
+function Test-FixedUpdaterTask($Task, [string]$Shell, [string]$Runner) {
+    if (-not $Task) { return $true }
+    $allowedArguments = @(
+        ('-NoProfile -NonInteractive -File "{0}"' -f $Runner),
+        ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"' -f $Runner)
+    )
+    return $Task.Actions.Count -eq 1 -and $Task.Actions[0].Execute -eq $Shell -and $allowedArguments -contains $Task.Actions[0].Arguments
+}
 $exe = Join-Path $env:ProgramFiles 'SSHGuardAgent\sshguard-agent.exe'
 $config = Join-Path $env:ProgramData 'SSHGuard\agent.json'
 $installLock = $null
@@ -18,8 +26,7 @@ $runner = Join-Path $env:ProgramFiles 'SSHGuardAgent\poll-update.ps1'
 $task = Get-ScheduledTask -TaskName SSHGuardAgentUpdate -ErrorAction SilentlyContinue
 if ($task) {
     $shell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"' -f $runner
-    if ($task.Actions.Count -ne 1 -or $task.Actions[0].Execute -ne $shell -or $task.Actions[0].Arguments -ne $arguments) { throw 'Updater task belongs to a different installation.' }
+    if (-not (Test-FixedUpdaterTask $task $shell $runner)) { throw 'Updater task belongs to a different installation.' }
     Disable-ScheduledTask -TaskName SSHGuardAgentUpdate | Out-Null
     if ($task.State -eq 'Running') { throw 'Updater is running; wait for it to finish and rerun uninstall.' }
     Unregister-ScheduledTask -TaskName SSHGuardAgentUpdate -Confirm:$false

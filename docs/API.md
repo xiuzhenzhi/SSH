@@ -24,6 +24,7 @@
 | GET (WebSocket) | /agent/stream | Agent Bearer，无浏览器 Origin |
 | GET | /servers、/servers/:id | 全角色 |
 | POST / PATCH | /servers、/servers/:id | admin/operator |
+| DELETE | /servers/:id | admin，永久删除服务器及关联历史 |
 | POST | /servers/:id/enrollment、/servers/:id/revoke | admin |
 | GET / POST | /users | admin |
 | GET | /audit-logs | admin |
@@ -37,6 +38,7 @@
 - Agent 使用 `Authorization: Bearer <AGENT_TOKEN>`。
 - `GET /events` 支持 `server_id/source_ip/username/outcome/event_type/from/to/page/page_size`，时间为 RFC3339。
 - `PATCH /servers/:id` 提交 `name/group_name/notes`；省略分组或备注会清空对应字段。
+- `DELETE /servers/:id`：admin + 同源校验，无需请求体，成功返回 `{"data":{"deleted":true}}`。在同一事务中删除服务器、安装与 Agent 凭证、设置、健康及更新状态、SSH 事件、告警和通知投递记录，保留操作审计并记录 `server.delete`。记录不存在返回 404；不会远程卸载 Agent。
 
 ```json
 {

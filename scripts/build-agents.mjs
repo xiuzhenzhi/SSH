@@ -13,7 +13,8 @@ if (!/^[a-zA-Z0-9.+_-]{1,32}$/.test(version)) throw Error('Invalid version');
 mkdirSync(out,{recursive:true});
 for (const os of ['linux','windows']) for (const arch of ['amd64','arm64']) {
   const name = `sshguard-agent-${os}-${arch}${os === 'windows' ? '.exe' : ''}`;
-  execFileSync('go',['build','-trimpath','-ldflags',`-s -w -X main.version=${version}`,'-o',resolve(out,name),'./cmd/agent'],{stdio:'inherit',env:{...process.env,CGO_ENABLED:'0',GOOS:os,GOARCH:arch}});
+  // Agent HTTPS and WebSocket traffic uses HTTP/1.1; omit the unused HTTP/2 stack.
+  execFileSync('go',['build','-trimpath','-tags=nethttpomithttp2','-ldflags',`-s -w -X main.version=${version}`,'-o',resolve(out,name),'./cmd/agent'],{stdio:'inherit',env:{...process.env,CGO_ENABLED:'0',GOOS:os,GOARCH:arch}});
   writeFileSync(resolve(out,`${name}.sha256`),`${createHash('sha256').update(readFileSync(resolve(out,name))).digest('hex')}  ${name}\n`);
 }
 for (const name of ['install-agent.sh','install-agent.ps1','uninstall-agent.sh','uninstall-agent.ps1']) cpSync(`scripts/${name}`,resolve(out,name));

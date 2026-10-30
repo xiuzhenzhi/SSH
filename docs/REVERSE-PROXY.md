@@ -47,9 +47,17 @@ curl -fsS https://guard.example.com/api/v1/health
 
 保留模板中的 Upgrade、90 秒超时和关闭缓存设置。应用需部署在站点根路径。
 
+## Cloudflare 与 CSP
+
+v0.3.13 起，控制台为每次 HTML 响应生成新的 CSP nonce，兼容 Cloudflare JavaScript Detections；仅允许统计脚本的 beacon 路径及 RUM 上报地址。应用入口带有 `data-cfasync="false"`，避免被 Rocket Loader 改写。参见 [Cloudflare nonce 支持](https://developers.cloudflare.com/cloudflare-challenges/challenge-types/javascript-detections/#if-you-have-a-content-security-policy-csp) 和 [Rocket Loader 排除规则](https://developers.cloudflare.com/speed/optimization/content/rocket-loader/ignore-javascripts/)。
+
+使用自有 Nginx / 宝塔配置时，让主控返回 CSP，移除旧的固定 CSP 响应头；多个 CSP 会同时生效，旧规则仍会拦截新 nonce。随包的原生与 Docker 代理模板已分别处理。Docker 模板仅对 HTML 禁用缓存，保留静态资源的缓存规则。
+
+`content.js` 的内联脚本报错可能来自浏览器扩展，可在禁用扩展的窗口复查。不要直接放行未知脚本的哈希，或为消除报错开启任意内联脚本。
+
 ## 已有 HTTP Agent 切换 HTTPS
 
-先清空待传队列，再停服务、归档状态目录，并通过新地址重新生成安装命令。步骤见 [Agent 地址迁移](AGENTS.md#http-地址迁移到-https)。
+先等待待传队列上传完成，再停服务并通过新地址重新生成安装命令；注册成功后自动清空旧本地状态。步骤见 [Agent 地址迁移](AGENTS.md#http-地址迁移到-https)。
 
 ## 审计来源 IP 与可信代理
 

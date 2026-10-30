@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 type collectorHealth struct {
@@ -30,7 +31,11 @@ func (h *collectorHealth) update(e error, at time.Time) {
 		h.state = "error"
 		h.message = e.Error()
 		if len(h.message) > 256 {
-			h.message = h.message[:256]
+			end := 256
+			for end > 0 && !utf8.RuneStart(h.message[end]) {
+				end--
+			}
+			h.message = h.message[:end]
 		}
 	}
 	if !at.IsZero() {
@@ -44,14 +49,21 @@ func (h *collectorHealth) heartbeat(s *spool) map[string]any {
 	if s != nil {
 		q, d = s.counts()
 	}
-	state := h.state
+	state, message := h.state, h.message
 	if state == "" {
 		state = "starting"
 	}
 	if q >= queueLimit || d > 0 {
 		state = "error"
+		if message == "" {
+			if q >= queueLimit {
+				message = "本地待传队列已满，采集已暂停；事件上传后会自动恢复。"
+			} else {
+				message = "存在被服务端拒绝的事件，已保存在本地隔离队列。请检查 Agent 日志。"
+			}
+		}
 	}
-	payload := map[string]any{"version": version, "collector_state": state, "collector_message": h.message, "queue_depth": q, "rejected_events": d}
+	payload := map[string]any{"version": version, "collector_state": state, "collector_message": message, "queue_depth": q, "rejected_events": d}
 	if !h.poll.IsZero() {
 		payload["last_poll_at"] = h.poll
 	}
@@ -63,18 +75,16 @@ func (h *collectorHealth) heartbeat(s *spool) map[string]any {
 func runAgent(ctx context.Context, cfg Config, stateDir string) {
 	interval := reportInterval(cfg.ReportIntervalSeconds)
 	s, e := openSpool(stateDir)
-	stateMessage := "cannot open durable state; check directory permissions and free disk space"
 	if e == nil {
 		if e = s.bindIdentity(cfg); e != nil {
-			stateMessage = e.Error()
 			s.db.Close()
 			s = nil
 		}
 	}
 	health := &collectorHealth{}
 	if e != nil {
-		health.update(errors.New(stateMessage), time.Time{})
-		log.Print("Cannot open durable Agent state; collection disabled until service restart")
+		health.update(fmt.Errorf("cannot initialize durable Agent state: %w", e), time.Time{})
+		log.Printf("Cannot initialize durable Agent state; collection disabled until service restart: %v", e)
 	} else {
 		defer s.db.Close()
 	}
@@ -87,23 +97,7 @@ func runAgent(ctx context.Context, cfg Config, stateDir string) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			pollTimer := time.NewTimer(0)
-			defer pollTimer.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-pollTimer.C:
-					pollCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-					at, err := collectPlatform(pollCtx, s, cfg.LogFile)
-					cancel()
-					if ctx.Err() != nil {
-						return
-					}
-					health.update(err, at)
-					pollTimer.Reset(min(interval, 2*time.Second))
-				}
-			}
+			runCollector(ctx, s, cfg.LogFile, interval, health)
 		}()
 	}
 	defer wg.Wait()
@@ -116,7 +110,11 @@ func runAgent(ctx context.Context, cfg Config, stateDir string) {
 	wakeup := time.NewTimer(time.Hour)
 	wakeup.Stop()
 	defer wakeup.Stop()
-	log.Printf("SSHGuard %s: durable SSH collection and HTTP(S)/WebSocket reporting enabled", version)
+	if s != nil {
+		log.Printf("SSHGuard %s: durable SSH collection and HTTP(S)/WebSocket reporting enabled", version)
+	} else {
+		log.Printf("SSHGuard %s: heartbeat reporting enabled; durable SSH collection unavailable", version)
+	}
 	for ctx.Err() == nil {
 		if time.Now().After(nextHeartbeat) {
 			err := sendHeartbeat(ctx, tr, health.heartbeat(s), interval)
@@ -162,6 +160,47 @@ func runAgent(ctx context.Context, cfg Config, stateDir string) {
 	}
 }
 
+func runCollector(ctx context.Context, s *spool, path string, interval time.Duration, health *collectorHealth) {
+	base := min(interval, 2*time.Second)
+	delay, maxIdle := base, min(interval, 10*time.Second)
+	pollTimer := time.NewTimer(delay)
+	defer pollTimer.Stop()
+	queueBlocked := false
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-pollTimer.C:
+			if q, _ := s.counts(); queueBlocked && q > queueLimit-500 {
+				health.update(errQueueFull, time.Time{})
+				pollTimer.Reset(base)
+				continue
+			}
+			before, _ := s.position()
+			pollCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			at, err := collectPlatform(pollCtx, s, path)
+			cancel()
+			if ctx.Err() != nil {
+				return
+			}
+			health.update(err, at)
+			queueBlocked = errors.Is(err, errQueueFull)
+			after, _ := s.position()
+			switch {
+			case queueBlocked:
+				delay = base
+			case err != nil:
+				delay = min(delay*2, 30*time.Second)
+			case before == after:
+				delay = min(delay*2, maxIdle)
+			default:
+				delay = base
+			}
+			pollTimer.Reset(delay)
+		}
+	}
+}
+
 func logTimestamp(line string, now time.Time) (time.Time, bool) {
 	if token, _, ok := strings.Cut(line, " "); ok {
 		if at, e := time.Parse(time.RFC3339Nano, token); e == nil {
@@ -196,7 +235,7 @@ func collectFile(ctx context.Context, s *spool, path string) (time.Time, error) 
 	if e != nil || !info.Mode().IsRegular() {
 		return time.Time{}, errors.New("SSH log source is not a regular file")
 	}
-	id, e := fileIdentity(f)
+	id, e := fileIdentityFromInfo(f, info)
 	if e != nil {
 		return time.Time{}, e
 	}

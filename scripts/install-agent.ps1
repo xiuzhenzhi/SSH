@@ -6,7 +6,7 @@ param(
     [switch]$Update,
     [switch]$AllowInsecureHttp
 )
-$ReleaseVersion = '0.3.12'
+$ReleaseVersion = '0.3.13'
 $ErrorActionPreference = 'Stop'
 if ($Update -and $EnrollmentToken) { throw 'Choose Update or EnrollmentToken, not both.' }
 if (-not $Update -and -not $EnrollmentToken) { throw 'EnrollmentToken is required for installation.' }
@@ -102,6 +102,14 @@ function Initialize-CollectorAccess {
     } finally { if ($channel) { $channel.Dispose() } }
 }
 Protect-Directory $installDir
+function Test-FixedUpdaterTask($Task, [string]$Shell, [string]$Runner) {
+    if (-not $Task) { return $true }
+    $allowedArguments = @(
+        ('-NoProfile -NonInteractive -File "{0}"' -f $Runner),
+        ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"' -f $Runner)
+    )
+    return $Task.Actions.Count -eq 1 -and $Task.Actions[0].Execute -eq $Shell -and $allowedArguments -contains $Task.Actions[0].Arguments
+}
 function Initialize-FixedUpdater {
     $localInstaller = Join-Path $installDir 'update-agent.ps1'
     $runner = Join-Path $installDir 'poll-update.ps1'
@@ -126,9 +134,9 @@ try {
     Protect-File $localInstaller
     Protect-File $runner
     $shell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"' -f $runner
+    $arguments = '-NoProfile -NonInteractive -File "{0}"' -f $runner
     $existingTask = Get-ScheduledTask -TaskName SSHGuardAgentUpdate -ErrorAction SilentlyContinue
-    if ($existingTask -and ($existingTask.Actions.Count -ne 1 -or $existingTask.Actions[0].Execute -ne $shell -or $existingTask.Actions[0].Arguments -ne $arguments)) { throw 'Existing updater task belongs to a different installation.' }
+    if (-not (Test-FixedUpdaterTask $existingTask $shell $runner)) { throw 'Existing updater task belongs to a different installation.' }
     $action = New-ScheduledTaskAction -Execute $shell -Argument $arguments
     $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 1)
     $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest

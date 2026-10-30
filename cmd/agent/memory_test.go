@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -16,6 +18,27 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 )
+
+func TestLongLogLinesDoNotRetainEntireBatch(t *testing.T) {
+	runtime.GC()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	events := make([]SSHEvent, 0, 500)
+	for i := 0; i < cap(events); i++ {
+		message := "Accepted publickey for root from 192.0.2.1 port 22 ssh2 " + strings.Repeat("x", 32<<10) + strconv.Itoa(i)
+		event, ok := parseSSH(message, "large-log-fixture", time.Unix(1, 0))
+		if !ok {
+			t.Fatal("long valid log line rejected")
+		}
+		events = append(events, event)
+	}
+	runtime.GC()
+	runtime.ReadMemStats(&after)
+	runtime.KeepAlive(events)
+	if after.HeapAlloc > before.HeapAlloc+(2<<20) {
+		t.Fatalf("small event fields retained large source lines: before=%d after=%d", before.HeapAlloc, after.HeapAlloc)
+	}
+}
 
 func TestDiagnosticOutputStaysBounded(t *testing.T) {
 	var buffer diagnosticBuffer

@@ -5,13 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
+	"log"
+	"net/netip"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	bolt "go.etcd.io/bbolt"
@@ -28,24 +30,91 @@ type SSHEvent struct {
 	At       time.Time `json:"occurred_at"`
 }
 
-var loginPattern = regexp.MustCompile(`(?:^|\s)(Accepted|Failed) ([A-Za-z0-9@._/-]+) for (?:invalid user )?(.+?) from ([0-9A-Fa-f:.]+) port ([0-9]+)(?:\s|$)`)
-
 func parseSSH(message, identity string, at time.Time) (SSHEvent, bool) {
-	m := loginPattern.FindStringSubmatch(message)
-	if m == nil {
-		return SSHEvent{}, false
+	for len(message) > 0 {
+		line, rest, _ := strings.Cut(message, "\n")
+		message = rest
+		for start := 0; start < len(line); start++ {
+			if start > 0 && !sshSpace(line[start-1]) {
+				continue
+			}
+			text := line[start:]
+			failed := strings.HasPrefix(text, "Failed ")
+			if failed {
+				text = text[len("Failed "):]
+			} else if strings.HasPrefix(text, "Accepted ") {
+				text = text[len("Accepted "):]
+			} else {
+				continue
+			}
+			methodEnd := 0
+			for methodEnd < len(text) && sshMethodByte(text[methodEnd]) {
+				methodEnd++
+			}
+			if methodEnd == 0 || !strings.HasPrefix(text[methodEnd:], " for ") {
+				continue
+			}
+			method, names := text[:methodEnd], text[methodEnd+len(" for "):]
+			// The first valid header owns the rest of this line. A later header
+			// would be part of its username, matching OpenSSH's existing grammar.
+			for offset := 0; offset < len(names); {
+				from := strings.Index(names[offset:], " from ")
+				if from < 0 {
+					break
+				}
+				from += offset
+				offset = from + len(" from ")
+				if from == 0 {
+					continue
+				}
+				source := names[offset:]
+				ipEnd := 0
+				for ipEnd < len(source) && sshIPByte(source[ipEnd]) {
+					ipEnd++
+				}
+				if ipEnd == 0 || !strings.HasPrefix(source[ipEnd:], " port ") {
+					continue
+				}
+				portText := source[ipEnd+len(" port "):]
+				portEnd := 0
+				for portEnd < len(portText) && portText[portEnd] >= '0' && portText[portEnd] <= '9' {
+					portEnd++
+				}
+				if portEnd == 0 || (portEnd < len(portText) && !sshSpace(portText[portEnd])) {
+					continue
+				}
+				username := names[:from]
+				if trimmed, ok := strings.CutPrefix(username, "invalid user "); ok && trimmed != "" {
+					username = trimmed
+				}
+				ip, err := netip.ParseAddr(source[:ipEnd])
+				port, portErr := strconv.Atoi(portText[:portEnd])
+				if err != nil || portErr != nil || port < 1 || port > 65535 || utf8.RuneCountInString(username) > 128 || len(method) > 32 || strings.ContainsAny(username, "\r\x00") {
+					return SSHEvent{}, false
+				}
+				if len(line) > 1024 {
+					// A small username must not retain a whole 64 KiB log line in a batch.
+					username, method = strings.Clone(username), strings.Clone(method)
+				}
+				event := SSHEvent{ID: uuid.NewSHA1(uuid.NameSpaceOID, []byte(identity)).String(), Username: username, IP: ip.Unmap().String(), Port: port, Method: method, At: at.UTC(), Type: "ssh.login", Outcome: "success"}
+				if failed {
+					event.Type, event.Outcome = "ssh.login_failed", "failure"
+				}
+				return event, true
+			}
+			break
+		}
 	}
-	ip := net.ParseIP(m[4])
-	port, e := strconv.Atoi(m[5])
-	if ip == nil || e != nil || port < 1 || port > 65535 || len([]rune(m[3])) > 128 || len(m[2]) > 32 || strings.ContainsAny(m[3], "\r\n\x00") {
-		return SSHEvent{}, false
-	}
-	event := SSHEvent{ID: uuid.NewSHA1(uuid.NameSpaceOID, []byte(identity)).String(), Username: m[3], IP: ip.String(), Port: port, Method: m[2], At: at.UTC(), Type: "ssh.login", Outcome: "success"}
-	if m[1] == "Failed" {
-		event.Type = "ssh.login_failed"
-		event.Outcome = "failure"
-	}
-	return event, true
+	return SSHEvent{}, false
+}
+
+func sshSpace(c byte) bool    { return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f' }
+func asciiLetter(c byte) bool { return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' }
+func sshMethodByte(c byte) bool {
+	return asciiLetter(c) || c >= '0' && c <= '9' || strings.IndexByte("@._/-", c) >= 0
+}
+func sshIPByte(c byte) bool {
+	return c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F' || c == ':' || c == '.'
 }
 
 const queueLimit = 10000
@@ -59,74 +128,115 @@ type cursor struct {
 	Offset   int64     `json:"offset,omitempty"`
 	At       time.Time `json:"at"`
 }
-type spool struct{ db *bolt.DB }
+type spool struct {
+	db               *bolt.DB
+	mu               sync.RWMutex
+	queued, rejected int
+	current          cursor
+	cursorErr        error
+}
 
 func (s *spool) bindIdentity(cfg Config) error {
-	return s.db.Update(func(tx *bolt.Tx) error {
+	if cfg.Endpoint == "" || cfg.ServerID == "" {
+		return errors.New("state identity requires a platform endpoint and server ID")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	reset := false
+	rebound := false
+	err := s.db.Update(func(tx *bolt.Tx) error {
 		meta := tx.Bucket([]byte("meta"))
 		identity := cfg.Endpoint + "|" + cfg.ServerID
 		previous := meta.Get([]byte("identity"))
-		if previous != nil && string(previous) != identity {
-			return errors.New("state belongs to a different server; archive it before reenrolling this host")
+		newRegistration := cfg.EnrollmentID != "" && string(meta.Get([]byte("enrollment_id"))) != cfg.EnrollmentID
+		if previous != nil && string(previous) == identity && !newRegistration {
+			return nil
 		}
-		if previous == nil {
-			if tx.Bucket([]byte("queue")).Stats().KeyN > 0 {
-				return errors.New("existing queue has no server identity; operator recovery required")
+		rebound = true
+		// Clear queue, cursor and rejected events together under the database lock.
+		// Reusing the file preserves ownership and prevents an old Agent from
+		// writing to an unlinked database while a replacement is initialized.
+		for _, name := range []string{"queue", "meta", "rejected"} {
+			key := []byte(name)
+			reset = reset || tx.Bucket(key).Stats().KeyN > 0
+			if err := tx.DeleteBucket(key); err != nil {
+				return err
 			}
-			return meta.Put([]byte("identity"), []byte(identity))
+			if _, err := tx.CreateBucket(key); err != nil {
+				return err
+			}
+		}
+		meta = tx.Bucket([]byte("meta"))
+		if err := meta.Put([]byte("identity"), []byte(identity)); err != nil {
+			return err
+		}
+		if cfg.EnrollmentID != "" {
+			return meta.Put([]byte("enrollment_id"), []byte(cfg.EnrollmentID))
 		}
 		return nil
 	})
+	if err != nil {
+		return fmt.Errorf("initialize durable Agent state: %w", err)
+	}
+	if rebound {
+		s.queued, s.rejected = 0, 0
+		s.current, s.cursorErr = cursor{}, nil
+	}
+	if reset {
+		log.Print("New Agent registration or server identity detected; old local queue, rejected events and collector cursor cleared")
+	}
+	return nil
 }
 
 func openSpool(dir string) (*spool, error) {
 	if e := os.MkdirAll(dir, 0700); e != nil {
-		return nil, e
+		return nil, fmt.Errorf("create state directory: %w", e)
 	}
 	db, e := bolt.Open(filepath.Join(dir, "state.db"), 0600, &bolt.Options{Timeout: time.Second})
 	if e != nil {
-		return nil, e
+		return nil, fmt.Errorf("open state.db: %w", e)
 	}
+	s := &spool{db: db}
 	e = db.Update(func(tx *bolt.Tx) error {
 		for _, name := range []string{"queue", "meta", "rejected"} {
 			if _, e := tx.CreateBucketIfNotExists([]byte(name)); e != nil {
 				return e
 			}
 		}
+		s.queued = tx.Bucket([]byte("queue")).Stats().KeyN
+		s.rejected = tx.Bucket([]byte("rejected")).Stats().KeyN
+		if raw := tx.Bucket([]byte("meta")).Get([]byte("cursor")); raw != nil {
+			s.cursorErr = json.Unmarshal(raw, &s.current)
+		}
 		return nil
 	})
 	if e != nil {
 		db.Close()
-		return nil, e
+		return nil, fmt.Errorf("initialize state.db buckets: %w", e)
 	}
-	return &spool{db}, nil
+	return s, nil
 }
 func (s *spool) position() (cursor, error) {
-	var c cursor
-	e := s.db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte("meta")).Get([]byte("cursor"))
-		if b == nil {
-			return nil
-		}
-		return json.Unmarshal(b, &c)
-	})
-	return c, e
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.current, s.cursorErr
 }
 
 // Queue entries and source cursor are committed together and fsynced by bbolt.
 func (s *spool) append(events []SSHEvent, c cursor) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if len(events) == 0 {
-		previous, e := s.position()
-		if e != nil {
-			return e
+		if s.cursorErr != nil {
+			return s.cursorErr
 		}
-		if previous == c {
+		if s.current == c {
 			return nil
 		}
 	}
-	return s.db.Update(func(tx *bolt.Tx) error {
+	err := s.db.Update(func(tx *bolt.Tx) error {
 		q := tx.Bucket([]byte("queue"))
-		if q.Stats().KeyN+len(events) > queueLimit {
+		if s.queued+len(events) > queueLimit {
 			return errQueueFull
 		}
 		for _, event := range events {
@@ -150,6 +260,11 @@ func (s *spool) append(events []SSHEvent, c cursor) error {
 		}
 		return tx.Bucket([]byte("meta")).Put([]byte("cursor"), b)
 	})
+	if err == nil {
+		s.queued += len(events)
+		s.current, s.cursorErr = c, nil
+	}
+	return err
 }
 
 type queued struct {
@@ -158,6 +273,9 @@ type queued struct {
 }
 
 func (s *spool) batch() ([]queued, error) {
+	if q, _ := s.counts(); q == 0 {
+		return nil, nil
+	}
 	items := []queued{}
 	e := s.db.View(func(tx *bolt.Tx) error {
 		c := tx.Bucket([]byte("queue")).Cursor()
@@ -173,33 +291,43 @@ func (s *spool) batch() ([]queued, error) {
 	return items, e
 }
 func (s *spool) acknowledge(items []queued, reject bool) error {
-	return s.db.Update(func(tx *bolt.Tx) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	removed, quarantined := 0, 0
+	err := s.db.Update(func(tx *bolt.Tx) error {
 		q := tx.Bucket([]byte("queue"))
 		dead := tx.Bucket([]byte("rejected"))
 		for _, item := range items {
+			value := q.Get(item.key)
+			if value == nil {
+				continue
+			}
 			if reject {
-				if dead.Stats().KeyN >= 1000 {
+				if s.rejected+quarantined >= 1000 {
 					return errors.New("rejected queue full; operator intervention required")
 				}
-				if value := q.Get(item.key); value != nil {
-					if e := dead.Put(item.key, value); e != nil {
-						return e
-					}
+				if dead.Get(item.key) == nil {
+					quarantined++
+				}
+				if e := dead.Put(item.key, value); e != nil {
+					return e
 				}
 			}
 			if e := q.Delete(item.key); e != nil {
 				return e
 			}
+			removed++
 		}
 		return nil
 	})
+	if err == nil {
+		s.queued -= removed
+		s.rejected += quarantined
+	}
+	return err
 }
 func (s *spool) counts() (int, int) {
-	q, d := 0, 0
-	_ = s.db.View(func(tx *bolt.Tx) error {
-		q = tx.Bucket([]byte("queue")).Stats().KeyN
-		d = tx.Bucket([]byte("rejected")).Stats().KeyN
-		return nil
-	})
-	return q, d
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.queued, s.rejected
 }

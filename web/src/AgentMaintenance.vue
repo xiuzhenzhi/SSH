@@ -6,8 +6,8 @@ import { MoreFilled } from '@element-plus/icons-vue';
 import 'element-plus/es/components/dropdown/style/css';
 import 'element-plus/es/components/dropdown-menu/style/css';
 import 'element-plus/es/components/dropdown-item/style/css';
-const props = defineProps<{server: Record<string, any>}>();
-const emit = defineEmits<{changed: [], manual: [], revoke: []}>();
+const props = defineProps<{server: Record<string, any>, disabled?: boolean}>();
+const emit = defineEmits<{changed: [], manual: [], revoke: [], remove: []}>();
 const busy = ref(false), visible = ref(false), platform = ref('linux');
 const commands = ref<Record<string,string>>({});
 const activeTask = computed(() => ['pending','running'].includes(props.server.update_status) && new Date(props.server.update_expires_at).getTime()>Date.now());
@@ -18,7 +18,10 @@ const state = computed(() => {
 const ready = computed(() => props.server.updater_seen_at && Date.now()-new Date(props.server.updater_seen_at).getTime()<180000);
 async function request(path:string,method='GET') {
   const response=await fetch('/api/v1'+path,{method,credentials:'same-origin',headers:{'Content-Type':'application/json'},...(method==='POST'?{body:'{}'}:{})});
-  const body=await response.json(); if(!response.ok)throw Error(body.error||'请求失败'); return body.data;
+  const body=await response.json().catch(()=>null);
+  if(!response.ok)throw Error(body?.error||`请求失败（HTTP ${response.status}）`);
+  if(!body||typeof body!=='object'||!('data' in body))throw Error('服务器返回的数据格式异常，请刷新后重试');
+  return body.data;
 }
 async function update() {
   try { await ElMessageBox.confirm(`将 ${props.server.name} 的 Agent 更新到平台提供的版本。更新期间采集会短暂重启，失败时尝试恢复原程序。`, '更新 Agent', {confirmButtonText:'开始更新',cancelButtonText:'取消',type:'warning'}); } catch {return;}
@@ -30,16 +33,25 @@ async function uninstall() {
   try {commands.value=(await request('/agent/uninstall-commands')).commands;platform.value=/windows/i.test(props.server.distribution)?'windows':'linux';visible.value=true;}catch(e){ElMessage.error((e as Error).message);}finally{busy.value=false;}
 }
 async function copy() {try{await copyText(commands.value[platform.value]||'');ElMessage.success('卸载命令已复制');}catch{ElMessage.warning('请手动复制命令');}}
+function handleCommand(key:string) {
+  if(busy.value||props.disabled)return;
+  if(key==='update')void update();
+  else if(key==='manual')emit('manual');
+  else if(key==='revoke')emit('revoke');
+  else if(key==='uninstall')void uninstall();
+  else if(key==='delete')emit('remove');
+}
 </script>
 <template>
-  <el-dropdown trigger="click" @command="(key:string)=>key==='update'?update():key==='manual'?emit('manual'):key==='revoke'?emit('revoke'):uninstall()">
-   <el-button text :icon="MoreFilled" aria-label="更多维护操作" :disabled="busy"/>
+  <el-dropdown trigger="click" :disabled="busy||disabled" @command="handleCommand">
+   <el-button text :icon="MoreFilled" aria-label="更多维护操作" :disabled="busy||disabled"/>
    <template #dropdown><el-dropdown-menu>
     <el-dropdown-item disabled>{{state}}</el-dropdown-item>
     <el-dropdown-item command="update" :disabled="server.status==='revoked'||!ready||activeTask">平台更新</el-dropdown-item>
     <el-dropdown-item command="manual">更新命令</el-dropdown-item>
     <el-dropdown-item command="uninstall" divided>卸载命令</el-dropdown-item>
     <el-dropdown-item command="revoke" :disabled="server.status==='revoked'">撤销凭证</el-dropdown-item>
+    <el-dropdown-item command="delete" divided style="color:var(--el-color-danger)">删除服务器</el-dropdown-item>
    </el-dropdown-menu></template>
   </el-dropdown>
   <el-dialog v-model="visible" title="卸载 Agent" width="min(780px, 94vw)" append-to-body @closed="commands = {}">

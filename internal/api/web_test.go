@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/hex"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -9,6 +10,79 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+func TestConsoleCSPUsesFreshCloudflareCompatibleNonces(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<!doctype html><html>console</html>"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	app := &App{cfg: Config{WebDir: dir}}
+	router := gin.New()
+	router.NoRoute(app.serveWeb)
+	previous := ""
+	for i := 0; i < 3; i++ {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest("GET", "/dashboard", nil)
+		request.Header.Set("X-Request-ID", "attacker-supplied-nonce")
+		router.ServeHTTP(recorder, request)
+		policy := recorder.Header().Get("Content-Security-Policy")
+		var scripts, connections, nonce string
+		for _, directive := range strings.Split(policy, ";") {
+			fields := strings.Fields(directive)
+			if len(fields) == 0 {
+				continue
+			}
+			if fields[0] == "script-src" {
+				scripts = directive
+				for _, field := range fields[1:] {
+					if strings.HasPrefix(field, "'nonce-") {
+						nonce = strings.TrimSuffix(strings.TrimPrefix(field, "'nonce-"), "'")
+					}
+				}
+			}
+			if fields[0] == "connect-src" {
+				connections = directive
+			}
+		}
+		decoded, err := hex.DecodeString(nonce)
+		if recorder.Code != 200 || err != nil || len(decoded) < 16 || nonce == previous || strings.Contains(policy, "attacker-supplied-nonce") {
+			t.Fatal("HTML CSP nonce is missing, reused or trusted from a request header", nonce, err)
+		}
+		if recorder.Header().Get("Cache-Control") != "no-store" || strings.Contains(scripts, "'unsafe-inline'") || strings.Contains(scripts, "'unsafe-eval'") || strings.Contains(scripts, "*") {
+			t.Fatal("CSP permits arbitrary scripts or reuses cached HTML", policy)
+		}
+		for _, expected := range []string{"https://static.cloudflareinsights.com/beacon.min.js", "https://static.cloudflareinsights.com/beacon.min.js/"} {
+			if !strings.Contains(scripts, expected) {
+				t.Fatal("Cloudflare beacon variant is blocked", scripts)
+			}
+		}
+		if !strings.Contains(connections, "'self'") || !strings.Contains(connections, "https://cloudflareinsights.com/cdn-cgi/rum") {
+			t.Fatal("Cloudflare analytics reporting endpoint is blocked", connections)
+		}
+		previous = nonce
+	}
+}
+
+func TestProxyCSPDoesNotConflictWithOriginNonces(t *testing.T) {
+	native, err := os.ReadFile("../../deploy/native/nginx.conf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(native), "add_header Content-Security-Policy") {
+		t.Fatal("native proxy adds a second CSP that conflicts with the origin nonce")
+	}
+	for _, file := range []string{"../../deploy/nginx.conf", "../../deploy/nginx.local.conf"} {
+		config, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, required := range []string{"'nonce-$request_id'", "https://static.cloudflareinsights.com/beacon.min.js/", "https://cloudflareinsights.com/cdn-cgi/rum", "~*^text/html \"no-store\""} {
+			if !strings.Contains(string(config), required) {
+				t.Fatal("static proxy CSP is missing Cloudflare or cache protection", file, required)
+			}
+		}
+	}
+}
 
 func TestBuiltInWeb(t *testing.T) {
 	dir := t.TempDir()

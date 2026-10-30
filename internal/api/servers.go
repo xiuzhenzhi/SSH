@@ -2,6 +2,7 @@ package api
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -89,6 +90,50 @@ func (a *App) saveServer(c *gin.Context) {
 	}
 	ok(c, gin.H{"id": id})
 }
+func (a *App) deleteServer(c *gin.Context) {
+	id := c.Param("id")
+	err := a.mutate(c, c.MustGet("user").(User).ID, "server.delete", id, func(tx *sql.Tx) error {
+		var existing string
+		// Serialize deletion with Agent writes, enrollment and health monitoring.
+		if err := tx.QueryRowContext(c.Request.Context(), a.db.Bind(`SELECT id FROM servers WHERE id=? FOR UPDATE`), id).Scan(&existing); err != nil {
+			return err
+		}
+		// Remove dependents first; all supported databases enforce these foreign keys.
+		for _, query := range []string{
+			`DELETE FROM notification_jobs WHERE alert_id IN (SELECT id FROM alerts WHERE server_id=?)`,
+			`DELETE FROM alerts WHERE server_id=?`,
+			`DELETE FROM ssh_events WHERE server_id=?`,
+			`DELETE FROM agent_health WHERE server_id=?`,
+			`DELETE FROM agent_updates WHERE server_id=?`,
+			`DELETE FROM server_settings WHERE server_id=?`,
+			`DELETE FROM server_network WHERE server_id=?`,
+			`DELETE FROM agent_install_settings WHERE token_hash IN (SELECT token_hash FROM agent_enrollments WHERE server_id=?)`,
+			`DELETE FROM agent_enrollments WHERE server_id=?`,
+			`DELETE FROM agent_credentials WHERE server_id=?`,
+			`DELETE FROM servers WHERE id=?`,
+		} {
+			if _, err := tx.ExecContext(c.Request.Context(), a.db.Bind(query), id); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		bad(c, 404, "服务器不存在或已删除")
+		return
+	}
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	a.dashboardMu.Lock()
+	clear(a.dashboardCache)
+	a.countryEpoch++
+	a.dashboardMu.Unlock()
+	a.hub.publish()
+	ok(c, gin.H{"deleted": true})
+}
+
 func shellQuote(s string) string      { return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'" }
 func powershellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
 

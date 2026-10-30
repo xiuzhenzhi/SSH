@@ -26,7 +26,7 @@ case "${1:-}" in
         if [ "$(id -u)" -eq 0 ]; then exec sh /opt/sshguard/deploy.sh "$@";
         else exec sudo sh /opt/sshguard/deploy.sh "$@"; fi ;;
 esac
-version=${SSHGUARD_VERSION:-v0.3.12}
+version=${SSHGUARD_VERSION:-v0.3.13}
 for arg in "$@"; do
     if [ "$arg" = --update ] && [ -z "${SSHGUARD_VERSION:-}" ]; then version=latest; fi
 done

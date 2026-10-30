@@ -56,6 +56,16 @@ TEST_DB_DRIVER=mysql TEST_DATABASE_URL='USER:PASS@tcp(127.0.0.1:3306)/sshguard_t
 
 ## 构建
 
+Agent 性能与兼容性检查：
+
+```sh
+go test -tags=nethttpomithttp2 ./cmd/agent
+go test ./cmd/agent -run '^$' -bench 'Benchmark(ParseSSH|Spool|Idle)' -benchmem
+go test ./cmd/agent -run '^$' -fuzz '^FuzzSSHParserCompatibility$' -fuzztime=10s
+```
+
+发行版 Agent 通过 `scripts/build-agents.mjs` 构建，保留静态 Linux / Windows 的 amd64、arm64 支持，使用 `nethttpomithttp2` 裁掉未使用的 HTTP/2 代码；HTTPS 和 WebSocket 使用 HTTP/1.1。比较占用时应使用相同配置、队列规模及日志负载，并计入日志读取子进程；二进制大小、常驻内存和 CPU 分别记录。
+
 ```sh
 node scripts/build-release.mjs amd64
 node scripts/build-release.mjs arm64 --reuse-web --reuse-agents

@@ -19,4 +19,24 @@ foreach($path in @($target,$file)) {
     $serviceRule=$rules | Where-Object {$_.IdentityReference.Value -eq 'S-1-5-19'}
     if($serviceRule.FileSystemRights -band [Security.AccessControl.FileSystemRights]::Write){throw 'LocalService can write protected files'}
 }
-Write-Output 'Windows installer ACL test passed: only Administrators/SYSTEM full control; LocalService read/execute.'
+foreach ($scriptName in @('install-agent.ps1','uninstall-agent.ps1')) {
+    $parseErrors=$null; $parseTokens=$null
+    $scriptAst=[System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot $scriptName),[ref]$parseTokens,[ref]$parseErrors)
+    if($parseErrors){throw $parseErrors}
+    $taskCheck=$scriptAst.Find({param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Test-FixedUpdaterTask'},$true)
+    if(-not $taskCheck){throw 'Missing updater task ownership check'}
+    . ([ScriptBlock]::Create($taskCheck.Extent.Text))
+    $testShell='C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+    $testRunner='C:\Program Files\SSHGuardAgent\poll-update.ps1'
+    foreach ($testArguments in @(
+        ('-NoProfile -NonInteractive -File "{0}"' -f $testRunner),
+        ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}"' -f $testRunner)
+    )) {
+        $testTask=[PSCustomObject]@{Actions=@([PSCustomObject]@{Execute=$testShell;Arguments=$testArguments})}
+        if(-not (Test-FixedUpdaterTask $testTask $testShell $testRunner)){throw 'Owned legacy/current updater was rejected'}
+        if(Test-FixedUpdaterTask $testTask $testShell 'C:\unrelated\poll-update.ps1'){throw 'Unrelated updater path was accepted'}
+        $testTask.Actions[0].Arguments+=' -Command evil'
+        if(Test-FixedUpdaterTask $testTask $testShell $testRunner){throw 'Unexpected updater command was accepted'}
+    }
+}
+Write-Output 'Windows installer checks passed: protected ACLs, current/legacy updater ownership and command tampering rejection.'

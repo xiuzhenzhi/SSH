@@ -77,6 +77,8 @@ jobs:
       - if: runner.os == 'Linux'
         run: go test -race ./...
       - run: go vet ./...
+      - name: Verify compact Agent build
+        run: go test -tags=nethttpomithttp2 ./cmd/agent
       - name: Verify domain-free setup and real Agent flow
         shell: bash
         run: |
@@ -198,6 +200,19 @@ jobs:
           path: web/dist
           if-no-files-found: error
           retention-days: 1
+  docker:
+    name: Docker application builds
+    if: inputs.full_validation == true && github.event_name != 'pull_request'
+    needs: scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.source_ref || github.sha }}
+      - run: docker build --tag sshguard-api:verify --file deploy/Dockerfile.api .
+      - run: docker build --tag sshguard-web:verify --file deploy/Dockerfile.web .
   build:
     name: Build release candidate
     if: inputs.full_validation == true && github.event_name != 'pull_request'
@@ -301,7 +316,7 @@ jobs:
   result:
     name: CI result
     if: always() && !cancelled()
-    needs: [scope, go, postgres, mysql, web, build, native, artifacts]
+    needs: [scope, go, postgres, mysql, web, docker, build, native, artifacts]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -315,7 +330,7 @@ jobs:
           node <<'NODE'
           const jobs = JSON.parse(process.env.RESULTS);
           const full = process.env.FULL_VALIDATION === 'true';
-          const packageJobs = new Set(['build', 'native', 'artifacts']);
+          const packageJobs = new Set(['docker', 'build', 'native', 'artifacts']);
           const backendJobs = new Set(['go', 'postgres', 'mysql']);
           let failed = false;
           for (const [name, job] of Object.entries(jobs)) {

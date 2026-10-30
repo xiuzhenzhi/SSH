@@ -2,9 +2,9 @@ name: Documentation
 on:
   push:
     branches: [main]
-    paths: ['docs/**', '*.md', 'VERSION', 'package.json', 'package-lock.json', '.github/workflows/docs.yml']
+    paths: ['docs/**', '*.md', 'VERSION', 'package.json', 'package-lock.json', 'scripts/build-docs.mjs', '.github/workflows/docs.yml']
   pull_request:
-    paths: ['docs/**', '*.md', 'VERSION', 'package.json', 'package-lock.json', '.github/workflows/docs.yml']
+    paths: ['docs/**', '*.md', 'VERSION', 'package.json', 'package-lock.json', 'scripts/build-docs.mjs', '.github/workflows/docs.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -26,6 +26,7 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci --no-fund
+      - run: npm audit --audit-level=high
       - run: node scripts/check-docs.mjs
       - run: npm run docs:build
       - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4

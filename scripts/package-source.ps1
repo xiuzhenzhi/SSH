@@ -9,11 +9,11 @@ $sourceZip = Join-Path $out 'sshguard-source.zip'
 if (Test-Path -LiteralPath $sourceZip) { Remove-Item -LiteralPath $sourceZip }
 $archive = [System.IO.Compression.ZipFile]::Open($sourceZip, 'Create')
 try {
-  $inputs = @('.github','cmd','internal','migrations','web','deploy','scripts','docs','go.mod','go.sum','VERSION','README.md','CHANGELOG.md','CONTRIBUTING.md','SECURITY.md','.gitignore','.gitattributes','.dockerignore','.env.example','compose.yaml','compose.mysql.yaml','compose.postgres.yaml','compose.sqlite.yaml','compose.local.yaml')
+  $inputs = @('.github','cmd','internal','migrations','web','deploy','scripts','docs','package.json','package-lock.json','go.mod','go.sum','VERSION','README.md','CHANGELOG.md','CONTRIBUTING.md','SECURITY.md','.gitignore','.gitattributes','.dockerignore','.env.example','compose.yaml','compose.mysql.yaml','compose.postgres.yaml','compose.sqlite.yaml','compose.local.yaml')
   foreach ($inputPath in $inputs) {
     Get-ChildItem -LiteralPath (Join-Path $projectRoot $inputPath) -File -Recurse -Force | ForEach-Object {
       $relative = $_.FullName.Substring($projectRoot.Length + 1).Replace('\','/')
-      if ($relative -notmatch '(^web/(node_modules|dist)/|^deploy/certs/(?!\.gitkeep)|\.(db|sqlite|sqlite3)(-(wal|shm|journal))?$)') {
+      if ($relative -notmatch '(^web/(node_modules|dist)/|^docs/\.vitepress/(\.temp|cache|dist)/|^deploy/certs/(?!\.gitkeep)|\.(db|sqlite|sqlite3)(-(wal|shm|journal))?$)') {
         [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $_.FullName, $relative, 'Optimal') | Out-Null
       }
     }

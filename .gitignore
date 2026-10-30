@@ -3,6 +3,9 @@ node_modules/
 dist/
 bin/
 .local/
+docs/.vitepress/.temp/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
 deploy/certs/*
 !deploy/certs/.gitkeep
 *.zip

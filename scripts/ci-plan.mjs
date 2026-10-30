@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url';
 
 export function planCI(files, full = false) {
   if (full || files === null) return { go: true, web: true };
-  const docs = p => /\.md$/i.test(p) || p.startsWith('docs/') || ['LICENSE', 'package.json', 'package-lock.json', '.github/workflows/docs.yml'].includes(p);
+  const docs = p => /\.md$/i.test(p) || p.startsWith('docs/') || ['LICENSE', 'package.json', 'package-lock.json', '.github/workflows/docs.yml', 'scripts/build-docs.mjs'].includes(p);
   const shared = files.some(p => !docs(p) && !p.startsWith('web/'));
   return { go: shared, web: shared || files.some(p => p.startsWith('web/')) };
 }

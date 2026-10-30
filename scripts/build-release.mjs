@@ -36,7 +36,9 @@ for (const name of ['install-agent.sh','install-agent.ps1','uninstall-agent.sh',
 }
 cpSync('deploy/native',`${out}/deploy`,{recursive:true});
 cpSync('README.md',`${out}/README.md`);
-cpSync('docs',`${out}/docs`,{recursive:true});
+cpSync('docs',`${out}/docs`,{recursive:true,
+  filter: source => !/(?:^|[\\/])\.vitepress[\\/](?:\.temp|cache|dist)(?:[\\/]|$)/.test(source),
+});
 // The manifest must match the binary and Agents, including preview overrides.
 writeFileSync(`${out}/VERSION`,version+'\n');
 cpSync('scripts/deploy.sh',`${out}/deploy.sh`);

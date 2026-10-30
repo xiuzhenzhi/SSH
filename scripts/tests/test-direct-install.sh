@@ -16,6 +16,16 @@ done
 # The terminal menu can exit without installing; no database/domain prompts.
 printf '0\n' | script -q -c "sh '$bundle/deploy.sh'" "$tmp/menu.log" >/dev/null
 grep -q 'SSHGuard' "$tmp/menu.log"
+# A first installation that cannot start must remove its enablement link and
+# preserve the generated configuration so the next installation can retry.
+mkdir "$tmp/broken-first"
+cp -R "$bundle/." "$tmp/broken-first/"
+printf '#!/bin/sh\ncase "$1" in -check) exit 0 ;; *) exit 1 ;; esac\n' > "$tmp/broken-first/sshguard-api"
+if PATH="$tmp/bin:$PATH" sh "$tmp/broken-first/deploy.sh"; then echo 'Broken first install accepted' >&2; exit 1; fi
+test ! -e /opt/SSHGuard/Server/sshguard-api
+test ! -e /etc/systemd/system/sshguard-api.service
+test ! -L /etc/systemd/system/multi-user.target.wants/sshguard-api.service
+test -s /opt/SSHGuard/Server/api.env
 # Even with an existing proxy, installation only asks for the port.
 printf '\n' | PATH="$tmp/bin:$PATH" sh "$bundle/deploy.sh" > "$tmp/install.log"
 export SSHGUARD_DIRECT_LOG="$tmp/install.log"

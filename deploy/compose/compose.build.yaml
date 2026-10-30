@@ -1,0 +1,10 @@
+# Optional source-build override; default deployment pulls verified release images.
+services:
+  api:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.api
+  web:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.web

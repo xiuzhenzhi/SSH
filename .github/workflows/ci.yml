@@ -166,7 +166,7 @@ jobs:
           sh -n scripts/quick-start.sh
           sh -n scripts/update.sh
           sh -n scripts/uninstall.sh
-      - run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 -shellcheck= -pyflakes= .github/workflows/ci.yml .github/workflows/release.yml .github/workflows/docs.yml
+      - run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 -shellcheck= -pyflakes= .github/workflows/ci.yml .github/workflows/release.yml .github/workflows/docs.yml .github/workflows/containers.yml
   compatibility:
     name: 主控与 Agent 兼容性
     needs: scope

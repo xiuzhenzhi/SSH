@@ -121,3 +121,13 @@ jobs:
           if [[ "$RELEASE_TAG" == *-* ]]; then flags+=(--prerelease); fi
           gh release create "$RELEASE_TAG" dist/release/* --verify-tag "${flags[@]}" \
             --title "SSHGuard $RELEASE_TAG" --notes-file docs/RELEASE-NOTES.md
+  containers:
+    name: Publish Docker images
+    needs: [verify, publish]
+    if: ${{ !cancelled() && needs.publish.result == 'success' }}
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/containers.yml
+    with:
+      tag: ${{ needs.verify.outputs.tag }}

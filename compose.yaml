@@ -1,8 +1,6 @@
 services:
   api:
-    build:
-      context: .
-      dockerfile: deploy/Dockerfile.api
+    image: ghcr.io/xiuzhenzhi/sshguard-api:${SSHGUARD_IMAGE_TAG:-v0.3.19}
     restart: unless-stopped
     environment:
       DB_DRIVER: ${DB_DRIVER:?Run scripts/dev/init-env.mjs}
@@ -21,9 +19,7 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
   web:
-    build:
-      context: .
-      dockerfile: deploy/Dockerfile.web
+    image: ghcr.io/xiuzhenzhi/sshguard-web:${SSHGUARD_IMAGE_TAG:-v0.3.19}
     restart: unless-stopped
     depends_on: [api]
     ports:

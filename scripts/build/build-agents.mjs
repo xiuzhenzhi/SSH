@@ -1,3 +1,4 @@
+import { agentChanged } from '../release/agent-version.mjs';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync, cpSync } from 'node:fs';
 import { resolve, relative } from 'node:path';
@@ -8,10 +9,16 @@ process.chdir(root);
 const out = resolve(process.argv[2] || 'dist/agents');
 const rel = relative(resolve('dist'), out);
 if (!rel || rel.startsWith('..') || resolve('dist', rel) !== out) throw Error('Agent output must be a subdirectory of dist');
-const version = process.env.SSHGUARD_VERSION || readFileSync('VERSION','utf8').trim();
+const version = process.env.SSHGUARD_AGENT_VERSION || readFileSync('AGENT_VERSION','utf8').trim();
 if (!/^[a-zA-Z0-9.+_-]{1,32}$/.test(version)) throw Error('Invalid version');
 mkdirSync(out,{recursive:true});
-for (const os of ['linux','windows']) for (const arch of ['amd64','arm64']) {
+const platformVersion = process.env.SSHGUARD_VERSION || readFileSync('VERSION','utf8').trim();
+if (version !== platformVersion && !process.env.SSHGUARD_AGENT_VERSION) {
+  if (agentChanged(version)) throw Error('Agent sources changed: bump AGENT_VERSION before releasing');
+  execFileSync('gh',['release','download','v'+version,'--repo','xiuzhenzhi/SSH','--pattern','sshguard-agent-*','--dir',out,'--clobber'],{stdio:'inherit'});
+  execFileSync(process.execPath,['scripts/checks/check-agent-artifacts.mjs',out],{stdio:'inherit'});
+  console.log('Reused published Agent '+version+'; skipped cross compilation');
+} else for (const os of ['linux','windows']) for (const arch of ['amd64','arm64']) {
   const name = `sshguard-agent-${os}-${arch}${os === 'windows' ? '.exe' : ''}`;
   // Agent HTTPS and WebSocket traffic uses HTTP/1.1; omit the unused HTTP/2 stack.
   execFileSync('go',['build','-trimpath','-tags=nethttpomithttp2','-ldflags',`-s -w -X sshguard/internal/agent.version=${version}`,'-o',resolve(out,name),'./cmd/agent'],{stdio:'inherit',env:{...process.env,CGO_ENABLED:'0',GOOS:os,GOARCH:arch}});

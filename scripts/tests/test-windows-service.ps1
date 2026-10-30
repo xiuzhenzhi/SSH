@@ -74,7 +74,7 @@ try {
     if (-not $rejected -or (Get-Service SSHGuardAgent).Status -ne 'Running') { throw 'Checksum failure interrupted running service' }
     # This signed-by-checksum test payload runs version/check but cannot register a service.
     $broken = Join-Path $temp 'broken.go'
-    [IO.File]::WriteAllText($broken,('package main; import ("os";"fmt"); func main(){if len(os.Args)>1 && os.Args[1]=="-version"{fmt.Println("SSHGuard __VERSION__ windows/amd64");return};if len(os.Args)>1 && os.Args[1]=="-check"{return};os.Exit(1)}').Replace('__VERSION__',([IO.File]::ReadAllText((Join-Path $root 'VERSION')).Trim())))
+    [IO.File]::WriteAllText($broken,('package main; import ("os";"fmt"); func main(){if len(os.Args)>1 && os.Args[1]=="-version"{fmt.Println("SSHGuard __VERSION__ windows/amd64");return};if len(os.Args)>1 && os.Args[1]=="-check"{return};os.Exit(1)}').Replace('__VERSION__',([IO.File]::ReadAllText((Join-Path $root 'AGENT_VERSION')).Trim())))
     go build -o $download $broken
     if ($LASTEXITCODE -ne 0) { throw 'Fixture build failed' }
     Write-Checksum
@@ -87,7 +87,7 @@ try {
     Write-Output 'Windows real LocalService install, update, idempotence, checksum rejection and rollback passed.'
     & (Join-Path $env:ProgramFiles 'SSHGuardAgent\uninstall-agent.ps1')
     if (Get-Service SSHGuardAgent -ErrorAction SilentlyContinue) { throw 'Offline uninstall left service installed' }
-    if ((Get-FileHash $config -Algorithm SHA256).Hash -ne $configHash) { throw 'Uninstall changed retained credentials' }
+    foreach ($removed in @($config,(Join-Path (Split-Path $config) 'state'),(Split-Path $exe))) { if (Test-Path -LiteralPath $removed) { throw "Uninstall left Agent data: $removed" } }
 } finally {
     if (Get-Service SSHGuardAgent -ErrorAction SilentlyContinue) { & "$PSScriptRoot/../uninstall-agent.ps1" }
     if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id }

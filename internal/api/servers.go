@@ -25,6 +25,9 @@ func (a *App) servers(c *gin.Context) {
 	if more {
 		rows = rows[:size]
 	}
+	for _, row := range rows {
+		row["available_agent_version"] = AgentVersion
+	}
 	a.decorateServers(c.Request.Context(), rows)
 	ok(c, gin.H{"items": rows, "has_more": more})
 }
@@ -37,6 +40,9 @@ func (a *App) server(c *gin.Context) {
 	if len(rows) == 0 {
 		bad(c, 404, "服务器不存在")
 		return
+	}
+	for _, row := range rows {
+		row["available_agent_version"] = AgentVersion
 	}
 	a.decorateServers(c.Request.Context(), rows)
 	ok(c, rows[0])
@@ -137,7 +143,7 @@ func shellQuote(s string) string      { return "'" + strings.ReplaceAll(s, "'", 
 func powershellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
 
 func agentAsset(name string) string {
-	return "https://github.com/xiuzhenzhi/SSH/releases/download/" + url.PathEscape("v"+Version) + "/" + url.PathEscape(name)
+	return "https://github.com/xiuzhenzhi/SSH/releases/download/" + url.PathEscape("v"+AgentVersion) + "/" + url.PathEscape(name)
 }
 func installCommands(origin, t string) map[string]string {
 	linuxOption, windowsOption := "", ""

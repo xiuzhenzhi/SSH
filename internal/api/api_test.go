@@ -188,7 +188,7 @@ func TestIntegration(t *testing.T) {
 	call("POST", "/servers/"+id+"/update", map[string]string{}, session, "", true, 409)
 	result, _ = call("POST", "/agent/update/poll", map[string]string{}, "", agent, false, 200)
 	task := result["data"].(map[string]any)["update"].(map[string]any)
-	if task["id"] != updateID || task["version"] != Version || len(task) != 2 {
+	if task["id"] != updateID || task["version"] != AgentVersion || len(task) != 2 {
 		t.Fatal("unexpected remote update payload", task)
 	}
 	result, _ = call("POST", "/agent/update/poll", map[string]string{}, "", agent, false, 200)

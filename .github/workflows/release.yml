@@ -46,7 +46,7 @@ jobs:
         run: |
           git config user.name 'xiuzhenzhi'
           git config user.email 'xiuzhengzhi66@gmail.com'
-          git add VERSION internal/agent/run.go internal/api/routes.go sshguard.sh scripts/install-agent.sh scripts/install-agent.ps1 README.md CHANGELOG.md docs/guides/QUICKSTART.md docs/deployment/INSTALL-NATIVE.md docs/development/RELEASING.md docs/RELEASE-NOTES.md
+          git add VERSION AGENT_VERSION internal/agent/run.go internal/api/routes.go sshguard.sh scripts/install-agent.sh scripts/install-agent.ps1 README.md CHANGELOG.md docs/guides/QUICKSTART.md docs/deployment/INSTALL-NATIVE.md docs/development/RELEASING.md docs/RELEASE-NOTES.md
           git diff --cached --check
           git commit -m "release: prepare SSHGuard $RELEASE_TAG"
           git tag -a "$RELEASE_TAG" -m "SSHGuard $RELEASE_TAG"
@@ -90,6 +90,7 @@ jobs:
     with:
       source_ref: ${{ needs.verify.outputs.sha }}
       full_validation: true
+      selective_release: true
   publish:
     name: Publish verified release
     needs: [verify, build]

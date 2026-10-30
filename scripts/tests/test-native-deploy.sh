@@ -107,7 +107,7 @@ node scripts/tests/test-native-api.mjs verify-update
 download=/opt/sshguard/web/downloads/sshguard-agent-linux-amd64
 cp "$download" "$tmp/good-agent"
 cp "$download.sha256" "$tmp/good-hash"
-printf '#!/bin/sh\ncase "$1" in -version) echo "SSHGuard %s linux/amd64"; exit 0 ;; -check) exit 0 ;; *) exit 1 ;; esac\n' "$(cat "$bundle/VERSION")" > "$download"
+printf '#!/bin/sh\ncase "$1" in -version) echo "SSHGuard %s linux/amd64"; exit 0 ;; -check) exit 0 ;; *) exit 1 ;; esac\n' "$(cat "$bundle/AGENT_VERSION")" > "$download"
 sha256sum "$download" > "$download.sha256"
 if sh "$bundle/web/downloads/install-agent.sh" "$origin" --update; then echo 'Broken Agent update unexpectedly succeeded' >&2; exit 1; fi
 systemctl is-active --quiet sshguard-agent
@@ -157,5 +157,7 @@ sh /usr/local/lib/sshguard/uninstall-agent.sh
 if systemctl is-active --quiet sshguard-agent; then echo 'Agent still running after uninstall' >&2; exit 1; fi
 [ ! -e /usr/local/bin/sshguard-agent ]
 [ ! -e /etc/systemd/system/sshguard-agent-update.timer ]
-[ -f /etc/sshguard/agent.json ]
+[ ! -e /etc/sshguard/agent.json ]
+[ ! -e /var/lib/sshguard-agent ]
+[ ! -e /var/log/sshguard ]
 curl -fsS "$origin/api/v1/health" >/dev/null

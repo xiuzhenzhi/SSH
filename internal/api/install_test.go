@@ -67,13 +67,13 @@ func TestIPCommandsMatchTransport(t *testing.T) {
 				if strings.Contains(command, option) != insecure {
 					t.Fatal("HTTP opt-in mismatch", platform, origin)
 				}
-				if !strings.Contains(command, "--proto '=https'") || !strings.Contains(command, "--proto-redir '=https'") || !strings.Contains(command, "https://github.com/xiuzhenzhi/SSH/releases/download/v"+Version+"/install-agent.") || strings.Contains(command, origin+"/downloads/") {
+				if !strings.Contains(command, "--proto '=https'") || !strings.Contains(command, "--proto-redir '=https'") || !strings.Contains(command, "https://github.com/xiuzhenzhi/SSH/releases/download/v"+AgentVersion+"/install-agent.") || strings.Contains(command, origin+"/downloads/") {
 					t.Fatal("download transport mismatch")
 				}
 			}
 		}
 		for platform, command := range uninstallCommands(origin) {
-			if !strings.Contains(command, agentAsset("uninstall-agent.")) && !strings.Contains(command, "https://github.com/xiuzhenzhi/SSH/releases/download/v"+Version+"/uninstall-agent.") {
+			if !strings.Contains(command, agentAsset("uninstall-agent.")) && !strings.Contains(command, "https://github.com/xiuzhenzhi/SSH/releases/download/v"+AgentVersion+"/uninstall-agent.") {
 				t.Fatal("invalid uninstall transport", platform)
 			}
 		}

@@ -23,7 +23,7 @@ func (a *App) queueAgentUpdate(c *gin.Context) {
 		if e := tx.QueryRowContext(c.Request.Context(), a.db.Bind(`SELECT agent_version FROM servers WHERE id=? AND revoked=false FOR UPDATE`), id).Scan(&current); e != nil {
 			return e
 		}
-		if current == Version {
+		if current == AgentVersion {
 			return errUpdateUnavailable
 		}
 		var seen sql.NullTime
@@ -39,7 +39,7 @@ func (a *App) queueAgentUpdate(c *gin.Context) {
 		if e := tx.QueryRowContext(c.Request.Context(), a.db.Bind(`SELECT token_hash FROM agent_credentials WHERE server_id=? AND revoked_at IS NULL`), id).Scan(&credential); e != nil {
 			return e
 		}
-		_, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`UPDATE agent_updates SET request_id=?,credential_hash=?,status='pending',target_version=?,expires_at=?,message='' WHERE server_id=?`), requestID, credential, Version, now.Add(15*time.Minute), id)
+		_, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`UPDATE agent_updates SET request_id=?,credential_hash=?,status='pending',target_version=?,expires_at=?,message='' WHERE server_id=?`), requestID, credential, AgentVersion, now.Add(15*time.Minute), id)
 		return e
 	})
 	if errors.Is(err, errUpdateUnavailable) {
@@ -50,7 +50,7 @@ func (a *App) queueAgentUpdate(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	ok(c, gin.H{"request_id": requestID, "version": Version})
+	ok(c, gin.H{"request_id": requestID, "version": AgentVersion})
 }
 
 func (a *App) pollAgentUpdate(c *gin.Context) {
@@ -78,7 +78,7 @@ func (a *App) pollAgentUpdate(c *gin.Context) {
 		if status != "pending" && status != "running" {
 			return nil
 		}
-		if !expiry.Valid || !expiry.Time.After(now) || credential != c.GetString("agent_hash") || target != Version {
+		if !expiry.Valid || !expiry.Time.After(now) || credential != c.GetString("agent_hash") || target != AgentVersion {
 			_, e := tx.ExecContext(c.Request.Context(), a.db.Bind(`UPDATE agent_updates SET status='failed',message='Task expired, credentials changed or platform version changed' WHERE server_id=?`), id)
 			return e
 		}

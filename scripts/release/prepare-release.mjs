@@ -1,5 +1,6 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { agentChanged } from './agent-version.mjs';
 import { parseVersion, selectVersion } from './release-version.mjs';
 
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
@@ -23,13 +24,17 @@ const version = selectVersion(process.env.REQUESTED_VERSION || '', current, reac
 const tag = 'v' + version;
 if (releases.some(r => r.tag_name === tag)) throw Error('A Release already uses this version.');
 
+const oldAgent = existsSync('AGENT_VERSION') ? readFileSync('AGENT_VERSION','utf8').trim() : current;
+const agentVersion = !existsSync('AGENT_VERSION') || agentChanged(oldAgent) ? version : oldAgent;
+writeFileSync('AGENT_VERSION', agentVersion + '\n');
 writeFileSync('VERSION', version + '\n');
 for (const [file, pattern, replacement] of [
-  ['internal/agent/run.go', /var version = "[^"]+"/, `var version = "${version}"`],
+  ['internal/agent/run.go', /var version = "[^"]+"/, `var version = "${agentVersion}"`],
   ['internal/api/routes.go', /var Version = "[^"]+"/, `var Version = "${version}"`],
+  ['internal/api/routes.go', /var AgentVersion = "[^"]+"/, `var AgentVersion = "${agentVersion}"`],
   ['sshguard.sh', /SSHGUARD_VERSION:-v[^}]+/, `SSHGUARD_VERSION:-${tag}`],
-  ['scripts/install-agent.sh', /RELEASE_VERSION='[^']+'/, `RELEASE_VERSION='${version}'`],
-  ['scripts/install-agent.ps1', /\$ReleaseVersion = '[^']+'/, `$$ReleaseVersion = '${version}'`],
+  ['scripts/install-agent.sh', /RELEASE_VERSION='[^']+'/, `RELEASE_VERSION='${agentVersion}'`],
+  ['scripts/install-agent.ps1', /\$ReleaseVersion = '[^']+'/, `$$ReleaseVersion = '${agentVersion}'`],
 ]) {
   const source = readFileSync(file, 'utf8');
   if (!pattern.test(source)) throw Error('Missing version declaration: ' + file);

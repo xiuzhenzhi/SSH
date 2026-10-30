@@ -13,6 +13,7 @@ for (const arch of ['amd64','arm64']) execFileSync('tar',['-czf',`dist/release/s
 const downloads='dist/sshguard-linux-amd64/web/downloads';
 for (const name of readdirSync(downloads)) cpSync(`${downloads}/${name}`,`dist/release/${name}`);
 cpSync('VERSION','dist/release/VERSION');
+cpSync('AGENT_VERSION','dist/release/AGENT_VERSION');
 cpSync('sshguard.sh','dist/release/sshguard.sh');
 cpSync('scripts/deploy.sh','dist/release/deploy.sh');
 cpSync('scripts/quick-start.sh','dist/release/quick-start.sh');

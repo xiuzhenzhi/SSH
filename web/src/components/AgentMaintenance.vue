@@ -13,9 +13,11 @@ const busy = ref(false), visible = ref(false), platform = ref('linux');
 const commands = ref<Record<string,string>>({});
 const activeTask = computed(() => ['pending','running'].includes(props.server.update_status) && new Date(props.server.update_expires_at).getTime()>Date.now());
 const state = computed(() => {
+  if (props.server.agent_version === props.server.available_agent_version && props.server.available_agent_version) return 'Agent 已是当前版本';
   if (['pending','running'].includes(props.server.update_status) && !activeTask.value) return '更新任务已超时，请检查维护服务';
   return {idle:'更新服务就绪',pending:'等待更新',running:'正在更新',success:'更新成功',failed:'更新失败'}[props.server.update_status as string] || '需手动更新以启用远程更新';
 });
+const current = computed(() => props.server.agent_version === props.server.available_agent_version);
 const ready = computed(() => props.server.updater_seen_at && Date.now()-new Date(props.server.updater_seen_at).getTime()<180000);
 async function request(path:string,method='GET') {
   return requestJSON(path, method, method === 'POST' ? {} : undefined);
@@ -44,7 +46,7 @@ function handleCommand(key:string) {
    <el-button text :icon="MoreFilled" aria-label="更多维护操作" :disabled="busy||disabled"/>
    <template #dropdown><el-dropdown-menu>
     <el-dropdown-item disabled>{{state}}</el-dropdown-item>
-    <el-dropdown-item command="update" :disabled="server.status==='revoked'||!ready||activeTask">平台更新</el-dropdown-item>
+    <el-dropdown-item command="update" :disabled="server.status==='revoked'||!ready||activeTask||current">平台更新</el-dropdown-item>
     <el-dropdown-item command="manual">更新命令</el-dropdown-item>
     <el-dropdown-item command="uninstall" divided>卸载命令</el-dropdown-item>
     <el-dropdown-item command="revoke" :disabled="server.status==='revoked'">撤销凭证</el-dropdown-item>

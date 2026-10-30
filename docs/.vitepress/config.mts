@@ -1,11 +1,10 @@
 import { defineConfig } from 'vitepress';
-import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { tokenize } from './search.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
-const version = readFileSync(new URL('../../VERSION', import.meta.url), 'utf8').trim();
 
 const legacyPages: Record<string, string> = {
   'docs/QUICKSTART': 'docs/guides/QUICKSTART',
@@ -60,7 +59,7 @@ export default defineConfig({
       { text: '快速开始', link: '/docs/guides/QUICKSTART' },
       { text: '使用指南', link: '/docs/README' },
       { text: '开发与 API', link: '/docs/development/DEVELOPMENT' },
-      { text: 'v' + version, items: [
+      { text: '版本与发布', items: [
         { text: '发布说明', link: '/docs/RELEASE-NOTES' },
         { text: '更新日志', link: '/CHANGELOG' },
         { text: '下载发行包', link: 'https://github.com/xiuzhenzhi/SSH/releases/latest' },

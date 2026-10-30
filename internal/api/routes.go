@@ -31,6 +31,7 @@ type App struct {
 }
 
 var Version = "0.3.15"
+var AgentVersion = "0.3.15"
 
 func New(db *storage.DB, cfg Config) *gin.Engine {
 	return NewApp(db, cfg).Router()
@@ -94,7 +95,7 @@ func (a *App) Router() *gin.Engine {
 		if !valid {
 			return
 		}
-		ok(c, gin.H{"commands": updateCommands(origin), "version": Version, "endpoint": origin, "insecure_http": strings.HasPrefix(origin, "http://")})
+		ok(c, gin.H{"commands": updateCommands(origin), "version": AgentVersion, "endpoint": origin, "insecure_http": strings.HasPrefix(origin, "http://")})
 	})
 	web.GET("/settings/database", role("admin"), a.databaseSettings)
 	web.PATCH("/settings/database", role("admin"), a.saveDatabaseSettings)

@@ -21,7 +21,7 @@ const server=https.createServer({pfx:readFileSync(process.env.SSHGUARD_TEST_PFX)
      if(req.url==='/api/v1/agent/enroll' && input.token==='a'.repeat(64)){res.end(JSON.stringify({data:{server_id:'windows-ci',token:'b'.repeat(64),log_file:process.env.SSHGUARD_TEST_LOG}}));return;}
      if(req.url==='/api/v1/agent/heartbeat' && req.headers.authorization==='Bearer '+'b'.repeat(64)){res.end(JSON.stringify({data:{received:true}}));return;}
      if(req.url==='/api/v1/agent/update/poll' && req.headers.authorization==='Bearer '+'b'.repeat(64)){
-       const update=updatePending?{id:'12345678-1234-1234-1234-123456789abc',version:readFileSync('VERSION','utf8').trim()}:null;
+       const update=updatePending?{id:'12345678-1234-1234-1234-123456789abc',version:readFileSync('AGENT_VERSION','utf8').trim()}:null;
        updatePending=false;res.end(JSON.stringify({data:{update}}));return;
      }
      if(req.url==='/api/v1/agent/update/result' && req.headers.authorization==='Bearer '+'b'.repeat(64)){

@@ -9,7 +9,7 @@ $sourceZip = Join-Path $out 'sshguard-source.zip'
 if (Test-Path -LiteralPath $sourceZip) { Remove-Item -LiteralPath $sourceZip }
 $archive = [System.IO.Compression.ZipFile]::Open($sourceZip, 'Create')
 try {
-  $inputs = @('.github','cmd','internal','web','deploy','scripts','package.json','package-lock.json','sshguard.sh','go.mod','go.sum','VERSION','README.md','CHANGELOG.md','CONTRIBUTING.md','SECURITY.md','.gitignore','.gitattributes','.dockerignore','.env.example','compose.yaml')
+  $inputs = @('.github','cmd','internal','web','deploy','scripts','package.json','package-lock.json','sshguard.sh','go.mod','go.sum','VERSION','AGENT_VERSION','README.md','CHANGELOG.md','CONTRIBUTING.md','SECURITY.md','.gitignore','.gitattributes','.dockerignore','.env.example','compose.yaml')
   if ($IncludeDocs) { $inputs += 'docs' }
   foreach ($inputPath in $inputs) {
     Get-ChildItem -LiteralPath (Join-Path $projectRoot $inputPath) -File -Recurse -Force | ForEach-Object {

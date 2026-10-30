@@ -12,12 +12,13 @@ const output = resolve(out);
 if (relative(resolve('dist'), output).replaceAll('\\','/') !== `sshguard-linux-${arch}`) throw Error('Invalid release output path');
 rmSync(output, {recursive:true, force:true});
 mkdirSync(`${out}/web/downloads`, {recursive:true});
+const agentVersion = process.env.SSHGUARD_AGENT_VERSION || readFileSync('AGENT_VERSION','utf8').trim();
 const version = process.env.SSHGUARD_VERSION || readFileSync('VERSION','utf8').trim();
 if (!/^[a-zA-Z0-9.+_-]{1,32}$/.test(version)) throw Error('Invalid version');
-execFileSync('go', ['build','-trimpath','-ldflags',`-s -w -X sshguard/internal/api.Version=${version}`,'-o',`${out}/sshguard-api`,'./cmd/api'], {stdio:'inherit',env:{...process.env,CGO_ENABLED:'0',GOOS:'linux',GOARCH:arch}});
+execFileSync('go', ['build','-trimpath','-ldflags',`-s -w -X sshguard/internal/api.Version=${version} -X sshguard/internal/api.AgentVersion=${agentVersion}`,'-o',`${out}/sshguard-api`,'./cmd/api'], {stdio:'inherit',env:{...process.env,CGO_ENABLED:'0',GOOS:'linux',GOARCH:arch}});
 if (process.argv.includes('--reuse-agents')) {
   const source='dist/sshguard-linux-amd64';
-  if (arch!=='arm64' || readFileSync(`${source}/VERSION`,'utf8').trim()!==version) throw Error('Agent reuse requires the matching amd64 package built first');
+  if (arch!=='arm64' || readFileSync(`${source}/VERSION`,'utf8').trim()!==version || readFileSync(`${source}/AGENT_VERSION`,'utf8').trim()!==agentVersion) throw Error('Agent reuse requires the matching amd64 package built first');
   execFileSync(process.execPath,['scripts/checks/check-agent-artifacts.mjs',`${source}/web/downloads`],{stdio:'inherit'});
   for(const os of ['linux','windows']) for(const cpu of ['amd64','arm64']) {
     const name=`sshguard-agent-${os}-${cpu}${os==='windows'?'.exe':''}`;
@@ -32,12 +33,13 @@ if (!process.argv.includes('--reuse-web')) { npm(['ci','--no-audit','--no-fund']
 cpSync('web/dist',`${out}/web`,{recursive:true});
 for (const name of ['install-agent.sh','install-agent.ps1','uninstall-agent.sh','uninstall-agent.ps1']) {
   let source=readFileSync(`scripts/${name}`,'utf8');
-  source=source.replace(/RELEASE_VERSION='[^']+'/,()=>`RELEASE_VERSION='${version}'`).replace(/\$ReleaseVersion = '[^']+'/,()=>`$ReleaseVersion = '${version}'`);
+  source=source.replace(/RELEASE_VERSION='[^']+'/,()=>`RELEASE_VERSION='${agentVersion}'`).replace(/\$ReleaseVersion = '[^']+'/,()=>`$ReleaseVersion = '${agentVersion}'`);
   writeFileSync(`${out}/web/downloads/${name}`,source);
 }
 cpSync('deploy/native',`${out}/deploy`,{recursive:true});
 // The manifest must match the binary and Agents, including preview overrides.
 writeFileSync(`${out}/VERSION`,version+'\n');
+writeFileSync(`${out}/AGENT_VERSION`,agentVersion+'\n');
 cpSync('sshguard.sh',`${out}/sshguard.sh`);
 cpSync('scripts/deploy.sh',`${out}/deploy.sh`);
 cpSync('scripts/quick-start.sh',`${out}/quick-start.sh`);

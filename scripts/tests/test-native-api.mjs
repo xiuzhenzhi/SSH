@@ -43,7 +43,7 @@ if(process.argv[2]==='enroll'){
  if(!confirmed)throw Error('Platform-triggered update or version confirmation timed out');
 }else{
  const server=await api('/servers/'+readFileSync(`${state}/server`,'utf8'));
- if(server.status!=='online' || server.agent_version!==readFileSync('VERSION','utf8').trim()) throw Error('Agent status/version incorrect');
+ if(server.status!=='online' || server.agent_version!==readFileSync('AGENT_VERSION','utf8').trim()) throw Error('Agent status/version incorrect');
  let collected=false;
  for(let i=0;i<15;i++){
    const result=await api('/events?server_id='+server.id+'&username=ci-fixture');

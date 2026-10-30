@@ -11,6 +11,9 @@ on:
         default: false
   workflow_call:
     inputs:
+      selective_release:
+        type: boolean
+        default: false
       source_ref:
         description: Exact commit selected by the release workflow
         required: false
@@ -33,6 +36,10 @@ jobs:
     outputs:
       go: ${{ steps.plan.outputs.go }}
       web: ${{ steps.plan.outputs.web }}
+      agent: ${{ steps.plan.outputs.agent }}
+      database: ${{ steps.plan.outputs.database }}
+      deploy: ${{ steps.plan.outputs.deploy }}
+      packages: ${{ steps.plan.outputs.packages }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -48,13 +55,14 @@ jobs:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           SOURCE_SHA: ${{ inputs.source_ref || github.sha }}
           FULL_VALIDATION: ${{ inputs.full_validation == true }}
+          SELECTIVE_RELEASE: ${{ inputs.selective_release == true }}
         run: node scripts/checks/ci-plan.mjs
       - run: node scripts/checks/check-docs.mjs
       - run: node --test scripts/tests/ci-plan.test.mjs scripts/tests/release-version.test.mjs scripts/tests/prepare-release.test.mjs scripts/tests/quick-start.test.mjs scripts/tests/uninstall-agent.test.mjs
   go:
     name: Go / ${{ matrix.os }}
     needs: scope
-    if: needs.scope.outputs.go == 'true'
+    if: needs.scope.outputs.go == 'true' || needs.scope.outputs.agent == 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
@@ -69,15 +77,16 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - if: runner.os == 'Windows'
+      - if: runner.os == 'Windows' && needs.scope.outputs.agent == 'true'
         shell: powershell
         run: ./scripts/tests/test-windows-service.ps1
       - if: runner.os == 'Windows'
-        run: go test ./...
+        run: go test ${{ needs.scope.outputs.packages }}
       - if: runner.os == 'Linux'
-        run: go test -race ./...
-      - run: go vet ./...
+        run: go test -race ${{ needs.scope.outputs.packages }}
+      - run: go vet ${{ needs.scope.outputs.packages }}
       - name: Verify compact Agent build
+        if: needs.scope.outputs.agent == 'true'
         run: go test -tags=nethttpomithttp2 ./internal/agent
       - name: Verify domain-free setup and real Agent flow
         shell: bash
@@ -90,7 +99,7 @@ jobs:
           node scripts/tests/test-direct-flow.mjs ".local/direct-flow/api$suffix" ".local/direct-flow/agent$suffix"
       - if: runner.os == 'Linux'
         run: |
-          go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+          go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ${{ needs.scope.outputs.packages }}
           sh -n scripts/install-agent.sh
           sh -n scripts/uninstall-agent.sh
           sh -n scripts/uninstall.sh
@@ -101,7 +110,7 @@ jobs:
       - name: Validate GitHub Actions workflows
         if: runner.os == 'Linux'
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 -shellcheck= -pyflakes= .github/workflows/ci.yml .github/workflows/release.yml
-      - if: runner.os == 'Windows'
+      - if: runner.os == 'Windows' && (needs.scope.outputs.agent == 'true' || needs.scope.outputs.deploy == 'true')
         shell: powershell
         run: |
           ./scripts/tests/test-windows-installer.ps1
@@ -109,7 +118,7 @@ jobs:
   postgres:
     name: PostgreSQL integration
     needs: scope
-    if: needs.scope.outputs.go == 'true'
+    if: needs.scope.outputs.database == 'true'
     timeout-minutes: 15
     runs-on: ubuntu-latest
     services:
@@ -140,7 +149,7 @@ jobs:
   mysql:
     name: MySQL ${{ matrix.version }} / ${{ matrix.schema }}
     needs: scope
-    if: needs.scope.outputs.go == 'true'
+    if: needs.scope.outputs.database == 'true'
     timeout-minutes: 15
     runs-on: ubuntu-latest
     strategy:
@@ -178,7 +187,7 @@ jobs:
   web:
     name: Vue build
     needs: scope
-    if: needs.scope.outputs.web == 'true'
+    if: needs.scope.outputs.web == 'true' || inputs.full_validation == true
     timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
@@ -191,12 +200,19 @@ jobs:
           node-version: '24'
           cache: npm
           cache-dependency-path: web/package-lock.json
+      - uses: actions/cache@v4
+        id: web-cache
+        with:
+          path: web/dist
+          key: verified-web-${{ runner.os }}-${{ hashFiles('web/**') }}
       - working-directory: web
         run: |
           npm ci
           npm test
-          npm run build
           npm audit --audit-level=high
+      - if: steps.web-cache.outputs.cache-hit != 'true'
+        working-directory: web
+        run: npm run build
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: inputs.full_validation == true
         with:
@@ -215,17 +231,20 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ inputs.source_ref || github.sha }}
-      - run: docker build --tag sshguard-api:verify --file deploy/Dockerfile.api .
-      - run: docker build --tag sshguard-web:verify --file deploy/Dockerfile.web .
+      - if: inputs.selective_release != true || needs.scope.outputs.go == 'true' || needs.scope.outputs.deploy == 'true'
+        run: docker build --tag sshguard-api:verify --file deploy/Dockerfile.api .
+      - if: inputs.selective_release != true || needs.scope.outputs.web == 'true' || needs.scope.outputs.deploy == 'true'
+        run: docker build --tag sshguard-web:verify --file deploy/Dockerfile.web .
   build:
     name: Build release candidate
-    if: inputs.full_validation == true && github.event_name != 'pull_request'
+    if: ${{ !cancelled() && inputs.full_validation == true && github.event_name != 'pull_request' && needs.scope.result == 'success' && needs.web.result == 'success' && !contains(needs.*.result, 'failure') }}
     needs: [scope, go, postgres, mysql, web]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
           ref: ${{ inputs.source_ref || github.sha }}
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -240,7 +259,9 @@ jobs:
         with:
           name: sshguard-verified-web
           path: web/dist
-      - run: |
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
           node scripts/build/build-release.mjs amd64 --reuse-web
           node scripts/build/build-release.mjs arm64 --reuse-web --reuse-agents
           node scripts/checks/check-agent-artifacts.mjs
@@ -255,7 +276,8 @@ jobs:
           compression-level: 0
   native:
     name: Native install and upgrade / ${{ matrix.database }} / ${{ matrix.proxy }}
-    needs: build
+    needs: [build, scope]
+    if: inputs.selective_release != true || needs.scope.outputs.go == 'true' || needs.scope.outputs.database == 'true' || needs.scope.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -299,7 +321,8 @@ jobs:
           NODE_EXTRA_CA_CERTS="$PWD/.local/proxy/cert.pem" node scripts/tests/test-reverse-proxy.mjs dist/sshguard-linux-amd64/sshguard-api "$(command -v nginx)" .local/proxy/cert.pem .local/proxy/key.pem
   artifacts:
     name: Verified release assets
-    needs: native
+    needs: [build, native]
+    if: ${{ !cancelled() && needs.build.result == 'success' && (needs.native.result == 'success' || needs.native.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -329,17 +352,21 @@ jobs:
           RESULTS: ${{ toJSON(needs) }}
           FULL_VALIDATION: ${{ inputs.full_validation == true && github.event_name != 'pull_request' }}
           GO_REQUIRED: ${{ needs.scope.outputs.go }}
-          WEB_REQUIRED: ${{ needs.scope.outputs.web }}
+          WEB_REQUIRED: ${{ needs.scope.outputs.web == 'true' || inputs.full_validation == true }}
+          AGENT_REQUIRED: ${{ needs.scope.outputs.agent }}
+          DATABASE_REQUIRED: ${{ needs.scope.outputs.database }}
+          NATIVE_REQUIRED: ${{ inputs.selective_release != true || needs.scope.outputs.go == 'true' || needs.scope.outputs.database == 'true' || needs.scope.outputs.deploy == 'true' }}
         run: |
           node <<'NODE'
           const jobs = JSON.parse(process.env.RESULTS);
           const full = process.env.FULL_VALIDATION === 'true';
           const packageJobs = new Set(['docker', 'build', 'native', 'artifacts']);
-          const backendJobs = new Set(['go', 'postgres', 'mysql']);
-          let failed = false;
+                    let failed = false;
           for (const [name, job] of Object.entries(jobs)) {
             const skipped = (packageJobs.has(name) && !full) ||
-              (backendJobs.has(name) && process.env.GO_REQUIRED !== 'true') ||
+              (name === 'native' && process.env.NATIVE_REQUIRED !== 'true') ||
+              (name === 'go' && process.env.GO_REQUIRED !== 'true' && process.env.AGENT_REQUIRED !== 'true') ||
+              (['postgres','mysql'].includes(name) && process.env.DATABASE_REQUIRED !== 'true') ||
               (name === 'web' && process.env.WEB_REQUIRED !== 'true');
             const expected = skipped ? 'skipped' : 'success';
             console.log(name + ': ' + job.result);

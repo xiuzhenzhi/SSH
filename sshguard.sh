@@ -248,7 +248,10 @@ cleanup() {
             if [ -e "$backup/$item" ]; then mv -T "$backup/$item" "/opt/SSHGuard/Server/$item" || exit "$status"; fi
         done
         if [ -n "$unit_backup" ]; then cp "$unit_backup" /etc/systemd/system/sshguard-api.service
-        else rm -f /etc/systemd/system/sshguard-api.service; fi
+        else
+            systemctl disable sshguard-api 2>/dev/null || true
+            rm -f /etc/systemd/system/sshguard-api.service
+        fi
         systemctl daemon-reload || true
         if [ "$mode" = update ]; then systemctl restart sshguard-api || true; fi
         echo '[错误] 部署失败，已恢复旧程序和服务配置；数据库迁移保持原样。' >&2

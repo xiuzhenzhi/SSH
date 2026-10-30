@@ -65,7 +65,7 @@ Get-WinEvent -FilterHashtable @{LogName='Application';ProviderName='SSHGuardAgen
 
 ## 目录布局
 
-以下新布局尚未发布；Linux 和 Windows 都不提供旧目录迁移。旧版请使用对应旧版卸载脚本卸载，再通过新版本控制台重新安装。卸载会删除本机 Agent 数据，需要保留时先自行备份。
+v0.3.20 起使用以下新布局；Linux 和 Windows 都不提供旧目录迁移。旧版请使用对应旧版卸载脚本卸载，再通过新版本控制台重新安装。卸载会删除本机 Agent 数据，需要保留时先自行备份。
 
 Linux 程序和管理脚本分别位于 `/opt/SSHGuard/Agent/sshguard-agent-bin`、`/opt/SSHGuard/Agent/sshguard/`；Windows 位于 `%ProgramData%\SSHGuard\Agent\sshguard-agent.exe`、`%ProgramData%\SSHGuard\Agent\sshguard\`。主控与 Agent 分别存放，互不清理。
 

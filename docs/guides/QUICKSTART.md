@@ -1,6 +1,6 @@
 # 安装与更新
 
-> 本文新目录布局尚未发布，旧版不自动迁移，请先使用旧版脚本卸载后再安装新版本。v0.3.19 用户请查阅 [对应版本文档](https://github.com/xiuzhenzhi/SSHGuard/tree/v0.3.19/docs)。
+> 本文v0.3.20 起使用新目录布局，旧版不自动迁移，请先使用旧版脚本卸载后再安装新版本。v0.3.19 用户请查阅 [对应版本文档](https://github.com/xiuzhenzhi/SSHGuard/tree/v0.3.19/docs)。
 
 主控支持 Ubuntu / Debian + systemd，amd64 / arm64。
 

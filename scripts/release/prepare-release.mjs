@@ -51,8 +51,11 @@ for (const file of ['README.md', 'docs/guides/QUICKSTART.md', 'docs/deployment/I
 const previous = reachable.find(t => t === 'v' + current);
 const range = previous ? `${previous}..HEAD` : 'HEAD';
 const subjects = git('log', range, '-50', '--no-merges', '--format=%s').split('\n').filter(Boolean);
-const changes = subjects.length ? subjects.map(s => '- ' + s).join('\n') : '- 基于所选分支构建并发布。';
+let changes = subjects.length ? subjects.map(s => '- ' + s).join('\n') : '- 基于所选分支构建并发布。';
 let changelog = readFileSync('CHANGELOG.md', 'utf8');
+// Preserve curated release instructions, especially breaking installation changes.
+const section = changelog.replaceAll('\r\n', '\n').split(`\n## ${version}\n`)[1];
+if (section) changes = section.split('\n## ')[0].trim();
 if (!changelog.includes(`\n## ${version}\n`)) {
   changelog = changelog.replace(/^(# [^\n]+\n)/, `$1\n## ${version}\n\n${changes}\n`);
   writeFileSync('CHANGELOG.md', changelog);

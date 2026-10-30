@@ -2,7 +2,7 @@
 
 一键安装见 [快速开始](../guides/QUICKSTART.md)。以下为手工部署，需要已安装 Nginx、curl 和证书。
 
-> 新目录布局尚未发布，不支持从旧目录自动迁移。旧安装请先备份需要保留的数据，使用旧版卸载脚本卸载，再安装包含新布局的版本。v0.3.19 的安装方式请参考 [v0.3.19 文档](https://github.com/xiuzhenzhi/SSHGuard/blob/v0.3.19/docs/deployment/INSTALL-NATIVE.md)。下文手工安装需使用同版本程序与服务配置。
+> v0.3.20 起使用新目录布局，不支持从旧目录自动迁移。旧安装请先备份需要保留的数据，使用旧版卸载脚本卸载，再安装包含新布局的版本。v0.3.19 的安装方式请参考 [v0.3.19 文档](https://github.com/xiuzhenzhi/SSHGuard/blob/v0.3.19/docs/deployment/INSTALL-NATIVE.md)。下文手工安装需使用同版本程序与服务配置。
 
 ## 下载发布包
 
@@ -51,7 +51,7 @@ sudo install -m 755 sshguard-api /opt/SSHGuard/Server/sshguard-api
 sudo cp -a web /opt/SSHGuard/Server/
 sudo chmod -R a+rX /opt/SSHGuard/Server/web
 sudo install -m 600 deploy/api.env.example /etc/sshguard/api.env
-sudo sed 's|/opt/sshguard|/opt/SSHGuard/Server|g' deploy/sshguard-api.service | sudo tee /etc/systemd/system/sshguard-api.service >/dev/null
+sudo install -m 644 deploy/sshguard-api.service /etc/systemd/system/sshguard-api.service
 sudo install -m 644 deploy/nginx.conf /etc/nginx/conf.d/sshguard.conf
 sudo install -d -m 700 /etc/sshguard/certs
 ```

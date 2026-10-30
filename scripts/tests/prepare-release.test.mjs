@@ -25,6 +25,7 @@ for (const mode of ['legacy','unchanged','changed']) test('release Agent version
       'docs/RELEASE-NOTES.md': '# SSHGuard v0.3.1\n',
     };
     if (mode !== 'legacy') files.AGENT_VERSION = '0.3.1\n';
+    if (mode === 'changed') files['CHANGELOG.md'] = '# 更新日志\n\n## 0.3.2\n\n- 旧目录需要卸载后重新安装。\n\n## 0.3.1\n\n- SQLite\n';
     for (const [file, text] of Object.entries(files)) writeFileSync(join(dir, file), text);
     git('init', '-b', 'main');
     git('config', 'user.email', 'test@example.invalid');
@@ -52,6 +53,7 @@ const real = cp.execFileSync; cp.execFileSync = (cmd, args, options) => cmd === 
     assert.ok(readFileSync(join(dir, 'scripts/install-agent.ps1'), 'utf8').includes("$ReleaseVersion = '"+(mode==='unchanged'?'0.3.1':'0.3.2')+"'"));
     assert.match(readFileSync(join(dir, 'CHANGELOG.md'), 'utf8'), /## 0\.3\.2/);
     assert.match(readFileSync(join(dir, 'docs/RELEASE-NOTES.md'), 'utf8'), /^# SSHGuard v0\.3\.2/);
+    if (mode === 'changed') assert.match(readFileSync(join(dir, 'docs/RELEASE-NOTES.md'), 'utf8'), /旧目录需要卸载后重新安装/);
     assert.equal(git('tag', '--list', 'v0.3.2'), '', 'preparation alone must not push or create tags');
   } finally {
     rmSync(dir, { recursive: true, force: true });

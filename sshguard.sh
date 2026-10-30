@@ -231,6 +231,7 @@ mkdir /run/sshguard-deploy.lock 2>/dev/null || die 'Another deployment is active
 switched=false
 backup=''
 replaced=''
+new_items=''
 unit_backup=''
 stage=''
 hidden=false
@@ -244,8 +245,12 @@ cleanup() {
     if "$switched" && [ "$status" -ne 0 ]; then
         systemctl stop sshguard-api || true
         for item in $replaced; do
-            remove_program_item "$item" || { echo "无法移除失败的程序文件：$item，已保留恢复文件。" >&2; exit "$status"; }
-            if [ -e "$backup/$item" ]; then mv -T "$backup/$item" "/opt/SSHGuard/Server/$item" || exit "$status"; fi
+            if [ -e "$backup/$item" ]; then
+                remove_program_item "$item" || { echo "无法移除失败的程序文件：$item，已保留恢复文件。" >&2; exit "$status"; }
+                mv -T "$backup/$item" "/opt/SSHGuard/Server/$item" || exit "$status"
+            else
+                case " $new_items " in *" $item "*) remove_program_item "$item" || exit "$status" ;; esac
+            fi
         done
         if [ -n "$unit_backup" ]; then cp "$unit_backup" /etc/systemd/system/sshguard-api.service
         else
@@ -480,8 +485,10 @@ done
 backup=$(mktemp -d /opt/.SSHGuard-backup.XXXXXX)
 for item in $program_items; do
     [ ! -L "/opt/SSHGuard/Server/$item" ] || die "拒绝程序符号链接：$item"
-    if [ -e "/opt/SSHGuard/Server/$item" ]; then mv -T "/opt/SSHGuard/Server/$item" "$backup/$item"; fi
     replaced="$item $replaced"
+    if [ -e "/opt/SSHGuard/Server/$item" ]; then
+        mv -T "/opt/SSHGuard/Server/$item" "$backup/$item"
+    else new_items="$item $new_items"; fi
     if [ -e "$stage/$item" ]; then mv -T "$stage/$item" "/opt/SSHGuard/Server/$item"; fi
  done
 cp /opt/SSHGuard/Server/sshguard-api.service /etc/systemd/system/sshguard-api.service

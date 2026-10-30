@@ -30,7 +30,7 @@ if(process.argv[2]==='enroll'){
  await api(`/servers/${cfg.server_id}/update`,'POST',{});
 }else if(process.argv[2]==='verify-update'){
  const id=readFileSync(`${state}/server`,'utf8');
- const expected=readFileSync('VERSION','utf8').trim();
+ const expected=readFileSync('AGENT_VERSION','utf8').trim();
  let confirmed=false;
  for(let i=0;i<40;i++){
   const server=await api('/servers/'+id);

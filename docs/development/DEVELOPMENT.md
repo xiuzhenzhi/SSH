@@ -104,3 +104,7 @@ git checkout main
 这保留根目录文件及选定代码目录，不检出 `docs/`。需要编辑文档时运行 `git sparse-checkout add docs`。Windows 源码打包脚本默认也不包含文档，完整开发归档可传入 `-IncludeDocs`。
 
 菜单使用按路径区分的短时内存缓存，15 秒内复用结果；切换时可先显示两分钟内的旧数据并刷新。缓存最多 40 项，退出登录、写入和实时通知会清空；不会写入浏览器持久存储。动画保持启用。
+
+## CI 范围
+
+提交会按主控、数据库、Agent、前端、部署和文档分类，多个模块取并集；共用依赖和数据库访问接口会保留必要的联动验证。修改范围规则时需运行 `node --test scripts/tests/ci-plan.test.mjs scripts/tests/reuse-web.test.mjs`。具体规则与产物复用见[构建与发布](RELEASING.md#按改动范围检查与构建)。

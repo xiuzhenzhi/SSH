@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {planCI,isVersionOnlyChange} from '../checks/ci-plan.mjs';
+import {planCI,isVersionOnlyChange,nativeMatrix,isDatabaseConsumer} from '../checks/ci-plan.mjs';
 import {affectsAgent} from '../release/agent-version.mjs';
-const none={go:false,agent:false,database:false,web:false,deploy:false};
+const none={server:false,agent:false,database:false,web:false,deploy:false,automation:false,docs:false};
 const all=Object.fromEntries(Object.keys(none).map(k=>[k,true]));
 
 test('release version edits do not expand a frontend-only change',()=>{
@@ -19,24 +19,67 @@ test('release version edits do not expand a frontend-only change',()=>{
  const paths=fixtures.map(([path])=>path);
  assert.deepEqual(planCI([...paths,'web/src/App.vue'],false,paths),{...none,web:true});
  assert.deepEqual(planCI(paths,true,paths),all);
- assert.deepEqual(planCI(['internal/api/routes.go']),{...none,go:true,database:true});
- assert.equal(isVersionOnlyChange('internal/api/routes.go','var AgentVersion = "0.3.16"','var AgentVersion = "0.3.17"'),false);
+ assert.deepEqual(planCI(['internal/api/routes.go']),{...none,server:true});
+ assert.equal(isVersionOnlyChange('internal/api/routes.go','var AgentVersion = "0.3.16"','var AgentVersion = "0.3.17"'),true);
+ assert.equal(isVersionOnlyChange('internal/api/routes.go','var Version = "0.3.16"','var Version = "0.3.17"\nvar Version = "0.3.17"'),false);
+ assert.deepEqual(planCI(['AGENT_VERSION','internal/api/routes.go'],false,['internal/api/routes.go']),{...none,agent:true});
 });
 test('component checks stay isolated',()=>{
- for(const p of ['README.md','docs/guides/AGENTS.md','docs/.vitepress/config.mts','.github/workflows/docs.yml','scripts/checks/ci-plan.mjs','scripts/tests/ci-plan.test.mjs'])assert.deepEqual(planCI([p]),none,p);
+ for(const p of ['README.md','docs/guides/AGENTS.md','docs/.vitepress/config.mts','.github/workflows/docs.yml'])assert.deepEqual(planCI([p]),{...none,docs:true},p);
+ for(const p of ['scripts/checks/ci-plan.mjs','scripts/tests/ci-plan.test.mjs'])assert.deepEqual(planCI([p]),none,p);
  assert.deepEqual(planCI(['web/src/App.vue']),{...none,web:true});
  assert.deepEqual(planCI(['internal/agent/run.go']),{...none,agent:true});
- assert.deepEqual(planCI(['internal/api/auth.go']),{...none,go:true,database:true});
- assert.deepEqual(planCI(['internal/storage/migrations/sqlite/012.sql']),{...none,go:true,database:true});
- assert.deepEqual(planCI(['internal/notify/send.go']),{...none,go:true});
- assert.deepEqual(planCI(['scripts/uninstall-agent.sh']),{...none,agent:true,deploy:true});
- assert.deepEqual(planCI(['deploy/nginx.conf']),{...none,deploy:true});
+ assert.deepEqual(planCI(['internal/api/auth.go']),{...none,server:true});
+ assert.deepEqual(planCI(['internal/storage/migrations/sqlite/012.sql']),{...none,database:true});
+ assert.deepEqual(planCI(['internal/notify/send.go']),{...none,server:true});
+ assert.deepEqual(planCI(['scripts/uninstall-agent.sh']),{...none,agent:true});
+ assert.deepEqual(planCI(['deploy/nginx.conf']),{...none,deploy:true,automation:true});
 });
 test('shared dependencies, unknown paths and explicit full validation fail safe',()=>{
- for(const p of ['go.mod','go.sum','.github/workflows/ci.yml','unknown'])assert.deepEqual(planCI([p]),all);
+ for(const p of ['.github/workflows/ci.yml','unknown'])assert.deepEqual(planCI([p]),all);
  assert.deepEqual(planCI(null),all);assert.deepEqual(planCI([],true),all);
 });
 test('only production Agent inputs advance Agent version',()=>{
  for(const p of ['internal/agent/run.go','internal/ipaddress/public.go','cmd/agent/main.go','go.mod','scripts/uninstall-agent.ps1'])assert.equal(affectsAgent(p),true,p);
  for(const p of ['internal/api/auth.go','web/src/App.vue','VERSION','docs/index.md','internal/agent/run_test.go'])assert.equal(affectsAgent(p),false,p);
+});
+
+test('shared Go dependencies check only Go consumers; mixed edits form a union',()=>{
+ assert.deepEqual(planCI(['go.mod']),{...none,server:true,agent:true,database:true});
+ assert.deepEqual(planCI(['internal/api/database.go']),{...none,database:true});
+ assert.deepEqual(planCI(['internal/api/retention_test.go']),{...none,database:true});
+ assert.deepEqual(planCI(['web/src/App.vue','docs/index.md']),{...none,web:true,docs:true});
+ assert.deepEqual(planCI(['internal/agent/transport.go','internal/storage/storage.go']),{...none,agent:true,database:true});
+ assert.deepEqual(planCI(['scripts/build/package-release.mjs']),{...none,automation:true});
+});
+
+test('native release checks follow the affected runtime only',()=>{
+ assert.deepEqual(nativeMatrix({...none,web:true}),{include:[]});
+ assert.deepEqual(nativeMatrix({...none,agent:true}),{include:[{database:'sqlite',proxy:'standalone-http'}]});
+ assert.equal(nativeMatrix({...none,server:true}).include.length,4);
+ assert.equal(nativeMatrix({...none,database:true}).include.length,5);
+ assert.equal(nativeMatrix(none,true).include.length,5);
+});
+
+test('database consumers retain integration coverage when handlers change',()=>{
+ assert.equal(isDatabaseConsumer('a.db.Row(ctx, query)'),true);
+ assert.equal(isDatabaseConsumer('tx.ExecContext(ctx, query)'),true);
+ assert.equal(isDatabaseConsumer('storage.Migrate(ctx, db)'),true);
+ assert.equal(isDatabaseConsumer('c.JSON(200, result)'),false);
+ assert.deepEqual(planCI(['internal/api/auth.go'],false,[],['internal/api/auth.go']),{...none,server:true,database:true});
+ assert.deepEqual(planCI(['internal/api/routes.go'],false,['internal/api/routes.go'],['internal/api/routes.go']),none);
+});
+
+test('all 128 module combinations preserve the exact union of affected checks',()=>{
+ const components=[
+  ['internal/api/web.go',{server:true}],['internal/agent/transport.go',{agent:true}],
+  ['internal/storage/storage.go',{database:true}],['web/src/App.vue',{web:true}],
+  ['deploy/nginx.conf',{deploy:true,automation:true}],['docs/index.md',{docs:true}],
+  ['scripts/build/package-release.mjs',{automation:true}],
+ ];
+ for(let mask=0;mask<1<<components.length;mask++){
+  const files=[],expected={...none};
+  components.forEach(([path,flags],i)=>{if(mask&(1<<i)){files.push(path);Object.assign(expected,flags);}});
+  assert.deepEqual(planCI(files),expected,JSON.stringify(files));
+ }
 });

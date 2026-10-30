@@ -1,6 +1,6 @@
 # 参与开发
 
-开发环境见 [开发文档](docs/DEVELOPMENT.md)。提交时说明问题、改动和验证结果。
+开发环境见 [开发文档](docs/development/DEVELOPMENT.md)。提交时说明问题、改动和验证结果。
 
 - 修改 API/数据存储时同时考虑 SQLite、MySQL 和 PostgreSQL；新增迁移分别编写三套 SQL，并说明升级风险。SQLite 测试默认使用临时数据库，其他数据库通过独立测试 DSN 验证。
 - 修改 Agent 时检查 Linux/Windows、amd64/arm64；涉及日志格式时附脱敏样本和解析测试。
@@ -9,4 +9,4 @@
 - 功能变化时同步相关文档。用户指南保留步骤、命令和必要提示，避免重复说明与实现细节。
 - 已发布标签和二进制不可覆盖，修复使用新版本。
 
-代码改动运行相关 Go 测试、vet 和前端构建；文档改动运行 `node scripts/check-docs.mjs` 和 `npm run docs:build`。
+代码改动运行相关 Go 测试、vet 和前端构建；文档改动运行 `node scripts/checks/check-docs.mjs` 和 `npm run docs:build`。

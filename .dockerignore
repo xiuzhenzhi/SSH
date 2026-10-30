@@ -5,9 +5,6 @@ bin
 dist
 web/node_modules
 node_modules
-docs/.vitepress/.temp
-docs/.vitepress/cache
-docs/.vitepress/dist
 web/dist
 deploy/certs
 *.zip
@@ -23,3 +20,4 @@ deploy/certs
 *.db-journal
 *.sqlite-journal
 *.sqlite3-journal
+docs/

@@ -5,8 +5,8 @@ services:
       dockerfile: deploy/Dockerfile.api
     restart: unless-stopped
     environment:
-      DB_DRIVER: ${DB_DRIVER:?Run scripts/init-env.mjs}
-      DATABASE_URL: ${DATABASE_URL:?Run scripts/init-env.mjs}
+      DB_DRIVER: ${DB_DRIVER:?Run scripts/dev/init-env.mjs}
+      DATABASE_URL: ${DATABASE_URL:?Run scripts/dev/init-env.mjs}
       PUBLIC_URL: ${PUBLIC_URL:?Set PUBLIC_URL}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD}

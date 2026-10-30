@@ -11,7 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sshguard/internal/storage"
-	"sshguard/migrations"
+	"sshguard/internal/storage/migrations"
 	"strings"
 	"testing"
 	"time"
@@ -230,6 +230,21 @@ func TestIntegration(t *testing.T) {
 	testAgentStream(t, handler, db, id, agent, event)
 	testDeliveryLeases(t, db)
 	testSettingsAndAllowlist(t, db, session, call)
+	testDatabaseSettings(t, db, session, app, call)
+	for _, body := range []any{map[string]string{}, map[string]string{"name": "   "}, map[string]string{"name": " 自定义名称 "}} {
+		result, _ := call("POST", "/servers", body, session, "", true, 200)
+		created := result["data"].(map[string]any)
+		id, name := created["id"].(string), created["name"].(string)
+		if name != "自定义名称" && !strings.HasPrefix(name, "服务器-") {
+			t.Fatalf("unexpected generated name: %q", name)
+		}
+		stored, _ := call("GET", "/servers/"+id, nil, session, "", false, 200)
+		if stored["data"].(map[string]any)["name"] != name {
+			t.Fatal("generated name not persisted")
+		}
+		call("DELETE", "/servers/"+id, nil, session, "", true, 200)
+	}
+
 	testGeoIPSettings(t, db, cfg, session)
 	testLoginProtection(t, db, cfg, session)
 	testHealthRecovery(t, db, id, agent)
@@ -272,6 +287,9 @@ func TestIntegration(t *testing.T) {
 		call("GET", "/ip-allowlist", nil, s, "", false, 403)
 		call("GET", "/auth/protection/settings", nil, s, "", false, 403)
 		call("GET", "/settings/geoip", nil, s, "", false, 403)
+		call("GET", "/settings/database", nil, s, "", false, 403)
+		call("PATCH", "/settings/database", map[string]any{}, s, "", true, 403)
+		call("POST", "/settings/database/reclaim", map[string]any{"confirm": true}, s, "", true, 403)
 		call("PATCH", "/settings/geoip", map[string]any{"provider": "none"}, s, "", true, 403)
 		call("POST", "/settings/geoip/test", map[string]any{"ip": "8.8.8.8"}, s, "", true, 403)
 		call("POST", "/settings/geoip/update", map[string]any{}, s, "", true, 403)

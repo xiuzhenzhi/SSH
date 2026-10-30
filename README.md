@@ -11,38 +11,39 @@
 
 支持 Windows、Ubuntu、Debian、Alpine；数据库可选 SQLite、PostgreSQL 或 MySQL。
 
-![安全总览](docs/overview-preview.png)
+![安全总览](docs/images/overview-preview.png)
 
 ## 安装
 
 主控使用 Ubuntu / Debian，默认通过 IP + 端口访问，使用 SQLite，无需域名或 Docker。
 
 ```sh
-git clone https://github.com/xiuzhenzhi/SSH.git
-cd SSH
-sh scripts/quick-start.sh
+curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubusercontent.com/xiuzhenzhi/SSH/main/sshguard.sh -o sshguard.sh
+sh sshguard.sh
 ```
+
+安装仅下载运行所需的发行包，不包含 `docs/`、测试代码或开发依赖。
 
 打开安装器给出的地址，创建管理员。在「服务器管理」添加服务器，复制对应系统的安装命令，在目标机器执行即可。
 
 更新主控：
 
 ```sh
-sh scripts/update.sh
+sh sshguard.sh --update
 ```
 
-已安装的主控也可运行 `sh /opt/sshguard/update.sh`。管理菜单「1」安装，「9」更新。
+已安装的主控也可运行 `sh /opt/sshguard/sshguard.sh --update`。管理菜单「1」安装，「9」更新。
 
 旧安装拉取最新更新脚本：
 
 ```sh
-curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubusercontent.com/xiuzhenzhi/SSH/main/scripts/quick-start.sh -o sshguard-update.sh && sh sshguard-update.sh --update
+curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubusercontent.com/xiuzhenzhi/SSH/main/sshguard.sh -o sshguard-update.sh && sh sshguard-update.sh --update
 ```
 
 ## 文档
 
 [在线文档](https://xiuzhenzhi.github.io/SSH/)
 
-[文档总览](docs/README.md) · [安装与管理](docs/QUICKSTART.md) · [Compose 安装](docs/INSTALL-COMPOSE.md) · [Agent](docs/AGENTS.md) · [反代与 HTTPS](docs/REVERSE-PROXY.md) · [告警配置](docs/ALERTING.md) · [登录防护](docs/LOGIN-SECURITY.md)
+[文档总览](docs/README.md) · [安装与管理](docs/guides/QUICKSTART.md) · [Compose 安装](docs/deployment/INSTALL-COMPOSE.md) · [Agent](docs/guides/AGENTS.md) · [反代与 HTTPS](docs/deployment/REVERSE-PROXY.md) · [告警配置](docs/guides/ALERTING.md) · [登录防护](docs/guides/LOGIN-SECURITY.md) · [数据库维护](docs/guides/DATABASE.md)
 
 [更新日志](CHANGELOG.md) · [下载版本](https://github.com/xiuzhenzhi/SSH/releases) · [参与贡献](CONTRIBUTING.md) · [安全反馈](SECURITY.md)

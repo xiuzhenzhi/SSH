@@ -16,28 +16,41 @@ import 'element-plus/es/components/drawer/style/css';
 import 'element-plus/es/components/message/style/css';
 import 'element-plus/es/components/message-box/style/css';
 import { Monitor, Grid, Connection, Bell, Message, Filter, CircleCheck, Key, Promotion, DocumentChecked, User, Lock, Setting, MapLocation, Plus, Refresh, Search, ArrowRight, Moon, Sunny, Expand, Close } from '@element-plus/icons-vue';
-import ConsoleNavigation from './ConsoleNavigation.vue';
-import Overview from './Overview.vue';
-import CountryFlag from './CountryFlag.vue';
-import AlertCenter from './AlertCenter.vue';
-import ServerList from './ServerList.vue';
-import Allowlist from './Allowlist.vue';
-import LoginProtection from './LoginProtection.vue';
-import GeoIPSettings from './GeoIPSettings.vue';
-import CaptchaWidget from './CaptchaWidget.vue';
-import SetupWizard from './SetupWizard.vue';
-import { copyText } from './clipboard';
-import { isDark, toggleTheme, observeTheme } from './theme';
-import { pageFromPath, pathForPage } from './routes';
+import ConsoleNavigation from './components/ConsoleNavigation.vue';
+const loadOverview = () => import('./pages/Overview.vue');
+const Overview = lazyPage(loadOverview);
+import CountryFlag from './components/CountryFlag.vue';
+const loadAlertCenter = () => import('./pages/AlertCenter.vue');
+const AlertCenter = lazyPage(loadAlertCenter);
+const loadServerList = () => import('./pages/ServerList.vue');
+const ServerList = lazyPage(loadServerList);
+const loadAllowlist = () => import('./pages/Allowlist.vue');
+const Allowlist = lazyPage(loadAllowlist);
+const loadLoginProtection = () => import('./pages/LoginProtection.vue');
+const LoginProtection = lazyPage(loadLoginProtection);
+const loadGeoIPSettings = () => import('./pages/GeoIPSettings.vue');
+const GeoIPSettings = lazyPage(loadGeoIPSettings);
+import CaptchaWidget from './components/CaptchaWidget.vue';
+const loadDatabaseSettings = () => import('./pages/DatabaseSettings.vue');
+const DatabaseSettings = lazyPage(loadDatabaseSettings);
+const loadSetupWizard = () => import('./pages/SetupWizard.vue');
+const SetupWizard = lazyPage(loadSetupWizard);
+import { lazyPage } from './lib/lazyPage';
+import { createResponseCache } from './lib/responseCache';
+import { requestJSON, HTTPError } from './lib/api';
+import { copyText } from './lib/clipboard';
+import { isDark, toggleTheme, observeTheme } from './lib/theme';
+import { pageFromPath, pathForPage } from './lib/routes';
 const stopTheme=observeTheme();
 onUnmounted(stopTheme);
-const setupRequired = ref(false);
+const setupRequired = ref(false), bootError = ref('');
 const mobileViewport = window.matchMedia('(max-width: 700px)');
 const isMobile = ref(mobileViewport.matches), navigationOpen = ref(false);
 function updateViewport(event: MediaQueryListEvent) {isMobile.value=event.matches;navigationOpen.value=false;}
 mobileViewport.addEventListener('change',updateViewport);
 onUnmounted(()=>mobileViewport.removeEventListener('change',updateViewport));
 const protectionPage=ref<InstanceType<typeof LoginProtection>>();
+const databasePage=ref<InstanceType<typeof DatabaseSettings>>();
 const geoIPPage=ref<InstanceType<typeof GeoIPSettings>>();
 type Row = Record<string, any>;
 const user = ref<Row | null>(null), booting = ref(true), busy = ref(false), error = ref('');
@@ -97,7 +110,7 @@ const writer = computed(() => ['admin', 'operator'].includes(user.value?.role));
 const nav = computed(() => [
   {id: 'dashboard', title: '安全总览', icon: Grid}, {id: 'servers', title: '服务器管理', icon: Monitor},
   {id: 'events', title: 'SSH 事件', icon: Connection}, {id: 'alerts', title: '告警中心', icon: Bell},
-  ...(admin.value ? [{id:'channels',title:'通知渠道',icon:Message},{id:'rules',title:'检测规则',icon:Filter},{id:'ip-allowlist',title:'IP 白名单',icon:CircleCheck},{id:'geoip',title:'地理位置',icon:MapLocation},{id:'login-protection',title:'登录防护',icon:Key},{id:'notifications',title:'投递记录',icon:Promotion},{id: 'audit-logs', title: '操作审计', icon: DocumentChecked}, {id: 'users', title: '用户与权限', icon: User}] : [])
+  ...(admin.value ? [{id:'channels',title:'通知渠道',icon:Message},{id:'rules',title:'检测规则',icon:Filter},{id:'ip-allowlist',title:'IP 白名单',icon:CircleCheck},{id:'geoip',title:'地理位置',icon:MapLocation},{id:'database',title:'数据库',icon:DocumentChecked},{id:'login-protection',title:'登录防护',icon:Key},{id:'notifications',title:'投递记录',icon:Promotion},{id: 'audit-logs', title: '操作审计', icon: DocumentChecked}, {id: 'users', title: '用户与权限', icon: User}] : [])
 ]);
 const title = computed(() => nav.value.find(x => x.id === active.value)?.title || '安全总览');
 const roleNames:Row={admin:'管理员',operator:'操作员',viewer:'只读用户'};
@@ -106,13 +119,31 @@ const countryNames=new Intl.DisplayNames(['zh-CN'],{type:'region'});
 const countryName=(row:Row)=>row.country_code?(countryNames.of(row.country_code)||row.country_name||row.country_code):(row.source_is_public===false?'内网 / 保留地址':'未知');
 const sourceAddress=(row:Row)=>row.source_port?(String(row.source_ip).includes(':')?'['+row.source_ip+']':row.source_ip)+':'+row.source_port:row.source_ip;
 Object.assign(auditNames,{'geoip.settings.update':'更新地理位置设置','geoip.database.update':'更新 GeoIP 数据库','alert.acknowledge.batch':'批量确认告警'});
-Object.assign(auditNames,{'server.delete':'删除服务器'});
-const statusName: Row = {online: '在线', offline: '离线', pending: '待接入', revoked: '已撤销'};
+Object.assign(auditNames,{'server.delete':'删除服务器','database.retention.update':'修改数据保留策略','database.maintenance.start':'开始数据库维护','database.maintenance.completed':'数据库维护完成','database.maintenance.failed':'数据库维护失败'});
 const time = (s: any) => s ? new Date(s).toLocaleString('zh-CN', {hour12: false}) : '尚无记录';
 let generation = 0;
 let controller: AbortController | undefined;
 let loading = false;
+const responses = createResponseCache();
+let cancelWarm = () => {};
+function warmPages() {
+  cancelWarm();
+  let cancelled = false, cancelScheduled = () => {};
+  cancelWarm = () => { cancelled = true; cancelScheduled(); };
+  const connection = (navigator as Navigator & {connection?: {saveData?: boolean}}).connection;
+  if (connection?.saveData) return;
+  const loaders = [loadServerList, loadOverview, loadAlertCenter, ...(admin.value ? [loadAllowlist, loadLoginProtection, loadGeoIPSettings, loadDatabaseSettings] : []), () => import('./components/LoginTrend.vue')];
+  const schedule = () => {
+    if (cancelled || !user.value || !loaders.length) return;
+    const next = () => { if (cancelled || !user.value) return; void loaders.shift()!().catch(() => {}).finally(schedule); };
+    if ('requestIdleCallback' in window) {
+      const id = window.requestIdleCallback(next, {timeout:3000}); cancelScheduled = () => window.cancelIdleCallback(id);
+    } else { const id = setTimeout(next, 800); cancelScheduled = () => clearTimeout(id); }
+  };
+  schedule();
+}
 function clearSession() {
+  responses.clear(); cancelWarm();
   navigationOpen.value = false;
   stopLive(); overview.value = {};
   controller?.abort(); generation++; loading = false;
@@ -125,40 +156,66 @@ function clearSession() {
 }
 async function api(path: string, method = 'GET', body?: any, signal?: AbortSignal) {
   const requestUser=user.value;
-  const response = await fetch('/api/v1' + path, {method, signal, credentials: 'same-origin', headers: {'Content-Type': 'application/json'}, body: body === undefined ? undefined : JSON.stringify(body)});
-  const data = await response.json().catch(() => ({error: `HTTP ${response.status}`}));
-  if (!response.ok) { if (response.status === 401 && user.value===requestUser) clearSession(); throw Error(data.error || '请求失败'); }
-  return data.data;
+  if (method !== 'GET') responses.clear();
+  const epoch = responses.epoch;
+  try {
+    const data = await requestJSON(path, method, body, signal);
+    if (method !== 'GET') responses.clear();
+    if (method === 'GET' && user.value === requestUser && !signal?.aborted) responses.set(path, data, epoch);
+    return data;
+  }
+  catch (e) { if (e instanceof HTTPError && e.status === 401 && user.value === requestUser) clearSession(); throw e; }
+}
+async function cachedAPI(path: string, method = 'GET', body?: any, signal?: AbortSignal) {
+  const cached = method === 'GET' ? responses.get(path) : undefined;
+  return cached === undefined ? api(path, method, body, signal) : cached;
+}
+function listPath() {
+  const params = new URLSearchParams({page: String(page.value), page_size: active.value === 'rules' ? '100' : '20'});
+  if (active.value === 'servers' && search.value) params.set('q',search.value);
+  if (active.value === 'events') {if (outcome.value) params.set('outcome',outcome.value);if (username.value) params.set('username',username.value);if (ip.value) params.set('source_ip',ip.value);if (serverID.value) params.set('server_id',serverID.value);}
+  return `/${active.value}?${params}`;
+}
+function restoreCachedPage() {
+  const cached = responses.get(listPath(), 120000);
+  rows.value = cached?.items || []; more.value = cached?.has_more || false;
+  if (active.value === 'dashboard') overview.value = responses.get('/dashboard/overview?range='+trendRange.value, 120000) || {};
 }
 async function perform(fn: () => Promise<void>) {busy.value = true; try {await fn();} catch(e) {ElMessage.error((e as Error).message);} finally {busy.value = false;}}
 async function signIn() {
   if(busy.value || !captchaReady.value || !login.username.trim() || !login.password)return;
-  loginError.value='';await perform(async () => {try{user.value = await api('/auth/login', 'POST', {...login,captcha:captchaAnswer.value});login.password='';restoreRoute();await nextTick();await load();startLive();}catch(e){loginError.value=(e as Error).message;throw e;}finally{captchaAnswer.value={};captchaWidget.value?.reset();if(!user.value)await loadProtection();}});
+  loginError.value='';await perform(async () => {try{user.value = await api('/auth/login', 'POST', {...login,captcha:captchaAnswer.value});login.password='';restoreRoute();await nextTick();await load();startLive();warmPages();}catch(e){loginError.value=(e as Error).message;throw e;}finally{captchaAnswer.value={};captchaWidget.value?.reset();if(!user.value)await loadProtection();}});
 }
 async function finishSetup(credentials: {username:string;password:string}) {
   setupRequired.value = false; login.username = credentials.username;
   await perform(async () => {
     try {
       user.value = await api('/auth/login', 'POST', credentials);
-      await navigate('servers'); startLive();
+      await navigate('servers'); startLive(); warmPages();
       ElMessage.success('主控已就绪，添加第一台服务器开始采集');
     } finally { credentials.password = ''; }
   });
 }
 async function signOut() {controller?.abort(); generation++; await perform(async () => {await api('/auth/logout','POST');clearSession();});}
-async function load() {
+async function load(preferCache = false) {
+  const read = preferCache ? cachedAPI : api;
   if(user.value)writeRoute();
   controller?.abort(); controller = new AbortController(); const signal = controller.signal;
   const request = ++generation; error.value = ''; loading = true;
   try {
-    if (active.value === 'dashboard' || !summary.value.version) {const s = await api('/dashboard/summary','GET',undefined,signal); if (request !== generation) return; summary.value = s;}
-    if(active.value==='login-protection'){rows.value=[];await protectionPage.value?.refresh();return;}
-    if(active.value==='geoip'){rows.value=[];await geoIPPage.value?.refresh();return;}
-    if (active.value === 'dashboard') {const value = await api('/dashboard/overview?range='+trendRange.value,'GET',undefined,signal);if(request !== generation)return;overview.value=value;rows.value=[];return;}
-    const params = new URLSearchParams({page: String(page.value), page_size: active.value === 'rules' ? '100' : '20'});
-    if (active.value === 'servers' && search.value) params.set('q',search.value);
-    if (active.value === 'events') {if (outcome.value) params.set('outcome',outcome.value);if (username.value) params.set('username',username.value);if (ip.value) params.set('source_ip',ip.value);if (serverID.value) params.set('server_id',serverID.value);}
-    const result = await api(`/${active.value === 'dashboard' ? 'events' : active.value}?${params}`, 'GET', undefined, signal);
+    if (active.value === 'dashboard') {
+      await Promise.all([
+        read('/dashboard/summary','GET',undefined,signal).then(value => {if (request === generation) summary.value=value;}),
+        read('/dashboard/overview?range='+trendRange.value,'GET',undefined,signal).then(value => {if (request === generation) overview.value=value;}),
+      ]);
+      if (request === generation) rows.value=[];
+      return;
+    }
+    if (!summary.value.version) void cachedAPI('/dashboard/summary','GET',undefined,signal).then(value => {if (request === generation) summary.value = value;}).catch(() => {});
+    if(active.value==='login-protection'){rows.value=[];if(!preferCache)await protectionPage.value?.refresh();return;}
+    if(active.value==='database'){rows.value=[];if(!preferCache)await databasePage.value?.refresh();return;}
+    if(active.value==='geoip'){rows.value=[];if(!preferCache)await geoIPPage.value?.refresh();return;}
+    const result = await read(listPath(), 'GET', undefined, signal);
     if (request !== generation) return; rows.value = result.items; more.value = result.has_more;
   } catch (e) {if (request === generation && !signal.aborted) error.value = (e as Error).message;}
   finally {if (request === generation) loading = false;}
@@ -184,21 +241,22 @@ function restoreRoute() {
   outcome.value=active.value==='events'?params.get('outcome')||'':'';
   const range=params.get('range')||'24h';
   trendRange.value=active.value==='dashboard'&&['24h','7d','14d','30d'].includes(range)?range:'24h';
-  rows.value=[];more.value=false;detail.value=null;
+  restoreCachedPage();detail.value=null;
   if(user.value)writeRoute();
 }
 async function navigate(id:string) {
   navigationOpen.value=false;
+  clearTimeout(refreshTimer);refreshTimer=undefined;
   controller?.abort();generation++;
-  active.value=nav.value.some(item=>item.id===id)?id:'dashboard';page.value=1;rows.value=[];more.value=false;detail.value=null;
-  writeRoute('push');await nextTick();if(user.value)await load();
+  active.value=nav.value.some(item=>item.id===id)?id:'dashboard';page.value=1;restoreCachedPage();detail.value=null;
+  writeRoute('push');await nextTick();if(user.value)await load(true);
 }
-async function onRouteChange(){navigationOpen.value=false;controller?.abort();generation++;restoreRoute();await nextTick();if(user.value)await load();}
+async function onRouteChange(){navigationOpen.value=false;clearTimeout(refreshTimer);refreshTimer=undefined;controller?.abort();generation++;restoreRoute();await nextTick();if(user.value)await load(true);}
 window.addEventListener('popstate',onRouteChange);
-async function refreshPage() {if(refreshing.value)return;refreshing.value=true;try{await load();}finally{refreshing.value=false;}}
+async function refreshPage() {if(refreshing.value)return;responses.clear();refreshing.value=true;try{await load();}finally{refreshing.value=false;}}
 function filter() {page.value = 1;void load();}
 function editServer(row?: Row) {Object.assign(server, {id: row?.id || '',name: row?.name || '',group_name: row?.group_name || '',notes: row?.notes || ''});serverDialog.value = true;}
-async function saveServer() {await perform(async () => {const created = !server.id; const result = await api('/servers' + (server.id ? '/' + server.id : ''),server.id ? 'PATCH' : 'POST',server);serverDialog.value = false;ElMessage.success('服务器已保存');await load();if(created && admin.value) await enrollment({...server,id:result.id});});}
+async function saveServer() {if(busy.value)return;await perform(async () => {const created = !server.id; const result = await api('/servers' + (server.id ? '/' + server.id : ''),server.id ? 'PATCH' : 'POST',server);serverDialog.value = false;ElMessage.success('服务器已保存');await load();if(created && admin.value) await enrollment({...server,id:result.id});});}
 async function enrollment(row: Row) {
   commandGeneration++;clearTimeout(commandTimer);commands.value={};commandError.value='';expires.value='';commandEndpoint.value='';commandInsecure.value=false;
   commandServerID.value=row.id;commandInterval.value=row.report_interval_seconds||5;generatedCommandInterval.value=0;updating.value=false;platform.value=/windows/i.test(row.distribution)?'windows':'linux';commandDialog.value=true;
@@ -237,7 +295,8 @@ function stopLive() {
   liveState.value='连接中';
 }
 function scheduleRefresh() {
-  if(refreshTimer || !user.value || document.hidden || ['login-protection','geoip'].includes(active.value))return;
+  responses.clear();
+  if(refreshTimer || !user.value || document.hidden || ['login-protection','geoip','database'].includes(active.value))return;
   refreshTimer=setTimeout(()=>{refreshTimer=undefined;if(!user.value)return;if(loading || busy.value){scheduleRefresh();return;}void load();},500);
 }
 function startLive() {
@@ -252,13 +311,32 @@ function onVisible(){if(!document.hidden && user.value)scheduleRefresh();}
 document.addEventListener('visibilitychange',onVisible);
 
 let timer: ReturnType<typeof setInterval>;
-onMounted(async () => {try {setupRequired.value = (await api('/setup/status')).required;if(!setupRequired.value){user.value = await api('/auth/me');restoreRoute();await load();startLive();}}catch{}finally{if(!user.value&&!setupRequired.value)await loadProtection();booting.value = false;}timer = setInterval(() => {if (user.value && !document.hidden && !busy.value && !loading && ['dashboard','servers','events','alerts','notifications'].includes(active.value)) void load();},30000);});
-onUnmounted(() => {stopLive();clearInterval(timer); controller?.abort();document.removeEventListener('visibilitychange',onVisible);window.removeEventListener('popstate',onRouteChange);});
+async function bootstrap() {
+  booting.value = true; bootError.value = '';
+  try {
+    setupRequired.value = (await api('/setup/status')).required;
+    if (!setupRequired.value) {
+      try { user.value = await api('/auth/me'); }
+      catch (e) { if (!(e instanceof HTTPError && e.status === 401)) throw e; }
+      if (user.value) restoreRoute();
+    }
+  } catch (e) { bootError.value = (e as Error).message; }
+  finally { booting.value = false; }
+  if (bootError.value || setupRequired.value) return;
+  if (user.value) { await nextTick(); void load(); startLive(); warmPages(); }
+  else void loadProtection();
+}
+onMounted(() => {
+  void bootstrap();
+  timer = setInterval(() => {if (user.value && !document.hidden && !busy.value && !loading && ['dashboard','servers','events','alerts','notifications'].includes(active.value)) void load();},30000);
+});
+onUnmounted(() => {stopLive();cancelWarm();responses.clear();clearInterval(timer); controller?.abort();document.removeEventListener('visibilitychange',onVisible);window.removeEventListener('popstate',onRouteChange);});
 </script>
 
 <template>
   <div v-if="!user" class="theme-toggle-fixed"><el-button circle :icon="isDark?Sunny:Moon" :aria-label="isDark?'切换浅色模式':'切换深色模式'" @click="toggleTheme"/></div>
   <div v-if="booting" class="loading">正在连接 SSHGuard…</div>
+  <div v-else-if="bootError" class="loading" role="alert"><p>{{ bootError }}</p><el-button @click="bootstrap">重新连接</el-button></div>
   <SetupWizard v-else-if="setupRequired" @complete="finishSetup" />
   <main v-else-if="!user" class="login-screen">
     <section class="login-intro"><div class="brand"><el-icon><Lock /></el-icon> SSHGuard <span>控制台</span></div><div class="intro-copy"><div class="eyebrow">基础设施安全</div><h1>每一次连接，<br>都有迹可循。</h1><p>集中管理 Windows 与 Linux 服务器，<br>建立清晰、可追溯的 SSH 安全视图。</p><div class="intro-line"></div><small>SSH 审计 · 实时告警</small></div><footer>SSHGuard · 自托管服务器安全平台</footer></section>
@@ -274,15 +352,16 @@ onUnmounted(() => {stopLive();clearInterval(timer); controller?.abort();document
     <div class="main"><header class="console-header"><div class="header-location"><button v-if="isMobile" class="navigation-toggle" type="button" aria-label="打开导航菜单" aria-controls="mobile-navigation" :aria-expanded="navigationOpen" @click="navigationOpen=true"><el-icon><Expand/></el-icon></button><div class="breadcrumb"><span class="breadcrumb-root">控制台 /</span><span class="current-page">{{ title }}</span></div></div><div class="account"><b>{{ user.role==='admin'?'Admin':user.username }}</b><span class="sync-status" :class="{connected:liveState==='实时连接'}"><i/>{{liveState}}</span><el-button class="header-tool refresh-tool" :class="{'is-refreshing':refreshing}" :icon="Refresh" :disabled="refreshing" title="刷新当前页面" aria-label="刷新当前页面" @click="refreshPage"/><el-button class="header-tool theme-toggle" :icon="isDark?Sunny:Moon" :title="isDark?'切换浅色模式':'切换深色模式'" :aria-label="isDark?'切换浅色模式':'切换深色模式'" @click="toggleTheme"/><el-button class="header-tool settings-tool" :icon="Setting" title="修改密码" aria-label="修改密码" @click="passwordDialog=true"/><el-button class="header-tool logout-tool" title="退出登录" aria-label="退出登录" :disabled="busy" @click="signOut"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h4"/><path class="logout-arrow" d="M13 8l4 4-4 4m-5-4h9"/></svg></el-button></div></header>
     <section class="content"><div v-if="active!=='dashboard'" class="page-title"><h1>{{ title }}</h1><div class="actions"><el-button v-if="active === 'servers' && writer" type="primary" :icon="Plus" @click="editServer()">添加服务器</el-button><el-button v-if="active === 'users' && admin" type="primary" :icon="Plus" @click="userDialog = true">创建用户</el-button></div></div>
     <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="notice" />
-    <Overview :api="api" v-if="active === 'dashboard'" :summary="summary" :overview="overview" :admin="admin" :range="trendRange" @range="(value:string)=>{trendRange=value;void load()}" @navigate="navigate" @show-event="event=>detail=event" @all-events="showAllEvents"/>
-    <LoginProtection v-else-if="active==='login-protection'" ref="protectionPage" :api="api"/>
-    <GeoIPSettings v-else-if="active==='geoip'" ref="geoIPPage" :api="api"/>
-    <Allowlist v-else-if="active==='ip-allowlist'" :rows="rows" :api="api" @refresh="load"/>
-    <AlertCenter v-else-if="management" :key="active" :mode="active" :rows="rows" :admin="admin" :writer="writer" :api="api" @refresh="load"/>
+    <Overview :api="cachedAPI" v-if="active === 'dashboard'" :summary="summary" :overview="overview" :admin="admin" :range="trendRange" @range="(value:string)=>{trendRange=value;void load()}" @navigate="navigate" @show-event="event=>detail=event" @all-events="showAllEvents"/>
+    <LoginProtection v-else-if="active==='login-protection'" ref="protectionPage" :api="cachedAPI"/>
+    <GeoIPSettings v-else-if="active==='geoip'" ref="geoIPPage" :api="cachedAPI"/>
+    <DatabaseSettings v-else-if="active==='database'" ref="databasePage" :api="api"/>
+    <Allowlist v-else-if="active==='ip-allowlist'" :rows="rows" :api="cachedAPI" @refresh="load"/>
+    <AlertCenter v-else-if="management" :key="active" :mode="active" :rows="rows" :admin="admin" :writer="writer" :api="cachedAPI" @refresh="load"/>
     <div v-else class="panel"><div v-if="active==='servers'" class="panel-heading server-toolbar"><div class="filters"><el-input v-model="search" placeholder="搜索名称、主机名或分组" :prefix-icon="Search" clearable @keyup.enter="filter" @clear="filter"/><el-button @click="filter">查询</el-button></div></div>
     <div v-if="active === 'events'" class="event-filters"><el-input v-model="username" placeholder="用户名" clearable/><el-input v-model="ip" placeholder="来源 IP" clearable/><el-input v-model="serverID" placeholder="服务器 ID" clearable/><el-select v-model="outcome" placeholder="全部结果" clearable><el-option label="成功" value="success"/><el-option label="失败" value="failure"/></el-select><el-button type="primary" @click="filter">筛选</el-button></div>
-    <ServerList v-if="active==='servers'" :rows="rows" :admin="admin" :writer="writer" :busy="busy" @history="history" @edit="editServer" @enroll="enrollment" @update="updateAgent" @revoke="revoke" @remove="deleteServer" @changed="load"/>
-    <el-table v-else-if="active === 'events' || active === 'dashboard'" :data="rows" empty-text="暂无 SSH 事件，请检查 Agent 采集状态并发起一次 SSH 登录。" @row-click="(row: Row) => detail = row">
+    <ServerList v-if="active==='servers'" :rows="rows" :admin="admin" :writer="writer" :busy="busy" @history="history" @edit="editServer" @enroll="enrollment" @update="updateAgent" @revoke="revoke" @remove="deleteServer" @changed="responses.clear();load()"/>
+    <el-table v-else-if="active === 'events'" :data="rows" empty-text="暂无 SSH 事件，请检查 Agent 采集状态并发起一次 SSH 登录。" @row-click="(row: Row) => detail = row">
       <el-table-column label="发生时间" min-width="180"><template #default="{row}">{{ time(row.occurred_at) }}</template></el-table-column>
       <el-table-column prop="server_name" label="服务器" min-width="150"/>
       <el-table-column prop="username" label="用户" min-width="100"/>
@@ -297,7 +376,7 @@ onUnmounted(() => {stopLive();clearInterval(timer); controller?.abort();document
     <div v-if="(management && active!=='rules') || active==='ip-allowlist'" class="pagination"><span>第 {{ page }} 页 · 每页 20 条</span><el-button :disabled="page<=1" @click="page--;load()">上一页</el-button><el-button :disabled="!more" @click="page++;load()">下一页</el-button></div>
     </section></div>
   </div>
-  <el-dialog v-model="serverDialog" :title="server.id ? '编辑服务器' : '添加服务器'" width="min(520px, 94vw)"><el-form label-position="top" @submit.prevent="saveServer"><el-form-item label="服务器名称"><el-input v-model="server.name" maxlength="128"/></el-form-item><el-form-item label="分组"><el-input v-model="server.group_name" maxlength="64" placeholder="例如：生产环境 / 华东"/></el-form-item><el-form-item label="备注"><el-input v-model="server.notes" type="textarea" maxlength="1024"/></el-form-item><div class="dialog-actions"><el-button @click="serverDialog=false">取消</el-button><el-button type="primary" native-type="submit" :loading="busy">{{!server.id && admin ? '保存并生成安装命令' : '保存服务器'}}</el-button></div></el-form></el-dialog>
+  <el-dialog v-model="serverDialog" :title="server.id ? '编辑服务器' : '添加服务器'" width="min(520px, 94vw)"><el-form label-position="top" @submit.prevent="saveServer"><el-form-item label="服务器名称（可选）"><el-input v-model="server.name" maxlength="128" placeholder="留空自动命名"/></el-form-item><el-form-item label="分组"><el-input v-model="server.group_name" maxlength="64" placeholder="例如：生产环境 / 华东"/></el-form-item><el-form-item label="备注"><el-input v-model="server.notes" type="textarea" maxlength="1024"/></el-form-item><div class="dialog-actions"><el-button @click="serverDialog=false">取消</el-button><el-button type="primary" native-type="submit" :loading="busy">{{server.id ? '保存服务器' : '添加服务器'}}</el-button></div></el-form></el-dialog>
   <el-dialog v-model="userDialog" title="创建用户" width="min(480px, 94vw)" @closed="newUser.password=''"><el-form label-position="top" @submit.prevent="saveUser"><el-form-item label="用户名（3–64 字符）"><el-input v-model="newUser.username"/></el-form-item><el-form-item label="密码（12–72 字节）"><el-input v-model="newUser.password" type="password" show-password/></el-form-item><el-form-item label="角色"><el-select v-model="newUser.role"><el-option label="只读用户" value="viewer"/><el-option label="操作员" value="operator"/><el-option label="管理员" value="admin"/></el-select></el-form-item><div class="dialog-actions"><el-button @click="userDialog=false">取消</el-button><el-button type="primary" native-type="submit" :loading="busy">创建用户</el-button></div></el-form></el-dialog>
   <el-dialog v-model="commandDialog" :title="updating?'更新 Agent':'一键安装 Agent'" width="min(640px,94vw)" class="command-dialog">
    <div class="platform-tabs" role="tablist" aria-label="目标系统"><button v-for="(label,key) in {linux:'Linux',windows:'Windows'}" :key="key" role="tab" :aria-selected="platform===key" :class="{selected:platform===key}" @click="platform=key">{{label}}</button></div>

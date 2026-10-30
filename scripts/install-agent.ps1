@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 #Requires -RunAsAdministrator
 param(
     [Parameter(Mandatory=$true)][string]$Endpoint,
@@ -6,17 +6,20 @@ param(
     [switch]$Update,
     [switch]$AllowInsecureHttp
 )
-$ReleaseVersion = '0.3.13'
+$ReleaseVersion = '0.3.14'
 $ErrorActionPreference = 'Stop'
-if ($Update -and $EnrollmentToken) { throw 'Choose Update or EnrollmentToken, not both.' }
-if (-not $Update -and -not $EnrollmentToken) { throw 'EnrollmentToken is required for installation.' }
+$ProgressPreference = 'SilentlyContinue'
+Write-Output "`nSSHGuard Agent · 安装与更新"
+Write-Output '[1/4] 检查系统与依赖'
+if ($Update -and $EnrollmentToken) { throw '更新与首次安装参数不能同时使用。' }
+if (-not $Update -and -not $EnrollmentToken) { throw '缺少安装凭证，请从控制台复制完整安装命令。' }
 $Endpoint = $Endpoint.TrimEnd('/')
 $origin = [Uri]$Endpoint
-if (($origin.Scheme -ne 'https' -and -not ($origin.Scheme -eq 'http' -and $AllowInsecureHttp)) -or -not $origin.Host -or $origin.UserInfo -or $origin.Query -or $origin.Fragment -or $origin.AbsolutePath -ne '/' -or $origin.Port -lt 1 -or $origin.Port -gt 65535) { throw 'Endpoint must be an HTTPS origin; HTTP requires -AllowInsecureHttp.' }
-if ($origin.Scheme -eq 'http') { Write-Output 'Direct HTTP: traffic is unencrypted. Use a trusted network or configure HTTPS.' }
+if (($origin.Scheme -ne 'https' -and -not ($origin.Scheme -eq 'http' -and $AllowInsecureHttp)) -or -not $origin.Host -or $origin.UserInfo -or $origin.Query -or $origin.Fragment -or $origin.AbsolutePath -ne '/' -or $origin.Port -lt 1 -or $origin.Port -gt 65535) { throw '主控地址格式错误；HTTP 地址需加 -AllowInsecureHttp。' }
+if ($origin.Scheme -eq 'http') { Write-Output '[提示] 当前使用 HTTP，请仅在可信网络使用。' }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $targetVersion = if ($env:SSHGUARD_EXPECTED_VERSION) { $env:SSHGUARD_EXPECTED_VERSION } else { $ReleaseVersion }
-if ($targetVersion.Length -gt 32 -or $targetVersion -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$') { throw 'Invalid release version.' }
+if ($targetVersion.Length -gt 32 -or $targetVersion -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$') { throw '版本号无效，请重新复制控制台安装命令。' }
 $artifactBase = "https://github.com/xiuzhenzhi/SSH/releases/download/v$targetVersion"
 $artifactProtocol = '=https'
 if ($env:SSHGUARD_TEST_DOWNLOADS -eq 'true') {
@@ -25,14 +28,14 @@ if ($env:SSHGUARD_TEST_DOWNLOADS -eq 'true') {
     if ($origin.Scheme -eq 'http') { $artifactProtocol = '=http' }
 }
 $curlExe = Join-Path ([Environment]::SystemDirectory) 'curl.exe'
-if (-not (Test-Path -LiteralPath $curlExe)) { throw 'Windows system curl.exe is required. Use a supported Windows 10/11 or Server 2019+ installation.' }
+if (-not (Test-Path -LiteralPath $curlExe)) { throw '缺少系统 curl.exe，需要 Windows 10/11 或 Server 2019 及以上版本。' }
 function Get-ReleaseAsset([string]$Name,[string]$OutFile,[int]$MaxBytes,[int]$Timeout) {
     & $curlExe --proto $artifactProtocol --proto-redir '=https' --tlsv1.2 --connect-timeout 15 --max-time $Timeout --max-redirs 5 --max-filesize $MaxBytes -fLsS "$artifactBase/$Name" -o $OutFile
-    if ($LASTEXITCODE -ne 0) { throw 'GitHub release download failed; service has not been replaced.' }
+    if ($LASTEXITCODE -ne 0) { throw '下载失败，请检查 GitHub 连接后重试；原服务未替换。' }
 }
 $osArchitecture = $env:PROCESSOR_ARCHITEW6432
 if (-not $osArchitecture) { $osArchitecture = $env:PROCESSOR_ARCHITECTURE }
-switch ($osArchitecture) { 'AMD64' { $arch='amd64' } 'ARM64' { $arch='arm64' } default { throw 'Windows amd64 / arm64 only.' } }
+switch ($osArchitecture) { 'AMD64' { $arch='amd64' } 'ARM64' { $arch='arm64' } default { throw '仅支持 Windows amd64 / arm64。' } }
 $installDir = Join-Path $env:ProgramFiles 'SSHGuardAgent'
 $configDir = Join-Path $env:ProgramData 'SSHGuard'
 $exe = Join-Path $installDir 'sshguard-agent.exe'
@@ -98,7 +101,7 @@ function Initialize-CollectorAccess {
             $channel.SaveChanges()
         }
     } catch [System.Diagnostics.Eventing.Reader.EventLogNotFoundException] {
-        Write-Warning 'OpenSSH/Operational is not installed. Install Windows OpenSSH Server; collector health will show the missing source.'
+        Write-Warning '未找到 OpenSSH 日志，请安装 Windows OpenSSH Server 后查看控制台采集状态。'
     } finally { if ($channel) { $channel.Dispose() } }
 }
 Protect-Directory $installDir
@@ -123,12 +126,15 @@ function Initialize-FixedUpdater {
     @'
 #Requires -RunAsAdministrator
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+Write-Output "`nSSHGuard Agent · 安装与更新"
+Write-Output '[1/4] 检查系统与依赖'
 $dir = Split-Path -Parent $PSCommandPath
 $worker = Join-Path $dir (([Guid]::NewGuid().ToString()) + '.exe')
 try {
     Copy-Item -LiteralPath (Join-Path $dir 'sshguard-agent.exe') -Destination $worker
     & $worker -poll-update -config (Join-Path $env:ProgramData 'SSHGuard\agent.json')
-    if ($LASTEXITCODE -ne 0) { throw 'Fixed Agent updater failed; inspect platform update status.' }
+    if ($LASTEXITCODE -ne 0) { throw 'Agent 更新失败，请在控制台查看更新状态。' }
 } finally { if (Test-Path -LiteralPath $worker) { Remove-Item -LiteralPath $worker -Force } }
 '@ | Set-Content -LiteralPath $runner -Encoding UTF8
     Protect-File $localInstaller
@@ -136,7 +142,7 @@ try {
     $shell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
     $arguments = '-NoProfile -NonInteractive -File "{0}"' -f $runner
     $existingTask = Get-ScheduledTask -TaskName SSHGuardAgentUpdate -ErrorAction SilentlyContinue
-    if (-not (Test-FixedUpdaterTask $existingTask $shell $runner)) { throw 'Existing updater task belongs to a different installation.' }
+    if (-not (Test-FixedUpdaterTask $existingTask $shell $runner)) { throw '同名更新任务属于其他安装，请先核对任务配置。' }
     $action = New-ScheduledTaskAction -Execute $shell -Argument $arguments
     $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 1)
     $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
@@ -162,18 +168,20 @@ $backup = Join-Path $staging 'previous.exe'
 $replaceBackup = Join-Path $staging 'replaced.exe'
 $keepBackup = $false
 try {
-    if ($Update -and (-not $service -or -not (Test-Path -LiteralPath $config) -or -not (Test-Path -LiteralPath $exe))) { throw 'Agent not installed; generate an installation command.' }
+    if ($Update -and (-not $service -or -not (Test-Path -LiteralPath $config) -or -not (Test-Path -LiteralPath $exe))) { throw '尚未安装 Agent，请从控制台复制安装命令。' }
+    Write-Output "[2/4] 下载并校验 Agent $targetVersion（$arch）"
     Get-ReleaseAsset 'uninstall-agent.ps1' (Join-Path $staging 'uninstall-agent.ps1') 1048576 60
     Get-ReleaseAsset "sshguard-agent-windows-$arch.exe" $download 134217728 180
     Get-ReleaseAsset "sshguard-agent-windows-$arch.exe.sha256" $checksum 4096 30
     $expected = ((Get-Content -LiteralPath $checksum -Raw).Trim() -split '\s+')[0]
-    if ($expected -notmatch '^[a-f0-9]{64}$' -or (Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash -ne $expected) { throw 'Agent checksum mismatch.' }
-    & $download -version
-    if ($LASTEXITCODE -ne 0) { throw 'Downloaded Agent cannot run on this machine.' }
-    if ((& $download -version) -ne "SSHGuard $targetVersion windows/$arch") { throw 'Release version differs; refusing mismatched update.' }
+    if ($expected -notmatch '^[a-f0-9]{64}$' -or (Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash -ne $expected) { throw '文件校验失败，已停止安装，请重新下载。' }
+    $downloadVersion = & $download -version
+    if ($LASTEXITCODE -ne 0) { throw '程序无法运行，请检查系统和架构。' }
+    if ($downloadVersion -ne "SSHGuard $targetVersion windows/$arch") { throw '下载版本与目标版本不一致，已停止更新。' }
+    Write-Output '[3/4] 配置 Agent 服务'
     if ($Update) {
         & $download -check -endpoint $Endpoint -config $config
-        if ($LASTEXITCODE -ne 0) { throw 'Existing credentials or endpoint check failed; service unchanged.' }
+        if ($LASTEXITCODE -ne 0) { throw '主控连接或凭证校验失败，原服务未变更。' }
         Copy-Item -LiteralPath $exe -Destination $backup
     }
     if ($service) {
@@ -182,12 +190,12 @@ try {
         $quotedExe = if ($exe.Contains(' ')) { '"{0}"' -f $exe } else { $exe }
         $quotedConfig = if ($config.Contains(' ')) { '"{0}"' -f $config } else { $config }
         $expectedCommand = '{0} -config {1}' -f $quotedExe, $quotedConfig
-        if ($installed.PathName -ne $expectedCommand) { throw 'Existing SSHGuardAgent service belongs to a different installation.' }
+        if ($installed.PathName -ne $expectedCommand) { throw '同名服务属于其他安装，请先核对服务路径。' }
         if ($Update -and (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash -eq $expected) {
             Protect-File $config
             if (-not $wasRunning) { Start-Service -Name SSHGuardAgent; (Get-Service SSHGuardAgent).WaitForStatus('Running',[TimeSpan]::FromSeconds(30)) }
             Initialize-FixedUpdater
-            Write-Output 'Already up to date; credentials verified and service running.'
+            Write-Output '[完成] 已是最新版本，服务运行正常。'
             return
         }
         Stop-Service -Name SSHGuardAgent
@@ -203,7 +211,7 @@ try {
             $httpOption = '-allow-insecure-http=' + $AllowInsecureHttp.IsPresent.ToString().ToLowerInvariant()
             $EnrollmentToken | & $download -enroll -endpoint $Endpoint -config $config $httpOption
         } finally { $OutputEncoding = $previousEncoding }
-        if ($LASTEXITCODE -ne 0) { throw 'Enrollment failed. Generate a new installation command and retry.' }
+        if ($LASTEXITCODE -ne 0) { throw '注册失败，请在控制台重新生成安装命令。' }
         $enrolled = $true
         # Assigning null to a ValidatePattern parameter raises in PowerShell 5.1.
         [void]$PSBoundParameters.Remove('EnrollmentToken')
@@ -222,13 +230,15 @@ try {
     Start-Service -Name SSHGuardAgent
     (Get-Service SSHGuardAgent).WaitForStatus('Running',[TimeSpan]::FromSeconds(30))
     Start-Sleep -Seconds 2
-    if ((Get-Service SSHGuardAgent).Status -ne 'Running') { throw 'Agent stopped unexpectedly.' }
+    if ((Get-Service SSHGuardAgent).Status -ne 'Running') { throw 'Agent 意外停止，请查看事件查看器中的 SSHGuardAgent 日志。' }
     & $exe -check -endpoint $Endpoint -config $config
-    if ($LASTEXITCODE -ne 0) { throw 'Post-install heartbeat check failed.' }
+    if ($LASTEXITCODE -ne 0) { throw '连接主控失败，请检查地址、网络及 Agent 日志。' }
     Initialize-FixedUpdater
     $replaced = $false
-    Write-Output 'Installed/updated as LocalService. Durable SSH collection enabled; check collector health in the console.'
-    Write-Output 'Logs: Windows Event Viewer / Application / SSHGuardAgent.'
+    Write-Output '[4/4] 服务检查通过'
+    Write-Output "`n[完成] Agent 已启动，请在控制台确认在线。"
+    Write-Output '状态：Get-Service SSHGuardAgent'
+    Write-Output '日志：事件查看器 → 应用程序 → SSHGuardAgent'
 } catch {
     if ($replaced -and (Test-Path -LiteralPath $backup)) {
         $keepBackup = $true
@@ -237,7 +247,7 @@ try {
         Copy-Item -LiteralPath $backup -Destination $exe -Force
         Protect-File $exe
         $keepBackup = $false
-        Write-Warning 'Update failed; previous Agent binary restored.'
+        Write-Warning '更新失败，已恢复旧版 Agent。'
     }
     if ($wasRunning -and -not $enrolled) { Start-Service -Name SSHGuardAgent -ErrorAction Continue }
     throw
@@ -248,6 +258,6 @@ try {
     if (-not $keepBackup) { $files += $backup }
     foreach ($file in $files) { if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file -Force } }
     if (-not $keepBackup -and (Test-Path -LiteralPath $staging)) { Remove-Item -LiteralPath $staging }
-    if ($keepBackup) { Write-Warning "Rollback failed; backup retained at $backup" }
+    if ($keepBackup) { Write-Warning "恢复失败，备份已保留：$backup" }
     } finally { $installLock.Dispose() }
 }

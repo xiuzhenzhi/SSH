@@ -48,9 +48,9 @@ jobs:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           SOURCE_SHA: ${{ inputs.source_ref || github.sha }}
           FULL_VALIDATION: ${{ inputs.full_validation == true }}
-        run: node scripts/ci-plan.mjs
-      - run: node scripts/check-docs.mjs
-      - run: node --test scripts/ci-plan.test.mjs scripts/release-version.test.mjs scripts/prepare-release.test.mjs scripts/quick-start.test.mjs
+        run: node scripts/checks/ci-plan.mjs
+      - run: node scripts/checks/check-docs.mjs
+      - run: node --test scripts/tests/ci-plan.test.mjs scripts/tests/release-version.test.mjs scripts/tests/prepare-release.test.mjs scripts/tests/quick-start.test.mjs
   go:
     name: Go / ${{ matrix.os }}
     needs: scope
@@ -71,14 +71,14 @@ jobs:
           go-version-file: go.mod
       - if: runner.os == 'Windows'
         shell: powershell
-        run: ./scripts/test-windows-service.ps1
+        run: ./scripts/tests/test-windows-service.ps1
       - if: runner.os == 'Windows'
         run: go test ./...
       - if: runner.os == 'Linux'
         run: go test -race ./...
       - run: go vet ./...
       - name: Verify compact Agent build
-        run: go test -tags=nethttpomithttp2 ./cmd/agent
+        run: go test -tags=nethttpomithttp2 ./internal/agent
       - name: Verify domain-free setup and real Agent flow
         shell: bash
         run: |
@@ -87,13 +87,14 @@ jobs:
           mkdir -p .local/direct-flow
           go build -o ".local/direct-flow/api$suffix" ./cmd/api
           go build -o ".local/direct-flow/agent$suffix" ./cmd/agent
-          node scripts/test-direct-flow.mjs ".local/direct-flow/api$suffix" ".local/direct-flow/agent$suffix"
+          node scripts/tests/test-direct-flow.mjs ".local/direct-flow/api$suffix" ".local/direct-flow/agent$suffix"
       - if: runner.os == 'Linux'
         run: |
           go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
           sh -n scripts/install-agent.sh
           sh -n scripts/uninstall-agent.sh
           sh -n scripts/uninstall.sh
+          sh -n sshguard.sh
           sh -n scripts/deploy.sh
           sh -n scripts/quick-start.sh
           sh -n scripts/update.sh
@@ -102,7 +103,7 @@ jobs:
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 -shellcheck= -pyflakes= .github/workflows/ci.yml .github/workflows/release.yml
       - if: runner.os == 'Windows'
         shell: powershell
-        run: ./scripts/test-windows-installer.ps1
+        run: ./scripts/tests/test-windows-installer.ps1
   postgres:
     name: PostgreSQL integration
     needs: scope
@@ -191,6 +192,7 @@ jobs:
       - working-directory: web
         run: |
           npm ci
+          npm test
           npm run build
           npm audit --audit-level=high
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -237,11 +239,11 @@ jobs:
           name: sshguard-verified-web
           path: web/dist
       - run: |
-          node scripts/build-release.mjs amd64 --reuse-web
-          node scripts/build-release.mjs arm64 --reuse-web --reuse-agents
-          node scripts/check-agent-artifacts.mjs
-          node scripts/check-agent-artifacts.mjs dist/sshguard-linux-arm64/web/downloads
-          node scripts/package-release.mjs
+          node scripts/build/build-release.mjs amd64 --reuse-web
+          node scripts/build/build-release.mjs arm64 --reuse-web --reuse-agents
+          node scripts/checks/check-agent-artifacts.mjs
+          node scripts/checks/check-agent-artifacts.mjs dist/sshguard-linux-arm64/web/downloads
+          node scripts/build/package-release.mjs
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sshguard-build-candidate
@@ -286,13 +288,13 @@ jobs:
           sha256sum -c SHA256SUMS
           tar -xzf sshguard-linux-amd64.tar.gz -C ..
       - name: Verify installation, upgrades, permissions and recovery
-        run: sudo env "PATH=$PATH" GITHUB_ACTIONS=true SSHGUARD_NATIVE_DB=${{ matrix.database }} SSHGUARD_NATIVE_PROXY=${{ matrix.proxy }} sh scripts/test-native-deploy.sh dist/sshguard-linux-amd64
+        run: sudo env "PATH=$PATH" GITHUB_ACTIONS=true SSHGUARD_NATIVE_DB=${{ matrix.database }} SSHGUARD_NATIVE_PROXY=${{ matrix.proxy }} sh scripts/tests/test-native-deploy.sh dist/sshguard-linux-amd64
       - name: Verify all proxy templates and real HTTPS WebSockets
         if: matrix.proxy == 'managed' && matrix.database == 'sqlite'
         run: |
           mkdir -p .local/proxy
           openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj /CN=localhost -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1' -keyout .local/proxy/key.pem -out .local/proxy/cert.pem
-          NODE_EXTRA_CA_CERTS="$PWD/.local/proxy/cert.pem" node scripts/test-reverse-proxy.mjs dist/sshguard-linux-amd64/sshguard-api "$(command -v nginx)" .local/proxy/cert.pem .local/proxy/key.pem
+          NODE_EXTRA_CA_CERTS="$PWD/.local/proxy/cert.pem" node scripts/tests/test-reverse-proxy.mjs dist/sshguard-linux-amd64/sshguard-api "$(command -v nginx)" .local/proxy/cert.pem .local/proxy/key.pem
   artifacts:
     name: Verified release assets
     needs: native

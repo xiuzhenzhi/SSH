@@ -18,6 +18,7 @@ import (
 )
 
 type App struct {
+	maintenance    databaseMaintenance
 	db             *storage.DB
 	cfg            Config
 	dummyHash      string
@@ -29,7 +30,7 @@ type App struct {
 	geo            geoIPState
 }
 
-var Version = "0.3.13"
+var Version = "0.3.14"
 
 func New(db *storage.DB, cfg Config) *gin.Engine {
 	return NewApp(db, cfg).Router()
@@ -94,6 +95,9 @@ func (a *App) Router() *gin.Engine {
 		}
 		ok(c, gin.H{"commands": updateCommands(origin), "version": Version, "endpoint": origin, "insecure_http": strings.HasPrefix(origin, "http://")})
 	})
+	web.GET("/settings/database", role("admin"), a.databaseSettings)
+	web.PATCH("/settings/database", role("admin"), a.saveDatabaseSettings)
+	web.POST("/settings/database/reclaim", role("admin"), a.reclaimDatabase)
 	web.GET("/dashboard/summary", a.summary)
 	web.GET("/agent/uninstall-commands", role("admin"), func(c *gin.Context) {
 		if origin, valid := a.agentOrigin(c); valid {

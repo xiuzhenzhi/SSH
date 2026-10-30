@@ -2,28 +2,28 @@
 # Ubuntu/Debian: systemd. Alpine: OpenRC. No bash, Python, Node or container.
 set -eu
 umask 077
-RELEASE_VERSION='0.3.13'
-die() { echo "$*" >&2; exit 1; }
+RELEASE_VERSION='0.3.14'
+die() { printf '[错误] %s\n' "$*" >&2; exit 1; }
 case "${1:-}" in
     --help|-h) printf '安装：sudo sh install-agent.sh ORIGIN ONE_TIME_TOKEN [--allow-insecure-http]\n更新：sudo sh install-agent.sh ORIGIN --update [--allow-insecure-http]\n离线卸载：sudo sh /usr/local/lib/sshguard/uninstall-agent.sh\n'; exit 0 ;;
 esac
-[ "$(id -u)" -eq 0 ] || die 'Run as root (sudo sh on Ubuntu/Debian).'
+[ "$(id -u)" -eq 0 ] || die '请使用 root 或 sudo 运行安装命令。'
 [ "$#" -ge 2 ] && [ "$#" -le 3 ] || die 'Usage: install-agent.sh ORIGIN ONE_TIME_TOKEN|--update [--allow-insecure-http]'
 endpoint=${1%/}
 mode=install
 enrollment=$2
 allow_http=false
 if [ "$#" -eq 3 ]; then
-    [ "$3" = --allow-insecure-http ] || die 'Unknown installer option.'
+    [ "$3" = --allow-insecure-http ] || die '未知参数，请使用 --help 查看用法。'
     allow_http=true
 fi
-printf '%s' "$endpoint" | grep -Eq '^https?://([A-Za-z0-9.-]+|\[[A-Fa-f0-9:]+\])(:[0-9]{1,5})?$' || die 'Expected an HTTP(S) origin (IP or domain, optional port).'
+printf '%s' "$endpoint" | grep -Eq '^https?://([A-Za-z0-9.-]+|\[[A-Fa-f0-9:]+\])(:[0-9]{1,5})?$' || die '主控地址格式不正确，请使用 http(s)://IP或域名:端口。'
 download_proto='=https'
 case "$endpoint" in
-    http://*) "$allow_http" || die 'HTTP requires --allow-insecure-http.'; download_proto='=http'; printf '直连 HTTP：传输未加密，请确保主控和 Agent 之间的网络可信。\n' ;;
+    http://*) "$allow_http" || die 'HTTP 地址需加 --allow-insecure-http，或改用 HTTPS。'; download_proto='=http'; printf '直连 HTTP：传输未加密，请确保主控和 Agent 之间的网络可信。\n' ;;
 esac
 release_version=${SSHGUARD_EXPECTED_VERSION:-$RELEASE_VERSION}
-[ "${#release_version}" -le 32 ] && printf '%s' "$release_version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$' || die 'Invalid release version.'
+[ "${#release_version}" -le 32 ] && printf '%s' "$release_version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$' || die '版本号无效，请重新复制控制台安装命令。'
 artifact_base="https://github.com/xiuzhenzhi/SSH/releases/download/v$release_version"
 artifact_proto='=https'
 if [ "${SSHGUARD_TEST_DOWNLOADS:-}" = true ]; then
@@ -33,27 +33,27 @@ if [ "${SSHGUARD_TEST_DOWNLOADS:-}" = true ]; then
     artifact_proto=$download_proto
 fi
 if [ "$enrollment" = --update ]; then mode=update
-else printf '%s' "$enrollment" | grep -Eq '^[a-f0-9]{64}$' || die 'Invalid enrollment token.'; fi
+else printf '%s' "$enrollment" | grep -Eq '^[a-f0-9]{64}$' || die '安装凭证无效，请在控制台重新生成命令。'; fi
 if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then init=systemd
 elif command -v rc-service >/dev/null 2>&1 && command -v supervise-daemon >/dev/null 2>&1; then init=openrc
-else die 'A running systemd or OpenRC installation is required.'; fi
-printf '[1/4] 检查系统与依赖（%s）…\n' "$init"
+else die '需要运行中的 systemd 或 OpenRC 服务管理器。'; fi
+printf '\nSSHGuard Agent · 安装与更新\n[1/4] 检查环境（%s）\n' "$init"
 if ! command -v curl >/dev/null 2>&1 || [ ! -s /etc/ssl/certs/ca-certificates.crt ]; then
     if command -v apt-get >/dev/null 2>&1; then apt-get update; apt-get install -y curl ca-certificates
     elif command -v apk >/dev/null 2>&1; then apk add --no-cache curl ca-certificates
     else die '请先安装 curl 和 ca-certificates，再重新运行本命令。'; fi
 fi
 command -v sha256sum >/dev/null 2>&1
-case "$(uname -m)" in x86_64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; *) die 'Only amd64 / arm64 supported.' ;; esac
+case "$(uname -m)" in x86_64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; *) die '仅支持 amd64 / arm64 架构。' ;; esac
 for path in /var/lib/sshguard-agent /etc/sshguard /etc/sshguard/agent.json /usr/local/bin/sshguard-agent /etc/systemd/system/sshguard-agent.service /etc/init.d/sshguard-agent; do
     [ ! -L "$path" ] || die "Refusing symlink: $path"
 done
 config=/etc/sshguard/agent.json
 exe=/usr/local/bin/sshguard-agent
 if [ "$mode" = update ]; then
-    [ -f "$config" ] && [ -f "$exe" ] || die 'Agent not installed; use a new installation command.'
+    [ -f "$config" ] && [ -f "$exe" ] || die '尚未安装 Agent，请在控制台复制安装命令。'
 fi
-mkdir /run/sshguard-agent-install.lock 2>/dev/null || die 'Another installation is active (or a stale /run/sshguard-agent-install.lock exists).'
+mkdir /run/sshguard-agent-install.lock 2>/dev/null || die '另一安装正在执行；确认无安装进程后，可移除 /run/sshguard-agent-install.lock 重试。'
 tmp=''
 rollback=false
 was_active=false
@@ -220,7 +220,7 @@ cleanup() {
             if [ "$init" = systemd ]; then systemctl daemon-reload; fi
         fi
         if "$was_active"; then service_start || true; fi
-        echo 'Update failed; previous binary restored. Configuration preserved.' >&2
+        echo '[错误] 更新失败，已恢复旧程序并保留配置。' >&2
     fi
     [ -z "$tmp" ] || rm -rf -- "$tmp"
     rmdir /run/sshguard-agent-install.lock
@@ -230,17 +230,17 @@ trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 mkdir -p /usr/local/bin
 tmp=$(mktemp -d /usr/local/bin/.sshguard-install.XXXXXX)
-printf '[2/4] 从 GitHub Releases 下载并校验 Agent…\n'
+printf '[2/4] 下载并校验 Agent…\n'
 curl --proto "$artifact_proto" --proto-redir '=https' --tlsv1.2 --connect-timeout 15 --max-time 60 --max-redirs 5 --max-filesize 1048576 -fLsS "$artifact_base/uninstall-agent.sh" -o "$tmp/uninstall-agent.sh"
 sh -n "$tmp/uninstall-agent.sh"
 curl --proto "$artifact_proto" --proto-redir '=https' --tlsv1.2 --connect-timeout 15 --max-time 150 --max-redirs 5 --max-filesize 134217728 --retry 1 -fLsS "$artifact_base/sshguard-agent-linux-$arch" -o "$tmp/agent"
 curl --proto "$artifact_proto" --proto-redir '=https' --tlsv1.2 --connect-timeout 15 --max-time 30 --max-redirs 5 --max-filesize 4096 -fLsS "$artifact_base/sshguard-agent-linux-$arch.sha256" -o "$tmp/hash"
 expected=$(awk '{print $1}' "$tmp/hash")
-printf '%s' "$expected" | grep -Eq '^[a-f0-9]{64}$' || die 'Invalid checksum.'
+printf '%s' "$expected" | grep -Eq '^[a-f0-9]{64}$' || die '校验文件无效，请检查下载来源后重试。'
 printf '%s  %s\n' "$expected" "$tmp/agent" | sha256sum -c -
 chmod 0755 "$tmp/agent"
 "$tmp/agent" -version
-[ "$("$tmp/agent" -version)" = "SSHGuard $release_version linux/$arch" ] || die 'Release version differs; refusing mismatched update.'
+[ "$("$tmp/agent" -version)" = "SSHGuard $release_version linux/$arch" ] || die '下载版本与目标版本不一致，已停止更新。'
 if [ "$mode" = update ]; then
     printf '[3/4] 更新程序，保留服务器身份与配置…\n'
     chown root:sshguard "$config"
@@ -250,7 +250,7 @@ if [ "$mode" = update ]; then
     if cmp -s "$tmp/agent" "$exe"; then
         if ! service_active; then service_start; sleep 2; service_active; fi
         configure_updater
-        echo 'Already up to date; credentials verified and service running.'; exit 0
+        echo '[完成] 已是最新版本，服务运行正常。'; exit 0
     fi
     if [ "$init" = systemd ]; then service_file=/etc/systemd/system/sshguard-agent.service; else service_file=/etc/init.d/sshguard-agent; fi
     cp -p "$service_file" "$tmp/previous-service"
@@ -266,7 +266,7 @@ if [ "$mode" = update ]; then
     "$exe" -check -endpoint "$endpoint" -config "$config"
     configure_updater
     rollback=false
-    echo 'Agent updated; existing server identity and credentials preserved.'
+    printf '[4/4] 服务检查通过\n[完成] Agent 已更新，身份与配置已保留。\n'
     exit 0
 fi
 if ! id sshguard >/dev/null 2>&1; then
@@ -292,4 +292,4 @@ sleep 2
 service_active
 "$exe" -check -endpoint "$endpoint" -config "$config"
 configure_updater
-printf '[4/4] Agent 已启动，请在控制台查看上线和采集状态。\n离线卸载：sudo sh /usr/local/lib/sshguard/uninstall-agent.sh\n'
+printf '[4/4] 服务检查通过\n\n[完成] Agent 已启动，请在控制台确认在线。\n状态：%s\n卸载：sudo sh /usr/local/lib/sshguard/uninstall-agent.sh\n' "$([ "$init" = systemd ] && echo 'systemctl status sshguard-agent' || echo 'rc-service sshguard-agent status')"

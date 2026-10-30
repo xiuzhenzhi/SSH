@@ -10,7 +10,7 @@ import (
 	_ "modernc.org/sqlite"
 	"net/url"
 	"regexp"
-	"sshguard/migrations"
+	"sshguard/internal/storage/migrations"
 	"strings"
 	"time"
 )

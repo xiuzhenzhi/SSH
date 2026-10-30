@@ -1,12 +1,42 @@
 import { defineConfig } from 'vitepress';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { tokenize } from './search.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const version = readFileSync(new URL('../../VERSION', import.meta.url), 'utf8').trim();
 
+const legacyPages: Record<string, string> = {
+  'docs/QUICKSTART': 'docs/guides/QUICKSTART',
+  'docs/INSTALLATION-FLOW': 'docs/guides/INSTALLATION-FLOW',
+  'docs/AGENTS': 'docs/guides/AGENTS',
+  'docs/TROUBLESHOOTING': 'docs/guides/TROUBLESHOOTING',
+  'docs/ALERTING': 'docs/guides/ALERTING',
+  'docs/GEOIP': 'docs/guides/GEOIP',
+  'docs/LOGIN-SECURITY': 'docs/guides/LOGIN-SECURITY',
+  'docs/INSTALL-NATIVE': 'docs/deployment/INSTALL-NATIVE',
+  'docs/INSTALL-COMPOSE': 'docs/deployment/INSTALL-COMPOSE',
+  'docs/REVERSE-PROXY': 'docs/deployment/REVERSE-PROXY',
+  'docs/OPERATIONS': 'docs/deployment/OPERATIONS',
+  'docs/DEVELOPMENT': 'docs/development/DEVELOPMENT',
+  'docs/API': 'docs/development/API',
+  'docs/TRANSPORT': 'docs/development/TRANSPORT',
+  'docs/DOCS-SITE': 'docs/development/DOCS-SITE',
+  'docs/RELEASING': 'docs/development/RELEASING',
+  'docs/VALIDATION': 'docs/development/VALIDATION',
+  'docs/ROADMAP': 'docs/development/ROADMAP'
+};
+
 export default defineConfig({
+  async buildEnd(site) {
+    for (const [oldPath, newPath] of Object.entries(legacyPages)) {
+      const file = join(site.outDir, oldPath + ".html");
+      mkdirSync(dirname(file), {recursive: true});
+      const target = site.site.base + newPath + ".html";
+      writeFileSync(file, `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=${target}"><title>文档已移动</title><a href="${target}">打开文档</a></html>`);
+    }
+  },
   lang: 'zh-CN',
   title: 'SSHGuard',
   description: 'SSH 登录审计、安全告警与服务器管理。SSHGuard 官方使用文档。',
@@ -27,9 +57,9 @@ export default defineConfig({
     logo: '/sshguard.svg',
     siteTitle: 'SSHGuard 文档',
     nav: [
-      { text: '快速开始', link: '/docs/QUICKSTART' },
+      { text: '快速开始', link: '/docs/guides/QUICKSTART' },
       { text: '使用指南', link: '/docs/README' },
-      { text: '开发与 API', link: '/docs/DEVELOPMENT' },
+      { text: '开发与 API', link: '/docs/development/DEVELOPMENT' },
       { text: 'v' + version, items: [
         { text: '发布说明', link: '/docs/RELEASE-NOTES' },
         { text: '更新日志', link: '/CHANGELOG' },
@@ -39,33 +69,34 @@ export default defineConfig({
     sidebar: [
       { text: '开始使用', items: [
         { text: '文档总览', link: '/docs/README' },
-        { text: '一键安装与更新', link: '/docs/QUICKSTART' },
-        { text: '安装与接入流程', link: '/docs/INSTALLATION-FLOW' },
-        { text: 'Agent 安装与管理', link: '/docs/AGENTS' },
-        { text: '常见问题', link: '/docs/TROUBLESHOOTING' },
+        { text: '一键安装与更新', link: '/docs/guides/QUICKSTART' },
+        { text: '安装与接入流程', link: '/docs/guides/INSTALLATION-FLOW' },
+        { text: 'Agent 安装与管理', link: '/docs/guides/AGENTS' },
+        { text: '常见问题', link: '/docs/guides/TROUBLESHOOTING' },
       ] },
       { text: '部署与运维', collapsed: false, items: [
-        { text: '原生与手工部署', link: '/docs/INSTALL-NATIVE' },
-        { text: 'Docker Compose', link: '/docs/INSTALL-COMPOSE' },
-        { text: '反向代理与 HTTPS', link: '/docs/REVERSE-PROXY' },
-        { text: '升级、备份与恢复', link: '/docs/OPERATIONS' },
+        { text: '原生与手工部署', link: '/docs/deployment/INSTALL-NATIVE' },
+        { text: 'Docker Compose', link: '/docs/deployment/INSTALL-COMPOSE' },
+        { text: '反向代理与 HTTPS', link: '/docs/deployment/REVERSE-PROXY' },
+        { text: '升级、备份与恢复', link: '/docs/deployment/OPERATIONS' },
       ] },
       { text: '功能指南', collapsed: false, items: [
-        { text: '告警与通知', link: '/docs/ALERTING' },
-        { text: '地理位置与公网 IP', link: '/docs/GEOIP' },
-        { text: '登录防护', link: '/docs/LOGIN-SECURITY' },
+        { text: '告警与通知', link: '/docs/guides/ALERTING' },
+        { text: '地理位置与公网 IP', link: '/docs/guides/GEOIP' },
+        { text: '登录防护', link: '/docs/guides/LOGIN-SECURITY' },
+        { text: '数据库与数据保留', link: '/docs/guides/DATABASE' },
       ] },
       { text: '开发与项目', collapsed: false, items: [
-        { text: '开发与测试', link: '/docs/DEVELOPMENT' },
-        { text: 'API 参考', link: '/docs/API' },
-        { text: 'HTTP 与 WebSocket', link: '/docs/TRANSPORT' },
-        { text: '文档站维护', link: '/docs/DOCS-SITE' },
-        { text: '构建与发布', link: '/docs/RELEASING' },
-        { text: '验证记录', link: '/docs/VALIDATION' },
+        { text: '开发与测试', link: '/docs/development/DEVELOPMENT' },
+        { text: 'API 参考', link: '/docs/development/API' },
+        { text: 'HTTP 与 WebSocket', link: '/docs/development/TRANSPORT' },
+        { text: '文档站维护', link: '/docs/development/DOCS-SITE' },
+        { text: '构建与发布', link: '/docs/development/RELEASING' },
+        { text: '验证记录', link: '/docs/development/VALIDATION' },
         { text: '更新日志', link: '/CHANGELOG' },
         { text: '参与开发', link: '/CONTRIBUTING' },
         { text: '安全策略', link: '/SECURITY' },
-        { text: '产品范围', link: '/docs/ROADMAP' },
+        { text: '产品范围', link: '/docs/development/ROADMAP' },
       ] },
     ],
     outline: { level: [2, 3], label: '本页目录' },

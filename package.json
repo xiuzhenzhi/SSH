@@ -1,11 +1,15 @@
 {
-  "name": "sshguard-docs",
+  "name": "sshguard",
   "private": true,
   "type": "module",
   "scripts": {
     "docs:dev": "vitepress docs --host 127.0.0.1",
-    "docs:build": "node scripts/build-docs.mjs",
-    "docs:preview": "vitepress preview docs --host 127.0.0.1"
+    "docs:build": "node scripts/build/build-docs.mjs",
+    "docs:preview": "vitepress preview docs --host 127.0.0.1",
+    "dev": "npm --prefix web run dev",
+    "build": "npm --prefix web run build",
+    "test": "node --test scripts/tests/*.test.mjs && npm --prefix web test",
+    "check:docs": "node scripts/checks/check-docs.mjs"
   },
   "devDependencies": {
     "vitepress": "1.6.4"

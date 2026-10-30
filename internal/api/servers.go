@@ -43,7 +43,7 @@ func (a *App) server(c *gin.Context) {
 }
 func (a *App) saveServer(c *gin.Context) {
 	var in struct {
-		Name     string `json:"name" binding:"required,max=128"`
+		Name     string `json:"name" binding:"max=128"`
 		Group    string `json:"group_name" binding:"max=64"`
 		Notes    string `json:"notes" binding:"max=1024"`
 		Interval *int   `json:"report_interval_seconds" binding:"omitempty,min=1,max=30"`
@@ -57,8 +57,7 @@ func (a *App) saveServer(c *gin.Context) {
 	}
 	in.Name = strings.TrimSpace(in.Name)
 	if in.Name == "" {
-		bad(c, 400, "名称不能为空")
-		return
+		in.Name = "服务器-" + uuid.NewString()[:8]
 	}
 	id := c.Param("id")
 	action := "server.update"
@@ -88,7 +87,7 @@ func (a *App) saveServer(c *gin.Context) {
 		fail(c, e)
 		return
 	}
-	ok(c, gin.H{"id": id})
+	ok(c, gin.H{"id": id, "name": in.Name})
 }
 func (a *App) deleteServer(c *gin.Context) {
 	id := c.Param("id")

@@ -3,10 +3,11 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd/agent ./cmd/agent
+COPY internal/agent ./internal/agent
 COPY internal/ipaddress ./internal/ipaddress
 COPY internal/originurl ./internal/originurl
 COPY VERSION ./VERSION
-RUN mkdir /downloads && for os in linux windows; do for arch in amd64 arm64; do suffix=""; if [ "$os" = windows ]; then suffix=".exe"; fi; name="sshguard-agent-$os-$arch$suffix"; CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -tags=nethttpomithttp2 -ldflags="-s -w -X main.version=$(cat VERSION)" -o "/downloads/$name" ./cmd/agent || exit 1; (cd /downloads && sha256sum "$name" > "$name.sha256") || exit 1; done; done
+RUN mkdir /downloads && for os in linux windows; do for arch in amd64 arm64; do suffix=""; if [ "$os" = windows ]; then suffix=".exe"; fi; name="sshguard-agent-$os-$arch$suffix"; CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -tags=nethttpomithttp2 -ldflags="-s -w -X sshguard/internal/agent.version=$(cat VERSION)" -o "/downloads/$name" ./cmd/agent || exit 1; (cd /downloads && sha256sum "$name" > "$name.sha256") || exit 1; done; done
 FROM node:24-alpine AS web
 WORKDIR /web
 COPY web/package*.json ./

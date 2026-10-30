@@ -1,10 +1,14 @@
 #!/bin/sh
-# Works both in the source scripts directory and beside an installed release.
+# Compatibility entry. All implementation lives in sshguard.sh.
 set -eu
-case "${1:-}" in
-    --help|-h)
-        printf 'SSHGuard 一键更新主控\n\n用法：sh update.sh\n默认下载最新正式版，校验后更新，保留配置和数据。\n指定版本：SSHGUARD_VERSION=v版本号 sh update.sh\n私有仓库请先以当前用户执行 gh auth login。\n'
-        exit 0 ;;
-esac
+case "${1:-}" in --help|-h) printf '更新主控：sh sshguard.sh --update\n'; exit 0 ;; esac
 script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
-exec sh "$script_dir/quick-start.sh" --update "$@"
+for entry in "$script_dir/sshguard.sh" "$script_dir/../sshguard.sh"; do
+    if [ -f "$entry" ]; then exec sh "$entry" --update "$@"; fi
+done
+# Support old commands that download this file alone.
+tmp=$(mktemp -d)
+trap 'rm -rf -- "$tmp"' EXIT
+trap 'exit 1' HUP INT TERM
+curl --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 15 --max-time 120 -fLsS https://raw.githubusercontent.com/xiuzhenzhi/SSH/main/sshguard.sh -o "$tmp/sshguard.sh"
+sh "$tmp/sshguard.sh" --update "$@"

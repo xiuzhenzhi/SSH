@@ -10,18 +10,22 @@ import (
 // Only sent notifications are removed automatically. Pending, in-flight and dead
 // jobs retain their alert so a delivery outage cannot erase its own evidence.
 func (a *App) cleanupHistory(ctx context.Context) error {
+	settings, err := a.readRetention(ctx)
+	if err != nil {
+		return err
+	}
 	now := time.Now().UTC()
 	for _, item := range []struct {
 		table, where string
 		days         int
 	}{
-		{"ssh_events", "occurred_at<?", a.cfg.EventRetentionDays},
-		{"audit_logs", "created_at<?", a.cfg.AuditRetentionDays},
-		{"notification_jobs", "created_at<? AND status='sent'", a.cfg.AlertRetentionDays},
-		{"alerts", "created_at<? AND NOT EXISTS (SELECT 1 FROM notification_jobs j WHERE j.alert_id=alerts.id)", a.cfg.AlertRetentionDays},
-		{"alert_state", "last_alert_at<?", max(a.cfg.AlertRetentionDays, 30)},
+		{"ssh_events", "occurred_at<?", settings.Events},
+		{"audit_logs", "created_at<?", settings.Audit},
+		{"notification_jobs", "created_at<? AND status='sent'", settings.Alerts},
+		{"alerts", "created_at<? AND NOT EXISTS (SELECT 1 FROM notification_jobs j WHERE j.alert_id=alerts.id)", settings.Alerts},
+		{"alert_state", "last_alert_at<?", max(settings.Alerts, 30)},
 	} {
-		if item.days < 30 {
+		if item.days < 1 {
 			continue
 		}
 		key := "id"

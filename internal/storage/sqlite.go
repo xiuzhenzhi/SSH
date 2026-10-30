@@ -3,7 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
-	"sshguard/migrations"
+	"sshguard/internal/storage/migrations"
 	"strings"
 )
 

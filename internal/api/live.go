@@ -57,6 +57,7 @@ func (h *liveHub) remove(conn *websocket.Conn) {
 	delete(h.clients, conn)
 }
 func (a *App) Shutdown() {
+	a.maintenance.stop()
 	a.hub.mu.Lock()
 	defer a.hub.mu.Unlock()
 	a.hub.closed = true

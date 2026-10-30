@@ -1,15 +1,24 @@
-# SSHGuard v0.3.10
+# SSHGuard v0.3.11
 
 ## 本次更新
 
-- 告警支持勾选批量确认和跨分页全部确认，保留权限、同源校验和审计保护。
-- SSH 事件显示来源国家 / 地区与国旗，支持公网 IPv4 / IPv6，查询失败不影响事件查看。
-- 首页增加认证失败来源国家 TOP 5 和最近事件区块，提供过渡动画、事件详情与完整列表入口。
-- 所有菜单支持独立路由、刷新恢复、前进 / 后退；分页和筛选条件保存在地址中。
-- 改善并发统计与 GeoIP 查询：合并重复请求，单个页面取消不会影响其他查询，配置更新会使旧统计缓存失效。
-- 本版包含服务器 GeoIP 设置、公网地址识别及确认弹窗宽度修复。
+- 修复主控菜单更新只重装当前包：拆分「1 安装主控」与「9 更新主控」，已有安装默认选择更新，自动下载最新正式 Release。
+- 新增原生 `update.sh`，支持指定版本、SHA256 与包内版本校验；配置、端口、数据库、管理员、Agent 身份和加密密钥保持不变，沿用程序启动失败回退。
+- 新增从仓库 `main` 拉取最新独立更新器的命令，旧安装无需先下载新发行包即可使用新更新逻辑。
+- 全面核对文档，新增文档总览，补齐此前遗漏的批量告警确认、事件国家 / 地区、来源国家 TOP 5、独立路由与公网 IP 说明；修正默认端口、传输和升级边界。
+- 增加真实校验 / 解压的更新脚本回归，并在发布 CI 中验收菜单更新及配置保留。
 
 无需新增数据库迁移。升级前备份数据库、配置和 ENCRYPTION_KEY，按 [快速开始](QUICKSTART.md) 更新。完整增量验证见 [验证记录](VALIDATION.md)。
+
+## 旧安装如何更新
+
+在主控终端执行以下一条命令，无需旧版 `update.sh` 或重新下载压缩包：
+
+```sh
+curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubusercontent.com/xiuzhenzhi/SSH/main/scripts/quick-start.sh -o sshguard-update.sh && sh sshguard-update.sh --update
+```
+
+脚本从 `main` 获取，程序从最新正式 Release 获取并校验。新版管理菜单和文档安装到 `/opt/sshguard`；原来在宝塔站点目录解压的旧副本不会自动覆盖。更新后使用 `sudo sh /opt/sshguard/deploy.sh` 或 `sh /opt/sshguard/update.sh`。
 
 ## 既有功能与升级约束
 

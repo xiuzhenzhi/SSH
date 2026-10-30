@@ -7,7 +7,7 @@ git clone https://github.com/xiuzhenzhi/SSH.git
 cd SSH
 ```
 
-## 方式 B：Docker Compose（可选）
+## 安装
 
 需要 Docker Engine 与 Compose **2.24.4+**，Node.js 仅用于生成 `.env`。本地模式的端口覆盖使用 `!override`。
 
@@ -51,3 +51,12 @@ SQLite 模式只启动 API 和 Web，数据保存在 `sqlite-data` 命名卷中�
 ## 更新
 
 备份数据库卷和 .env 后更新源码，再执行 `docker compose up -d --build`。保留数据库、登录账号和 ENCRYPTION_KEY，不重新运行初始化器覆盖配置。反代须支持 WebSocket Upgrade，通知配置见 [告警手册](ALERTING.md)。
+
+```sh
+git pull --ff-only
+docker compose config --quiet
+docker compose up -d --build
+docker compose ps
+```
+
+在运行中的同一项目目录执行；如有本地源码修改，先处理 Git 提示，避免覆盖配置。菜单「9」、`update.sh` 及拉取独立更新器的命令用于原生 systemd 安装，不更新 Compose 容器。更换数据库类型不属于此更新流程。

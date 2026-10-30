@@ -3,7 +3,7 @@
 ## 上线前检查
 
 - 先在 2–3 台非生产主机验证安装、重启恢复、采集、通知、断线恢复与撤销，再扩展到 10 台、最后覆盖全部服务器。
-- 中央平台仅开放 80/443；原生 API 绑定 127.0.0.1，数据库仅允许 API 所在主机/隔离网络访问。
+- 默认直连模式开放实际主控端口（默认 8080）；启用 HTTPS 反代后仅公开站点的 443（证书申请按需开放 80），同机 API 绑定 127.0.0.1。数据库仅允许 API 所在主机/隔离网络访问。
 - 配置可信 HTTPS 证书和续期；操作系统启用时间同步。当前 API 接收最近 30 天的事件，未来时间最多容忍 5 分钟偏差。
 - `.env`、api.env、数据库备份和 Agent 令牌均作为敏感配置保管，不放进 Git、Web 根目录、Issues 或日志截图。
 - 没有完成采集/通知闭环前，不以本项目代替现有安全监控。
@@ -29,6 +29,14 @@
 4. 检查日志及 health，验证登录、资产和一台测试 Agent。程序启动或健康检查失败会自动恢复旧程序，数据库迁移不会回退。
 
 私有仓库先以运行更新脚本的用户执行 `gh auth login`；建议普通用户运行 `update.sh`，校验后才提权。可用 `SSHGUARD_VERSION=v目标版本 sh /opt/sshguard/update.sh` 指定版本；离线包从新包目录运行 `sudo sh deploy.sh --update`。详情见 [一键更新](QUICKSTART.md#更新中央平台)。手工部署不使用自动向导，继续在维护窗口替换 API、Web 与下载目录，并保留配置和证书。
+
+旧目录没有新版更新器时，直接拉取仓库最新独立脚本并更新：
+
+```sh
+curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubusercontent.com/xiuzhenzhi/SSH/main/scripts/quick-start.sh -o sshguard-update.sh && sh sshguard-update.sh --update
+```
+
+脚本从 `main` 更新，程序从正式 Release 更新；无需提前下载新版压缩包。更新后的文档位于 `/opt/sshguard/docs`，旧解压目录中的脚本和文档仍是原副本。详见 [拉取最新更新脚本](QUICKSTART.md#拉取最新更新脚本旧安装也可用)。
 
 Compose：在同一项目目录更新源码，保留 `.env` 和命名卷，执行 `docker compose up -d --build`。不要使用 `down -v`。更换数据库类型是迁移项目，不是常规升级。
 

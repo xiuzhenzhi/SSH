@@ -42,11 +42,13 @@ node scripts/build-agents.mjs
 node scripts/check-agent-artifacts.mjs dist/agents
 # 中央平台构建（包含 Web 和全部 Agent）
 node scripts/build-release.mjs amd64
-node scripts/build-release.mjs arm64 --reuse-web
+node scripts/build-release.mjs arm64 --reuse-web --reuse-agents
 node scripts/package-release.mjs
 # 代码与依赖检查
 go test ./...
 go vet ./...
+node --test scripts/ci-plan.test.mjs scripts/release-version.test.mjs scripts/prepare-release.test.mjs scripts/quick-start.test.mjs
+node scripts/check-docs.mjs
 go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 cd web
 npm ci
@@ -55,6 +57,8 @@ npm audit
 ```
 
 --reuse-web 仅可在 web/dist 已成功构建且前端未改动时使用。Windows 下构建前停止本项目 Vite，避免 npm ci 替换 esbuild 时文件被占用。
+
+`--reuse-agents` 只用于同一次构建的 arm64 包，复用已校验的 amd64 包中的四种 Agent。原生发行包同时携带 `deploy.sh`、`quick-start.sh`、`update.sh` 和完整文档，避免只更新二进制却遗漏菜单与说明。最新脚本拉取命令使用自包含的 `quick-start.sh`；更新器从正式 Release 取程序，不从 `main` 编译程序。
 
 未设置测试 DSN 时，集成测试自动创建临时 SQLite 数据库，测试结束自动清理，无需外部数据库服务。PostgreSQL / MySQL 测试必须使用独立测试库（写入测试账号/资产，不删库）：
 

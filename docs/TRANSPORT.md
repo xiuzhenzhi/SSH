@@ -52,7 +52,7 @@ HTTPS 使用 `POST /api/v1/agent/events/batch` 与 `POST /api/v1/agent/heartbeat
 
 ## 浏览器实时更新
 
-`GET /api/v1/live`，每用户最多 4 个连接、每实例最多 256 个。消息仅为 `{"type":"refresh","at":"…"}`，不携带日志或密钥。前端合并一秒内提示，再按角色访问普通 API；重连后重新读取快照。会话每 30 秒复核，退出时关闭连接，后台标签暂停数据刷新。
+`GET /api/v1/live`，每用户最多 4 个连接、每实例最多 256 个。消息仅为 `{"type":"refresh","at":"…"}`，不携带日志或密钥。服务端按每个会话 5 秒合并刷新，前端以 500 毫秒短延迟合并读取，再按角色访问普通 API；重连后重新读取快照。会话每 30 秒复核，退出时关闭连接，后台标签暂停数据刷新。
 
 随包 Nginx 模板为两条 stream 路由配置 HTTP/1.1、Upgrade/Connection、90 秒读取超时。自备反代须保留这些设置，不能缓存 API；配置错误时 Agent 会继续通过 HTTPS 工作。
 

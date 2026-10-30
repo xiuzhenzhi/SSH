@@ -6,7 +6,7 @@ param(
     [switch]$Update,
     [switch]$AllowInsecureHttp
 )
-$ReleaseVersion = '0.3.10'
+$ReleaseVersion = '0.3.11'
 $ErrorActionPreference = 'Stop'
 if ($Update -and $EnrollmentToken) { throw 'Choose Update or EnrollmentToken, not both.' }
 if (-not $Update -and -not $EnrollmentToken) { throw 'EnrollmentToken is required for installation.' }

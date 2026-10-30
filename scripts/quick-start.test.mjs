@@ -157,6 +157,16 @@ test('deploy update-latest delegates to the same download path from an extracted
   assert.match(f.read('network'), /releases\/latest/);
 });
 
+test('a freshly pulled updater runs as a single renamed file without local helpers', t => {
+  const f = fixture(t);
+  const downloaded = join(f.dir, 'sshguard-update.sh');
+  writeFileSync(downloaded, readFileSync(entry));
+  const result = f.run(['--update'], downloaded);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(f.read('deployed'), '--update\n');
+  assert.match(f.read('network'), /releases\/latest/);
+});
+
 test('deployment failures propagate to the caller', t => {
   const f = fixture(t, { DEPLOY_STATUS: '17' });
   assert.equal(f.run().status, 17);

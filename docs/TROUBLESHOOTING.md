@@ -4,6 +4,8 @@
 
 | 现象 | 常见原因 | 排查方法 |
 |---|---|---|
+| 菜单「1」只能安装，更新后版本或文档没变化 | 使用旧脚本或旧解压目录的副本 | 新菜单用「9」；旧安装按下方命令拉取最新更新器。更新后的程序与文档在 `/opt/sshguard`，原站点解压目录不会自动覆盖 |
+| 主控更新查询失败 / GitHub 下载 404 | 网络、版本未发布、仓库访问权限不足 | 确认正式 Release 和网络；私有仓库以当前用户 `gh auth login`，不要把普通用户登录误当成 root 已登录；失败不会停止旧服务 |
 | 登录或保存返回 403 Origin 校验失败 | PUBLIC_URL 与浏览器地址不一致 | 协议、域名、端口必须完全一致；localhost 与 127.0.0.1 不等同 |
 | 登录提示密码错误 | 使用了旧数据库；ADMIN_PASSWORD 只初始化一次 | 确认当前数据库与最初账号；不要假设编辑 .env 会重置密码 |
 | 登录返回 429 | 同账号 15 分钟窗口超过 10 次，或 Nginx IP 限速 | 停止重试，按 Retry-After 等待，检查外部扫描流量 |
@@ -25,6 +27,14 @@
 | Windows 下载/脚本被组织策略阻止 | 企业签名、执行或代理策略 | 走组织批准的分发流程；不关闭终端防护或持久修改执行策略 |
 | 页面没有 SSH 事件 | 日志源不可读、未启用 SSH 日志或队列未送达 | 查看采集状态与队列；实际发起一次 SSH 登录；检查 journal / auth.log / OpenSSH 通道权限 |
 | 重复事件计数大于 0 | Agent 重试同一事件 UUID | 正常幂等行为，不要为重试生成新 UUID |
+
+拉取最新更新器并更新主控（不依赖旧菜单）：
+
+```sh
+curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubusercontent.com/xiuzhenzhi/SSH/main/scripts/quick-start.sh -o sshguard-update.sh && sh sshguard-update.sh --update
+```
+
+随后使用 `sudo sh /opt/sshguard/deploy.sh --status` 核对运行版本；正式 Release 尚未发布时，更新器只会获取当前正式版，不会把 `main` 源码当作发布包。安装方式、备份与离线步骤见 [快速开始](QUICKSTART.md)。
 
 日志位置：
 

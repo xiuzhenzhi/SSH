@@ -12,7 +12,7 @@ cd SSH
 sh scripts/quick-start.sh
 ```
 
-最后一条命令下载固定版本 `v0.3.10` 的对应架构发行包，校验 SHA256，再调用安装向导。下载使用当前用户的 GitHub 登录，只有安装时调用 sudo。不要把 GitHub Token 放进命令行或发给 Agent。
+首次安装时，最后一条命令下载固定版本 `v0.3.11` 的对应架构发行包，校验 SHA256，再调用安装向导；已有安装选「9」则查询最新正式版。下载使用当前用户的 GitHub 登录，只有安装时调用 sudo。不要把 GitHub Token 放进命令行或发给 Agent。
 
 运行安装脚本后进入编号菜单，首次安装选择「1 安装主控」，输入端口（回车使用 8080）即可；已有安装选择「9 更新主控（下载最新正式版）」，回车默认选「9」。也可使用 `sh scripts/quick-start.sh --port 8081` 安装。已有 Nginx / OpenResty 不影响此流程。首次交互安装显示初始化链接，打开后创建管理员，随后自动登录并进入服务器管理。默认使用 SQLite，无需额外数据库服务；仅在需要时展开「存储设置」选择 MySQL / PostgreSQL，并预先创建专用空数据库。初始化口令通过链接片段传递，不进入 HTTP 访问日志；同一标签页刷新时保留到初始化完成，完成后清除。
 
@@ -141,12 +141,30 @@ sh scripts/quick-start.sh --update
 指定版本或离线更新：
 
 ```sh
-SSHGUARD_VERSION=v0.3.10 sh /opt/sshguard/update.sh
+SSHGUARD_VERSION=v0.3.11 sh /opt/sshguard/update.sh
 # 离线包先按上文校验 SHA256 并解压，再从新包目录执行：
 sudo sh sshguard-linux-amd64/deploy.sh --update
 ```
 
 默认只跟随最新正式版，预发布需通过 `SSHGUARD_VERSION` 显式指定。离线更新从已解压的新包运行 `deploy.sh --update`，不访问 GitHub；从已安装的 `/opt/sshguard/deploy.sh --update` 运行则下载最新正式版。手工部署的旧 `/opt/sshguard` 目录需要先按迁移流程处理，自动更新仅支持向导管理的安装。
+
+### 拉取最新更新脚本（旧安装也可用）
+
+如果旧菜单仍显示「安装 / 更新主控」、没有「9」，或服务器上的脚本尚未更新，在主控终端执行下面一条命令。它直接读取仓库 `main` 的最新自包含脚本，无需先下载新发行包，也不依赖本地 `update.sh` 或 `deploy.sh`：
+
+```sh
+curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubusercontent.com/xiuzhenzhi/SSH/main/scripts/quick-start.sh -o sshguard-update.sh && sh sshguard-update.sh --update
+```
+
+只拉取脚本、暂不执行时：
+
+```sh
+curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubusercontent.com/xiuzhenzhi/SSH/main/scripts/quick-start.sh -o sshguard-update.sh
+```
+
+之后运行 `sh sshguard-update.sh --update`。每次重新执行下载命令即可刷新本地这份更新入口；该文件可单独运行，更新时不会寻找旧目录里的辅助脚本。仅使用主控支持的 Ubuntu / Debian + systemd；普通用户运行时最终部署会调用 sudo。
+
+脚本版本跟随 `main`，主控 API、Web、文档和 Agent 下载文件仍取自正式 Release，并校验 SHA256 与包内版本。源码推送不会替换已有 Release 或自动改变服务器上的文件；新版完整菜单和文档随发行包更新到 `/opt/sshguard`。原先在宝塔站点目录解压的旧副本不自动覆盖，日后应使用 `/opt/sshguard` 下的入口，或重新拉取上述脚本。
 
 更新保留配置、端口、管理员、服务器、Agent 凭证和数据库，不重新初始化。下载、校验和程序预检查完成前不会停止当前 API；先检查数据库并迁移，再原子切换 `/opt/sshguard` 符号链接和重启 API，启动或健康检查失败会恢复更新前的程序。程序备份保留在 `/opt/sshguard-releases/`，不自动删除。
 

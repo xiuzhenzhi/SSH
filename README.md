@@ -22,10 +22,6 @@ curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubu
 sh sshguard.sh
 ```
 
-安装仅下载运行所需的发行包，不包含 `docs/`、测试代码或开发依赖。
-
-打开安装器给出的地址，创建管理员。在「服务器管理」添加服务器，复制对应系统的安装命令，在目标机器执行即可。
-
 更新主控：
 
 ```sh

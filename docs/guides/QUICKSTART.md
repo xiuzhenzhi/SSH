@@ -1,6 +1,6 @@
 # 安装与更新
 
-> 本文v0.3.20 起使用新目录布局，旧版不自动迁移，请先使用旧版脚本卸载后再安装新版本。v0.3.19 用户请查阅 [对应版本文档](https://github.com/xiuzhenzhi/SSHGuard/tree/v0.3.19/docs)。
+> 从 v0.3.20 起使用新目录布局，旧版不自动迁移，请先使用旧版脚本卸载后再安装新版本。v0.3.19 用户请查阅 [对应版本文档](https://github.com/xiuzhenzhi/SSHGuard/tree/v0.3.19/docs)。
 
 主控支持 Ubuntu / Debian + systemd，amd64 / arm64。
 
@@ -37,7 +37,7 @@ sh /opt/SSHGuard/Server/sshguard.sh --update
 
 ### 拉取最新更新脚本
 
-仓库已更名为 `SSHGuard`。从 v0.3.14 / v0.3.15 升级时，先运行下方命令下载新更新脚本，避免本机脚本仍校验旧仓库地址：
+已使用当前目录布局时，可重新下载更新脚本并执行更新：
 
 ```sh
 curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubusercontent.com/xiuzhenzhi/SSHGuard/main/sshguard.sh -o sshguard-update.sh && sh sshguard-update.sh --update

@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {validateTag,verifyBundle,verifyPlatforms,isLatest} from '../release/publish-containers.mjs';
+import {validateTag,verifyBundle,verifyPlatforms,isLatest,healthyRelease} from '../release/publish-containers.mjs';
+test('container health check reads the API response envelope and rejects stale versions',()=>{
+ assert.equal(healthyRelease({data:{status:'ok',version:'0.3.19'}},'v0.3.19'),true);
+ for(const body of [{data:{status:'ok',version:'0.3.18'}},{data:{status:'setup_required',version:'0.3.19'}},{version:'0.3.19'},null])assert.equal(healthyRelease(body,'v0.3.19'),false);
+});
 test('container publication accepts release tags but rejects refs and shell input',()=>{
  for(const tag of ['v0.3.19','v1.2.3-rc.1'])assert.equal(validateTag(tag),tag);
  for(const tag of ['main','../v0.3.19','v1;echo bad','v0.3.19\n'])assert.throws(()=>validateTag(tag));

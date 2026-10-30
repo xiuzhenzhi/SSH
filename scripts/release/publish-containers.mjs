@@ -18,6 +18,7 @@ export function verifyPlatforms(manifest){
  if(!platforms.has('amd64')||!platforms.has('arm64'))throw Error('Both Linux architectures must be published');
 }
 export function isLatest(tag,release){return !release.draft&&!release.prerelease&&release.tag_name===tag;}
+export function healthyRelease(body,tag){return body?.data?.status==='ok'&&body.data.version===tag.slice(1);}
 
 export async function publishContainers(){
  const tag=validateTag(process.env.RELEASE_TAG);
@@ -66,7 +67,7 @@ export async function publishContainers(){
    for(let attempt=0;attempt<30;attempt++){
     try{
      const response=await fetch(`http://127.0.0.1:${port}/api/v1/health`,{signal:AbortSignal.timeout(2000)});
-     if(response.ok&&(await response.json()).version===tag.slice(1)){ready=true;break;}
+     if(response.ok&&healthyRelease(await response.json(),tag)){ready=true;break;}
     }catch{}
     await new Promise(resolve=>setTimeout(resolve,1000));
    }

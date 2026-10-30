@@ -2,7 +2,7 @@
 set -eu
 [ "$(id -u)" -eq 0 ] || { echo 'Run as root.' >&2; exit 1; }
 printf '[1/2] 停止 Agent 及版本更新服务…\n'
-for path in /usr/local/lib/sshguard /usr/local/bin/sshguard-agent /etc/systemd/system/sshguard-agent.service /etc/init.d/sshguard-agent /etc/systemd/system/sshguard-agent-update.timer /etc/systemd/system/sshguard-agent-update.service /etc/init.d/sshguard-agent-update; do
+for path in /etc/sshguard /etc/sshguard/agent.json /var/lib/sshguard-agent /var/log/sshguard /etc/syslog.conf /usr/local/lib/sshguard /usr/local/bin/sshguard-agent /etc/systemd/system/sshguard-agent.service /etc/init.d/sshguard-agent /etc/systemd/system/sshguard-agent-update.timer /etc/systemd/system/sshguard-agent-update.service /etc/init.d/sshguard-agent-update; do
     [ ! -L "$path" ] || { echo "Refusing symlink: $path" >&2; exit 1; }
 done
 if [ -f /etc/systemd/system/sshguard-agent.service ]; then
@@ -34,4 +34,14 @@ elif command -v rc-service >/dev/null 2>&1 && [ -f /etc/init.d/sshguard-agent ];
 fi
 rm -f /usr/local/bin/sshguard-agent
 rm -f /usr/local/lib/sshguard/update-agent.sh /usr/local/lib/sshguard/update-loop.sh /usr/local/lib/sshguard/uninstall-agent.sh
-printf '[2/2] Agent 已卸载，配置与历史日志已保留。\n请在控制台撤销该服务器凭据，停止接收它的上报。中央平台不受影响。\n'
+# Remove only the installer-owned syslog destination before deleting its files.
+if [ -f /etc/syslog.conf ] && grep -Fxq 'auth,authpriv.* /var/log/sshguard/auth.log' /etc/syslog.conf; then
+    sed -i '\|^auth,authpriv\.\* /var/log/sshguard/auth\.log$|d' /etc/syslog.conf
+    if command -v rc-service >/dev/null 2>&1 && rc-service syslog status >/dev/null 2>&1; then rc-service syslog restart; fi
+fi
+rm -f /etc/sshguard/agent.json
+rm -rf /var/lib/sshguard-agent /var/log/sshguard
+rmdir /usr/local/lib/sshguard 2>/dev/null || true
+rmdir /etc/sshguard 2>/dev/null || true
+if command -v systemctl >/dev/null 2>&1; then systemctl daemon-reload; fi
+printf '[2/2] Agent 已卸载，本地配置、凭据、队列、采集位置、隔离数据和专用日志已清除。\n请在控制台撤销凭据，或删除服务器及其中央历史记录。系统共享日志不做整库清空。\n'

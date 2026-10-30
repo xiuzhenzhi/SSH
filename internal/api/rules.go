@@ -173,11 +173,11 @@ func (a *App) evaluateEvent(ctx context.Context, tx *sql.Tx, rules []Rule, serve
 			if event.Outcome != "failure" {
 				continue
 			}
-			var count int
-			if e := tx.QueryRowContext(ctx, a.db.Bind(`SELECT COUNT(*) FROM ssh_events WHERE server_id=? AND source_ip=? AND outcome='failure' AND occurred_at>=? AND occurred_at<=?`), serverID, event.IP, event.At.Add(-time.Duration(rule.Window)*time.Second), event.At).Scan(&count); e != nil {
-				return e
+			var err error
+			match, err = a.failureThreshold(ctx, tx, serverID, event, rule)
+			if err != nil {
+				return err
 			}
-			match = count >= rule.Threshold
 			severity = "high"
 		}
 		if !match {
@@ -298,4 +298,28 @@ func (a *App) acknowledgeAlert(c *gin.Context) {
 	}
 	a.hub.publish()
 	ok(c, gin.H{"acknowledged": true})
+}
+
+// Scan windows containing a late event, retaining only Threshold timestamps.
+func (a *App) failureThreshold(ctx context.Context, tx *sql.Tx, serverID string, event Event, rule Rule) (bool, error) {
+	window := time.Duration(rule.Window) * time.Second
+	rows, err := tx.QueryContext(ctx, a.db.Bind(`SELECT occurred_at FROM ssh_events WHERE server_id=? AND source_ip=? AND outcome='failure' AND occurred_at>=? AND occurred_at<=? ORDER BY occurred_at`), serverID, event.IP, event.At.Add(-window), event.At.Add(window))
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	times := make([]time.Time, rule.Threshold)
+	count := 0
+	for rows.Next() {
+		var at time.Time
+		if err := rows.Scan(&at); err != nil {
+			return false, err
+		}
+		times[count%len(times)] = at
+		count++
+		if count >= len(times) && !at.Before(event.At) && at.Sub(times[count%len(times)]) <= window {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }

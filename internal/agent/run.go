@@ -20,7 +20,7 @@ import (
 	"github.com/google/uuid"
 )
 
-var version = "0.3.14"
+var version = "0.3.15"
 
 type Config struct {
 	Endpoint              string `json:"endpoint"`

@@ -30,7 +30,7 @@ type App struct {
 	geo            geoIPState
 }
 
-var Version = "0.3.14"
+var Version = "0.3.15"
 
 func New(db *storage.DB, cfg Config) *gin.Engine {
 	return NewApp(db, cfg).Router()
@@ -78,16 +78,17 @@ func (a *App) Router() *gin.Engine {
 		c.Next()
 	}
 	authLimit := authThrottle()
+	managementLimit := authThrottle()
 	r.POST("/api/v1/auth/login", origin, authLimit, a.login)
 	r.GET("/api/v1/auth/protection", a.loginProtection)
 	web := r.Group("/api/v1", origin, a.session)
 	web.GET("/auth/me", func(c *gin.Context) { ok(c, c.MustGet("user")) })
 	web.GET("/auth/protection/settings", role("admin"), a.captchaSettings)
-	web.PATCH("/auth/protection/settings", role("admin"), authLimit, a.saveCaptchaSettings)
+	web.PATCH("/auth/protection/settings", role("admin"), managementLimit, a.saveCaptchaSettings)
 	web.GET("/auth/blocked-ips", role("admin"), a.blockedIPs)
 	web.DELETE("/auth/blocked-ips/:id", role("admin"), a.unblockIP)
 	web.POST("/auth/logout", a.logout)
-	web.POST("/auth/password", authLimit, a.changePassword)
+	web.POST("/auth/password", managementLimit, a.changePassword)
 	web.GET("/agent/update-commands", role("admin"), func(c *gin.Context) {
 		origin, valid := a.agentOrigin(c)
 		if !valid {
@@ -127,7 +128,7 @@ func (a *App) Router() *gin.Engine {
 	web.GET("/settings/geoip", role("admin"), a.geoIPSettings)
 	web.PATCH("/settings/geoip", role("admin"), a.saveGeoIPSettings)
 	web.POST("/settings/geoip/update", role("admin"), a.updateGeoIPDatabase)
-	web.POST("/settings/geoip/test", role("admin"), authLimit, a.testGeoIP)
+	web.POST("/settings/geoip/test", role("admin"), managementLimit, a.testGeoIP)
 	web.GET("/servers/:id", a.server)
 	web.POST("/servers", role("admin", "operator"), a.saveServer)
 	web.PATCH("/servers/:id", role("admin", "operator"), a.saveServer)
@@ -155,22 +156,35 @@ func (a *App) Router() *gin.Engine {
 	return r
 }
 
-// A bounded global budget also covers random usernames and direct API traffic.
-// Account-specific limits remain shared in SQL across replicas.
+// Login and authenticated operations use separate bounded source budgets.
 func authThrottle() gin.HandlerFunc {
+	type bucket struct {
+		count int
+		until time.Time
+	}
 	var mu sync.Mutex
-	var next time.Time
-	count := 0
+	buckets := map[string]bucket{}
+	inflight := make(chan struct{}, 8)
 	return func(c *gin.Context) {
-		mu.Lock()
-		now := time.Now()
-		if !now.Before(next) {
-			count = 0
-			next = now.Add(time.Minute)
+		key := "ip:" + sourceIP(c)
+		if value, exists := c.Get("user"); exists {
+			key = "user:" + value.(User).ID
 		}
-		allowed := count < 60
+		now := time.Now()
+		mu.Lock()
+		for k, v := range buckets {
+			if !now.Before(v.until) {
+				delete(buckets, k)
+			}
+		}
+		v, exists := buckets[key]
+		allowed := (exists || len(buckets) < 4096) && v.count < 60
 		if allowed {
-			count++
+			if !exists {
+				v.until = now.Add(time.Minute)
+			}
+			v.count++
+			buckets[key] = v
 		}
 		mu.Unlock()
 		if !allowed {
@@ -178,9 +192,18 @@ func authThrottle() gin.HandlerFunc {
 			bad(c, 429, "请求过多，请稍后再试")
 			return
 		}
+		select {
+		case inflight <- struct{}{}:
+			defer func() { <-inflight }()
+		default:
+			c.Header("Retry-After", "1")
+			bad(c, 429, "请求过多，请稍后再试")
+			return
+		}
 		c.Next()
 	}
 }
+
 func ok(c *gin.Context, v any)                   { c.JSON(200, gin.H{"data": v}) }
 func bad(c *gin.Context, status int, msg string) { c.AbortWithStatusJSON(status, gin.H{"error": msg}) }
 func fail(c *gin.Context, e error) {

@@ -9,9 +9,33 @@ function Test-FixedUpdaterTask($Task, [string]$Shell, [string]$Runner) {
     )
     return $Task.Actions.Count -eq 1 -and $Task.Actions[0].Execute -eq $Shell -and $allowedArguments -contains $Task.Actions[0].Arguments
 }
+# Resolve and validate fixed targets and ancestors before any recursive removal.
+function Assert-CleanupPath([string]$Path, [string]$Root) {
+    $full = [IO.Path]::GetFullPath($Path)
+    $base = [IO.Path]::GetFullPath($Root).TrimEnd('\')
+    if (-not $full.StartsWith($base + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Cleanup path outside expected root.' }
+    $current = $full
+    while ($current) {
+        $item = Get-Item -LiteralPath $current -Force -ErrorAction SilentlyContinue
+        if ($item -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw "Refusing reparse point: $current" }
+        $current = Split-Path -Parent $current
+    }
+    # Reject nested junctions as well; never traverse them during cleanup.
+    if (Test-Path -LiteralPath $full -PathType Container) {
+        foreach ($child in Get-ChildItem -LiteralPath $full -Force) {
+            if ($child.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Refusing reparse point: $($child.FullName)" }
+            if ($child.PSIsContainer) { Assert-CleanupPath $child.FullName $Root }
+        }
+    }
+}
 $exe = Join-Path $env:ProgramFiles 'SSHGuardAgent\sshguard-agent.exe'
 $config = Join-Path $env:ProgramData 'SSHGuard\agent.json'
+$state = Join-Path $env:ProgramData 'SSHGuard\state'
+Assert-CleanupPath (Split-Path -Parent $exe) $env:ProgramFiles
+Assert-CleanupPath $config $env:ProgramData
+Assert-CleanupPath $state $env:ProgramData
 $installLock = $null
+$completed = $false
 $installDir = Split-Path -Parent $exe
 foreach ($path in @($installDir,$exe)) {
     if ((Get-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Refusing reparse point: $path" }
@@ -45,6 +69,19 @@ if (Test-Path -LiteralPath $exe) { Remove-Item -LiteralPath $exe }
 foreach ($path in @($runner,(Join-Path $env:ProgramFiles 'SSHGuardAgent\update-agent.ps1'),(Join-Path $env:ProgramFiles 'SSHGuardAgent\uninstall-agent.ps1'))) {
     if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path }
 }
-Write-Output 'Service removed. Config, event source and historical logs retained; revoke the credential in the dashboard.'
+if ([Diagnostics.EventLog]::SourceExists('SSHGuardAgent')) { Remove-EventLog -Source SSHGuardAgent }
+foreach ($path in @($config,$state)) {
+    Assert-CleanupPath $path $env:ProgramData
+    if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
+}
+$completed = $true
 
 } finally { if ($installLock) { $installLock.Dispose() } }
+
+if ($completed) {
+    Assert-CleanupPath $installDir $env:ProgramFiles
+    if (Test-Path -LiteralPath $installDir) { Remove-Item -LiteralPath $installDir -Recurse -Force }
+    $configDir = Split-Path -Parent $config
+    if ((Test-Path -LiteralPath $configDir) -and -not (Get-ChildItem -LiteralPath $configDir -Force | Select-Object -First 1)) { Remove-Item -LiteralPath $configDir }
+    Write-Output 'Agent removed. Local configuration, credentials, queue, cursors, quarantine and event source deleted. Revoke credentials or delete the server in the dashboard. Shared Windows event logs are not cleared.'
+}

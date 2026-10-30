@@ -53,7 +53,7 @@ function handleCommand(key:string) {
   </el-dropdown>
   <el-dialog v-model="visible" title="卸载 Agent" width="min(780px, 94vw)" append-to-body @closed="commands = {}">
     <el-alert title="只生成命令，不会远程卸载。请在目标机器以管理员身份执行。" type="warning" :closable="false"/>
-    <p>停止并移除 Agent 和更新维护服务，保留配置、采集队列与历史数据。卸载后请在平台撤销该机器的凭证；不会删除中央平台或其他机器。</p>
+    <p>卸载将永久清除本机 Agent 配置、凭据、采集队列、采集位置及专用日志，并移除程序和更新服务。中央历史记录可通过「删除服务器」清除；系统共享日志不会整库清空。</p>
     <el-select v-model="platform" aria-label="目标操作系统"><el-option label="Linux（Ubuntu / Debian / Alpine）" value="linux"/><el-option label="Windows（管理员 PowerShell）" value="windows"/></el-select>
     <el-input :model-value="commands[platform] || ''" type="textarea" :rows="7" readonly aria-label="卸载命令" style="margin:16px 0"/>
     <el-button type="primary" @click="copy">复制卸载命令</el-button>

@@ -50,7 +50,7 @@ curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubu
 ### 指定版本
 
 ```sh
-SSHGUARD_VERSION=v0.3.14 sh /opt/sshguard/sshguard.sh --update
+SSHGUARD_VERSION=v0.3.15 sh /opt/sshguard/sshguard.sh --update
 ```
 
 ### 离线更新

@@ -74,7 +74,7 @@ sudo sh /usr/local/lib/sshguard/uninstall-agent.sh
 & "$env:ProgramFiles\SSHGuardAgent\uninstall-agent.ps1"
 ```
 
-卸载保留配置和队列。完成后在控制台撤销凭证。
+卸载会永久清除本机 Agent 配置、凭据、待传队列、采集位置、隔离数据和专用日志，并移除更新任务及程序文件；Windows 同时删除 Agent 事件源。系统共享 journal、Windows Application 和 OpenSSH 日志不会整库清空。中央平台数据需在控制台「删除服务器」中清除；只需停用时撤销凭据。
 
 ## 删除服务器
 

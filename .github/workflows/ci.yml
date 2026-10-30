@@ -103,7 +103,9 @@ jobs:
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 -shellcheck= -pyflakes= .github/workflows/ci.yml .github/workflows/release.yml
       - if: runner.os == 'Windows'
         shell: powershell
-        run: ./scripts/tests/test-windows-installer.ps1
+        run: |
+          ./scripts/tests/test-windows-installer.ps1
+          ./scripts/tests/test-windows-uninstall.ps1
   postgres:
     name: PostgreSQL integration
     needs: scope

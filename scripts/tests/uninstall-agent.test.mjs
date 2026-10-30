@@ -1,0 +1,27 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {spawnSync} from 'node:child_process';
+import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,existsSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+const shell=process.env.SSHGUARD_TEST_SHELL||(process.platform==='win32'?join(process.env.ProgramFiles,'Git/bin/sh.exe'):'sh');
+test('Linux uninstall purges Agent data, preserves API data and unrelated syslog rules',t=>{
+ const dir=mkdtempSync(join(tmpdir(),'sshguard-purge-'));
+ t.after(()=>rmSync(dir,{recursive:true,force:true}));
+ const unix=spawnSync(shell,['-c','cd "$TEST_ROOT" && pwd -P'],{env:{...process.env,TEST_ROOT:dir},encoding:'utf8'}).stdout.trim();
+ assert.ok(unix.startsWith('/'));
+ const put=(path,body)=>{mkdirSync(join(dir,path,'..'),{recursive:true});writeFileSync(join(dir,path),body,{mode:0o755});};
+ put('bin/id','#!/bin/sh\necho 0\n'); put('bin/systemctl','#!/bin/sh\nexit 0\n');
+ for(const p of ['etc/sshguard/agent.json','var/lib/sshguard-agent/state.db','var/lib/sshguard-agent/state.db-wal','var/log/sshguard/auth.log','usr/local/bin/sshguard-agent','usr/local/lib/sshguard/update-agent.sh','usr/local/lib/sshguard/update-loop.sh','usr/local/lib/sshguard/uninstall-agent.sh'])put(p,'private');
+ put('etc/sshguard/api.env','KEEP');
+ put('etc/syslog.conf',`*.* /var/log/messages\nauth,authpriv.* ${unix}/var/log/sshguard/auth.log\n`);
+ mkdirSync(join(dir,'run'));
+ let source=readFileSync('scripts/uninstall-agent.sh','utf8').replaceAll('\r\n','\n');
+ source=source.replace(/\/(?:usr\/local|etc|var|run)(?=\/|\b)/g,m=>unix+m);
+ put('uninstall.sh',source);
+ const result=spawnSync(shell,['-c','export PATH="$TEST_ROOT/bin:$PATH"; sh "$TEST_ROOT/uninstall.sh"'],{env:{...process.env,TEST_ROOT:unix},encoding:'utf8'});
+ assert.equal(result.status,0,result.stdout+result.stderr);
+ for(const p of ['etc/sshguard/agent.json','var/lib/sshguard-agent','var/log/sshguard','usr/local/bin/sshguard-agent','usr/local/lib/sshguard','run/sshguard-agent-install.lock'])assert.equal(existsSync(join(dir,p)),false,p);
+ assert.equal(readFileSync(join(dir,'etc/sshguard/api.env'),'utf8'),'KEEP');
+ assert.equal(readFileSync(join(dir,'etc/syslog.conf'),'utf8'),'*.* /var/log/messages\n');
+});

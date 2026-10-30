@@ -46,17 +46,17 @@ chmod 600 "$tmp/deploy.conf"
 PATH="$deploy_path" sh "$bundle/deploy.sh" --config "$tmp/deploy.conf"
 if [ "$proxy_mode" = external ]; then
     [ "$existing_config" = "$(sha256sum /etc/nginx/conf.d/existing-site.conf)" ]
-    [ "$(cat /etc/sshguard/proxy-mode)" = external ]
-    [ ! -e /etc/sshguard/nginx-managed ]
-    printf 'server { listen 443 ssl; server_name guard.sshguard.test; ssl_certificate %s/cert.pem; ssl_certificate_key %s/key.pem; include /etc/sshguard/nginx-existing.conf; }\n' "$tmp" "$tmp" > /etc/nginx/conf.d/sshguard-panel.conf
+    [ "$(cat /opt/SSHGuard/Server/proxy-mode)" = external ]
+    [ ! -e /opt/SSHGuard/Server/nginx-managed ]
+    printf 'server { listen 443 ssl; server_name guard.sshguard.test; ssl_certificate %s/cert.pem; ssl_certificate_key %s/key.pem; include /opt/SSHGuard/Server/nginx-existing.conf; }\n' "$tmp" "$tmp" > /etc/nginx/conf.d/sshguard-panel.conf
     nginx -t && systemctl reload nginx
 fi
 check_sqlite_state() {
     [ "$driver" = sqlite ] || return 0
-    [ "$(stat -c %a /var/lib/sshguard-api)" = 700 ]
-    [ "$(stat -c %U /var/lib/sshguard-api)" = sshguard-api ]
-    [ -s /var/lib/sshguard-api/sshguard.db ]
-    [ "$(stat -c %a /var/lib/sshguard-api/sshguard.db)" = 600 ]
+    [ "$(stat -c %a /opt/SSHGuard/Server/data)" = 700 ]
+    [ "$(stat -c %U /opt/SSHGuard/Server/data)" = sshguard-api ]
+    [ -s /opt/SSHGuard/Server/data/sshguard.db ]
+    [ "$(stat -c %a /opt/SSHGuard/Server/data/sshguard.db)" = 600 ]
     curl -fsS "$origin/api/v1/health" | grep -Fq '"database":"sqlite"'
 }
 check_sqlite_state
@@ -71,19 +71,23 @@ node scripts/tests/test-native-api.mjs enroll
 token=$(cat "$tmp/enrollment")
 sh "$bundle/web/downloads/install-agent.sh" "$origin" "$token"
 unset token
-[ "$(stat -c %a /etc/sshguard)" = 711 ]
-if su sshguard -s /bin/sh -c 'test -r /etc/sshguard/api.env'; then echo 'Agent can read API secrets' >&2; exit 1; fi
+[ "$(stat -c %a /opt/SSHGuard/Server)" = 755 ]
+if su sshguard -s /bin/sh -c 'test -r /opt/SSHGuard/Server/api.env'; then echo 'Agent can read API secrets' >&2; exit 1; fi
 if su sshguard-api -s /bin/sh -c 'test -r /opt/SSHGuard/Agent/agent.json'; then echo 'API can read Agent credentials' >&2; exit 1; fi
 if [ "$proxy_mode" = standalone ]; then
-    su sshguard-api -s /bin/sh -c 'test -r /etc/sshguard/tls/privkey.pem'
-    if su sshguard -s /bin/sh -c 'test -r /etc/sshguard/tls/privkey.pem'; then echo 'Agent can read API TLS key' >&2; exit 1; fi
+    su sshguard-api -s /bin/sh -c 'test -r /opt/SSHGuard/Server/tls/privkey.pem'
+    if su sshguard -s /bin/sh -c 'test -r /opt/SSHGuard/Server/tls/privkey.pem'; then echo 'Agent can read API TLS key' >&2; exit 1; fi
 fi
 systemctl is-active --quiet sshguard-agent
 sleep 3
 logger -t sshd 'Accepted publickey for ci-fixture from 192.0.2.10 port 2222 ssh2'
 logger -t sshd 'Failed password for invalid user ci-fixture from 192.0.2.10 port 2223 ssh2'
 before_config=$(sha256sum /opt/SSHGuard/Agent/agent.json)
-before_env=$(sha256sum /etc/sshguard/api.env)
+before_env=$(sha256sum /opt/SSHGuard/Server/api.env)
+printf 'retain-on-update\n' > /opt/SSHGuard/Server/data/retention-fixture
+data_inode=$(stat -c %i /opt/SSHGuard/Server/data)
+if su sshguard-api -s /bin/sh -c 'test -w /opt/SSHGuard/Server'; then echo 'API can replace program files' >&2; exit 1; fi
+if su sshguard -s /bin/sh -c 'test -r /opt/SSHGuard/Server/data/retention-fixture'; then echo 'Agent can read API data' >&2; exit 1; fi
 # Give the installed ELF a harmless trailing byte so update exercises replacement.
 systemctl stop sshguard-agent
 printf '\n' >> /opt/SSHGuard/Agent/sshguard-agent-bin
@@ -115,33 +119,37 @@ systemctl is-active --quiet sshguard-agent
 cmp /opt/SSHGuard/Agent/sshguard-agent-bin "$tmp/good-agent"
 cp "$tmp/good-agent" "$download"
 cp "$tmp/good-hash" "$download.sha256"
-old=$(stat -c %i /opt/SSHGuard/Server)
+old=$(stat -c %i /opt/SSHGuard/Server/sshguard-api)
 PATH="$deploy_path" sh "$bundle/deploy.sh" --update
 test -f /opt/SSHGuard/Agent/agent.json
 if [ "$proxy_mode" = external ]; then
     [ "$existing_config" = "$(sha256sum /etc/nginx/conf.d/existing-site.conf)" ]
-    [ "$(cat /etc/sshguard/proxy-mode)" = external ]
+    [ "$(cat /opt/SSHGuard/Server/proxy-mode)" = external ]
 fi
 check_sqlite_state
-[ "$old" != "$(stat -c %i /opt/SSHGuard/Server)" ]
+[ "$old" != "$(stat -c %i /opt/SSHGuard/Server/sshguard-api)" ]
+[ "$data_inode" = "$(stat -c %i /opt/SSHGuard/Server/data)" ]
+grep -Fxq retain-on-update /opt/SSHGuard/Server/data/retention-fixture
 [ ! -L /opt/SSHGuard/Server ]
-[ "$before_env" = "$(sha256sum /etc/sshguard/api.env)" ]
+[ "$before_env" = "$(sha256sum /opt/SSHGuard/Server/api.env)" ]
 node scripts/tests/test-native-api.mjs verify
 # Preflight must reject an invalid binary before switching the working deployment.
 mkdir "$tmp/broken"
 cp -R "$bundle/." "$tmp/broken/"
 printf '#!/bin/sh\nexit 1\n' > "$tmp/broken/sshguard-api"
-old=$(stat -c %i /opt/SSHGuard/Server)
+old=$(stat -c %i /opt/SSHGuard/Server/sshguard-api)
 if PATH="$deploy_path" sh "$tmp/broken/deploy.sh" --update; then echo 'Invalid API accepted' >&2; exit 1; fi
-[ "$old" = "$(stat -c %i /opt/SSHGuard/Server)" ]
+[ "$old" = "$(stat -c %i /opt/SSHGuard/Server/sshguard-api)" ]
 [ -f /opt/SSHGuard/Server/sshguard-api ]
 curl -fsS "$origin/api/v1/health" >/dev/null
 # A program that passes preflight but cannot start must restore the old directory.
 printf '#!/bin/sh\ncase "$1" in -check) exit 0 ;; *) exit 1 ;; esac\n' > "$tmp/broken/sshguard-api"
 if PATH="$deploy_path" sh "$tmp/broken/deploy.sh" --update; then echo 'Unhealthy API accepted' >&2; exit 1; fi
-[ "$old" = "$(stat -c %i /opt/SSHGuard/Server)" ]
-[ "$before_env" = "$(sha256sum /etc/sshguard/api.env)" ]
+[ "$old" = "$(stat -c %i /opt/SSHGuard/Server/sshguard-api)" ]
+[ "$before_env" = "$(sha256sum /opt/SSHGuard/Server/api.env)" ]
 test -s /opt/SSHGuard/Agent/agent.json
+[ "$data_inode" = "$(stat -c %i /opt/SSHGuard/Server/data)" ]
+grep -Fxq retain-on-update /opt/SSHGuard/Server/data/retention-fixture
 for attempt in 1 2 3 4 5; do
     if curl -fsS "$origin/api/v1/health" >/dev/null; then break; fi
     sleep 2

@@ -19,12 +19,12 @@ grep -q 'SSHGuard' "$tmp/menu.log"
 # Even with an existing proxy, installation only asks for the port.
 printf '\n' | PATH="$tmp/bin:$PATH" sh "$bundle/deploy.sh" > "$tmp/install.log"
 export SSHGUARD_DIRECT_LOG="$tmp/install.log"
-[ "$(cat /etc/sshguard/proxy-mode)" = standalone ]
-grep -Fxq 'PUBLIC_URL=""' /etc/sshguard/api.env
-grep -Fxq 'LISTEN_ADDR="0.0.0.0:8080"' /etc/sshguard/api.env
+[ "$(cat /opt/SSHGuard/Server/proxy-mode)" = standalone ]
+grep -Fxq 'PUBLIC_URL=""' /opt/SSHGuard/Server/api.env
+grep -Fxq 'LISTEN_ADDR="0.0.0.0:8080"' /opt/SSHGuard/Server/api.env
 node --input-type=module <<'JS'
 import {readFileSync} from 'node:fs';
-const token=JSON.parse(readFileSync('/etc/sshguard/api.env','utf8').split('\n').find(x=>x.startsWith('SETUP_TOKEN=')).slice(12));
+const token=JSON.parse(readFileSync('/opt/SSHGuard/Server/api.env','utf8').split('\n').find(x=>x.startsWith('SETUP_TOKEN=')).slice(12));
 if(readFileSync(process.env.SSHGUARD_DIRECT_LOG,'utf8').includes(token))throw Error('Setup token leaked into redirected installation log');
 const password='Direct-install-test-987';
 const origin='http://127.0.0.1:8080';
@@ -67,9 +67,9 @@ systemctl stop sshguard-agent-update.timer
 node scripts/tests/test-native-api.mjs queue-update
 systemctl start sshguard-agent-update.service
 node scripts/tests/test-native-api.mjs verify-update
-before=$(sha256sum /etc/sshguard/api.env)
+before=$(sha256sum /opt/SSHGuard/Server/api.env)
 PATH="$tmp/bin:$PATH" sh "$bundle/deploy.sh" --update
-[ "$before" = "$(sha256sum /etc/sshguard/api.env)" ]
+[ "$before" = "$(sha256sum /opt/SSHGuard/Server/api.env)" ]
 curl -fsS http://127.0.0.1:8080/api/v1/health >/dev/null
 # Exercise the actual interactive download path without publishing a release.
 # GitHub alone is mocked; extraction, deployment, systemd and health checks run.
@@ -96,32 +96,32 @@ esac
 SH
 chmod 755 "$tmp/bin/gh"
 export SSHGUARD_UPDATE_FIXTURE="$tmp/release"
-old=$(stat -c %i /opt/SSHGuard/Server)
+old=$(stat -c %i /opt/SSHGuard/Server/sshguard-api)
 if printf '1\n' | PATH="$tmp/bin:$PATH" script -q -e -c "sh '$bundle/deploy.sh'" "$tmp/already-installed.log" >/dev/null; then
     echo 'Install option must reject an existing installation' >&2; exit 1
 fi
-[ "$old" = "$(stat -c %i /opt/SSHGuard/Server)" ]
+[ "$old" = "$(stat -c %i /opt/SSHGuard/Server/sshguard-api)" ]
 grep -q '9 更新主控' "$tmp/already-installed.log"
 printf '9\n' | PATH="$tmp/bin:$PATH" script -q -e -c "sh '$bundle/deploy.sh'" "$tmp/update-menu.log" >/dev/null
-[ "$old" != "$(stat -c %i /opt/SSHGuard/Server)" ]
+[ "$old" != "$(stat -c %i /opt/SSHGuard/Server/sshguard-api)" ]
 grep -q '9) 更新主控' "$tmp/update-menu.log"
-old=$(stat -c %i /opt/SSHGuard/Server)
+old=$(stat -c %i /opt/SSHGuard/Server/sshguard-api)
 printf '\n' | PATH="$tmp/bin:$PATH" script -q -e -c 'sh /opt/SSHGuard/Server/deploy.sh' "$tmp/default-update.log" >/dev/null
-[ "$old" != "$(stat -c %i /opt/SSHGuard/Server)" ]
+[ "$old" != "$(stat -c %i /opt/SSHGuard/Server/sshguard-api)" ]
 grep -q '默认 9' "$tmp/default-update.log"
-[ "$before" = "$(sha256sum /etc/sshguard/api.env)" ]
+[ "$before" = "$(sha256sum /opt/SSHGuard/Server/api.env)" ]
 curl -fsS http://127.0.0.1:8080/api/v1/health >/dev/null
 unset SSHGUARD_UPDATE_FIXTURE
-test -s /var/lib/sshguard-api/setup.json
+test -s /opt/SSHGuard/Server/data/setup.json
 node scripts/tests/test-native-api.mjs verify
 sh /opt/SSHGuard/Agent/sshguard/uninstall-agent.sh
 sh "$bundle/uninstall.sh" --yes
 test ! -e /etc/systemd/system/sshguard-api.service
 test ! -e /opt/sshguard
-test ! -e /opt/SSHGuard/Server
-test -s /var/lib/sshguard-api/setup.json
-test -s /var/lib/sshguard-api/sshguard.db
-test -s /etc/sshguard/api.env
+test ! -e /opt/SSHGuard/Server/sshguard-api
+test -s /opt/SSHGuard/Server/data/setup.json
+test -s /opt/SSHGuard/Server/data/sshguard.db
+test -s /opt/SSHGuard/Server/api.env
 # Obsolete directory installations must be rejected without deleting their files.
 mkdir /opt/sshguard
 printf 'unsupported binary\n' > /opt/sshguard/sshguard-api

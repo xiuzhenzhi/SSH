@@ -1,6 +1,6 @@
 # 运维手册
 
-> 从 v0.3.20 起使用新目录布局，旧版不自动迁移，请先使用旧版脚本卸载后再安装新版本。v0.3.19 用户请查阅 [对应版本文档](https://github.com/xiuzhenzhi/SSHGuard/tree/v0.3.19/docs)。
+> 从 v0.3.21 起主控程序、配置和数据统一存放，旧版不自动迁移，请先使用旧版脚本卸载后再安装新版本。v0.3.20 及以前版本用户请查阅 [对应版本文档](https://github.com/xiuzhenzhi/SSHGuard/tree/v0.3.20/docs)。
 
 ## 状态与日志
 
@@ -23,7 +23,7 @@ sudo sh /opt/SSHGuard/Server/sshguard.sh --restart
 sh /opt/SSHGuard/Server/sshguard.sh --update
 ```
 
-旧安装使用 [拉取最新更新脚本](../guides/QUICKSTART.md#更新中央平台)。Compose 按 [Compose 更新](INSTALL-COMPOSE.md#更新) 操作。
+同一目录布局内使用 [拉取最新更新脚本](../guides/QUICKSTART.md#更新中央平台)。Compose 按 [Compose 更新](INSTALL-COMPOSE.md#更新) 操作。
 
 更新前备份，更新后检查登录、服务器状态和事件。程序启动失败会回退旧程序；数据库恢复需使用备份。
 
@@ -37,10 +37,12 @@ sh /opt/SSHGuard/Server/sshguard.sh --update
 
 | 部署方式 | 需要备份 |
 |---|---|
-| 原生 | `/etc/sshguard/`、`/var/lib/sshguard-api/` |
+| 原生 | `/opt/SSHGuard/Server/api.env`、`/opt/SSHGuard/Server/data/` 及自行配置的证书 |
 | Compose | `.env`、数据库命名卷、证书 |
 
-SQLite 备份前停止 API，备份整个数据目录后再启动。
+SQLite 备份前停止 API，备份整个 `Server/data/`（包含 WAL 等文件）和 `Server/api.env` 后再启动。同一新布局恢复时先停止服务，恢复到相同路径，保留原 `ENCRYPTION_KEY`。配置由 root 持有、权限 600；数据目录由 sshguard-api 持有、权限 700，数据文件权限 600。不要把数据放进 `web/` 或其他程序文件目录。
+
+不提供旧路径迁移。卸载主控保留 `api.env`、`data/` 和证书；Agent 及外部 MySQL/PostgreSQL 数据不受影响。
 
 PostgreSQL：
 

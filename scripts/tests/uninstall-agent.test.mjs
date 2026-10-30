@@ -12,7 +12,7 @@ test('Linux uninstall purges Agent data, preserves API data and unrelated syslog
  assert.ok(unix.startsWith('/'));
  const put=(path,body)=>{mkdirSync(join(dir,path,'..'),{recursive:true});writeFileSync(join(dir,path),body,{mode:0o755});};
  put('bin/id','#!/bin/sh\necho 0\n'); put('bin/systemctl','#!/bin/sh\nexit 0\n');
- put('etc/sshguard/api.env','KEEP');
+ put('opt/SSHGuard/Server/api.env','KEEP');
  for(const p of ['opt/SSHGuard/Agent/agent.json','opt/SSHGuard/Agent/sshguard-agent/state.db','opt/SSHGuard/Agent/sshguard-agent/state.db-wal','opt/SSHGuard/Agent/logs/auth.log','opt/SSHGuard/Agent/sshguard-agent-bin','opt/SSHGuard/Agent/sshguard/update-agent.sh','opt/SSHGuard/Agent/sshguard/update-loop.sh','opt/SSHGuard/Agent/sshguard/uninstall-agent.sh'])put(p,'private');
  put('opt/SSHGuard/Server/sshguard-api','KEEP');
  put('etc/syslog.conf',`*.* /var/log/messages\nauth,authpriv.* ${unix}/opt/SSHGuard/Agent/logs/auth.log\n`);
@@ -23,7 +23,7 @@ test('Linux uninstall purges Agent data, preserves API data and unrelated syslog
  const result=spawnSync(shell,['-c','export PATH="$TEST_ROOT/bin:$PATH"; sh "$TEST_ROOT/uninstall.sh"'],{env:{...process.env,TEST_ROOT:unix},encoding:'utf8'});
  assert.equal(result.status,0,result.stdout+result.stderr);
  assert.equal(existsSync(join(dir,'run/sshguard-agent-install.lock')),false);
- assert.equal(readFileSync(join(dir,'etc/sshguard/api.env'),'utf8'),'KEEP');
+ assert.equal(readFileSync(join(dir,'opt/SSHGuard/Server/api.env'),'utf8'),'KEEP');
  assert.equal(existsSync(join(dir,'opt/SSHGuard/Agent')),false);
  assert.equal(readFileSync(join(dir,'opt/SSHGuard/Server/sshguard-api'),'utf8'),'KEEP');
  assert.equal(readFileSync(join(dir,'etc/syslog.conf'),'utf8'),'*.* /var/log/messages\n');

@@ -3,7 +3,7 @@ import {readFileSync,writeFileSync} from 'node:fs';
 const state=process.env.SSHGUARD_TEST_STATE;
 if(process.env.GITHUB_ACTIONS!=='true' || !state) throw Error('Disposable CI only');
 const origin=process.env.SSHGUARD_TEST_ORIGIN || 'https://guard.sshguard.test';
-const password=process.env.SSHGUARD_TEST_PASSWORD || JSON.parse(readFileSync('/etc/sshguard/api.env','utf8').split('\n').find(x=>x.startsWith('ADMIN_PASSWORD=')).slice('ADMIN_PASSWORD='.length));
+const password=process.env.SSHGUARD_TEST_PASSWORD || JSON.parse(readFileSync('/opt/SSHGuard/Server/api.env','utf8').split('\n').find(x=>x.startsWith('ADMIN_PASSWORD=')).slice('ADMIN_PASSWORD='.length));
 let cookie='';
 async function api(path,method='GET',body){
  const res=await fetch(origin+'/api/v1'+path,{method,headers:{Origin:origin,Cookie:cookie,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});

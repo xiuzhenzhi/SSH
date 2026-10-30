@@ -2,7 +2,7 @@
 
 一键安装见 [快速开始](../guides/QUICKSTART.md)。以下为手工部署，需要已安装 Nginx、curl 和证书。
 
-> v0.3.20 起使用新目录布局，不支持从旧目录自动迁移。旧安装请先备份需要保留的数据，使用旧版卸载脚本卸载，再安装包含新布局的版本。v0.3.19 的安装方式请参考 [v0.3.19 文档](https://github.com/xiuzhenzhi/SSHGuard/blob/v0.3.19/docs/deployment/INSTALL-NATIVE.md)。下文手工安装需使用同版本程序与服务配置。
+> v0.3.21 起主控程序、配置和数据统一存放，不支持从旧目录自动迁移。旧安装请先备份需要保留的数据，使用旧版卸载脚本卸载，再安装包含新布局的版本。v0.3.20 的安装方式请参考 [v0.3.20 文档](https://github.com/xiuzhenzhi/SSHGuard/blob/v0.3.20/docs/deployment/INSTALL-NATIVE.md)。下文手工安装需使用同版本程序与服务配置。
 
 ## 下载发布包
 
@@ -15,11 +15,26 @@ cd sshguard-linux-amd64
 
 ARM64 将 `amd64` 换成 `arm64`。
 
+## 新目录布局
+
+| 内容 | 路径 |
+|---|---|
+| 程序 | `/opt/SSHGuard/Server/sshguard-api` |
+| 配置 | `/opt/SSHGuard/Server/api.env` |
+| 运行数据 | `/opt/SSHGuard/Server/data/` |
+| 默认 SQLite | `/opt/SSHGuard/Server/data/sshguard.db` |
+| 初始化配置 | `/opt/SSHGuard/Server/data/setup.json` |
+| 服务配置原件 | `/opt/SSHGuard/Server/sshguard-api.service` |
+
+服务配置还会复制到 `/etc/systemd/system/sshguard-api.service` 注册系统服务。程序目录由 root 管理，只有 `data/` 允许主控服务写入；`api.env` 权限为 600。TLS 证书、反代配置和管理标记保存在 `Server/` 中；系统服务注册、系统日志和证书签发工具仍使用系统标准目录。
+
+不提供旧路径兼容或迁移。v0.3.20 及以前的安装需先卸载，再全新安装。
+
 ## 更新后的旧版本清理
 
 新目录使用真实目录 `/opt/SSHGuard/Server/`，不使用版本目录软链接。同一目录布局内更新时，先校验程序，保留旧程序供失败恢复；新服务通过健康检查后才清理本次更新的临时备份。
 
-清理不涉及 `/var/lib/sshguard-api`、`/etc/sshguard`、外部数据库及手动下载的文件。符号链接、不符合标准结构或含额外文件的目录会保留，避免删除用户自行保存的数据。
+更新与卸载只清理已知程序文件，保留 `api.env`、`data/`、证书和其他非程序文件；不操作外部数据库。符号链接、不符合标准结构或含额外文件的目录会保留，避免删除用户自行保存的数据。
 
 ## 准备数据库
 
@@ -46,19 +61,21 @@ GRANT ALL PRIVILEGES ON sshguard.* TO 'sshguard'@'127.0.0.1';
 
 ```sh
 id sshguard-api >/dev/null 2>&1 || sudo useradd --system --user-group --no-create-home --shell /usr/sbin/nologin sshguard-api
-sudo install -d -m 755 /opt/SSHGuard/Server /etc/sshguard
+sudo install -d -m 755 /opt/SSHGuard/Server
+sudo install -d -o sshguard-api -g sshguard-api -m 700 /opt/SSHGuard/Server/data
 sudo install -m 755 sshguard-api /opt/SSHGuard/Server/sshguard-api
 sudo cp -a web /opt/SSHGuard/Server/
 sudo chmod -R a+rX /opt/SSHGuard/Server/web
-sudo install -m 600 deploy/api.env.example /etc/sshguard/api.env
-sudo install -m 644 deploy/sshguard-api.service /etc/systemd/system/sshguard-api.service
+sudo install -m 600 deploy/api.env.example /opt/SSHGuard/Server/api.env
+sudo install -m 644 deploy/sshguard-api.service /opt/SSHGuard/Server/sshguard-api.service
+sudo install -m 644 /opt/SSHGuard/Server/sshguard-api.service /etc/systemd/system/sshguard-api.service
 sudo install -m 644 deploy/nginx.conf /etc/nginx/conf.d/sshguard.conf
-sudo install -d -m 700 /etc/sshguard/certs
+sudo install -d -m 700 /opt/SSHGuard/Server/certs
 ```
 
 ## 填写配置
 
-编辑 `/etc/sshguard/api.env`：
+编辑 `/opt/SSHGuard/Server/api.env`：
 
 | 配置 | 填写内容 |
 |---|---|
@@ -71,15 +88,15 @@ sudo install -d -m 700 /etc/sshguard/certs
 
 | 数据库 | `DATABASE_URL` 示例 |
 |---|---|
-| SQLite | `file:/var/lib/sshguard-api/sshguard.db` |
+| SQLite | `file:/opt/SSHGuard/Server/data/sshguard.db` |
 | PostgreSQL | `postgres://sshguard:YOUR_PASSWORD@127.0.0.1:5432/sshguard?sslmode=disable` |
 | MySQL | `sshguard:YOUR_PASSWORD@tcp(127.0.0.1:3306)/sshguard?parseTime=true&loc=UTC&charset=utf8mb4` |
 
 编辑 Nginx 配置中的 `guard.example.com`，替换成自己的域名，安装证书后启动：
 
 ```sh
-sudo install -m 644 /path/to/fullchain.pem /etc/sshguard/certs/fullchain.pem
-sudo install -m 600 /path/to/privkey.pem /etc/sshguard/certs/privkey.pem
+sudo install -m 644 /path/to/fullchain.pem /opt/SSHGuard/Server/certs/fullchain.pem
+sudo install -m 600 /path/to/privkey.pem /opt/SSHGuard/Server/certs/privkey.pem
 sudo systemctl daemon-reload
 sudo systemctl enable --now sshguard-api
 sudo nginx -t

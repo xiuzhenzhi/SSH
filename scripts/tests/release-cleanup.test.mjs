@@ -21,9 +21,11 @@ ${helper}
 cd "$TEST_ROOT"
 root=$(pwd -P)
 if [ -d "$root/bin" ]; then export PATH="$root/bin:$PATH"; fi
-mkdir -p opt/SSHGuard/Server opt/SSHGuard/Agent external
+mkdir -p opt/SSHGuard/Server/data opt/SSHGuard/Agent external
 printf keep > external/data
 touch opt/SSHGuard/Server/sshguard-api opt/SSHGuard/Agent/agent.json
+printf config > opt/SSHGuard/Server/api.env
+printf database > opt/SSHGuard/Server/data/sshguard.db
 mkdir -p opt/.SSHGuard-backup.aaaaaa/web opt/.SSHGuard-backup.bbbbbb
 touch opt/.SSHGuard-backup.aaaaaa/sshguard-api opt/.SSHGuard-backup.bbbbbb/database.db
 ln -s "$root/external" opt/.SSHGuard-backup.aaaaaa/web/external
@@ -37,6 +39,15 @@ test -f opt/.SSHGuard-backup.bbbbbb/database.db
 test -f opt/SSHGuard/Agent/agent.json
 test -f external/data
 test -f opt/SSHGuard/Server/sshguard-api
+if remove_release_payload "$root/opt/SSHGuard/Server"; then exit 1; fi
+if remove_program_item data; then exit 1; fi
+if remove_program_item api.env; then exit 1; fi
+if remove_program_item ../Agent; then exit 1; fi
+remove_program_item sshguard-api
+test ! -e opt/SSHGuard/Server/sshguard-api
+test "$(cat opt/SSHGuard/Server/api.env)" = config
+test "$(cat opt/SSHGuard/Server/data/sshguard.db)" = database
+test -f opt/SSHGuard/Agent/agent.json
 `);
  const result=spawnSync(shell,[join(root,'check.sh')],{env:{...process.env,TEST_ROOT:root,MSYS:'winsymlinks:nativestrict'},encoding:'utf8',timeout:15000});
  assert.equal(result.status,0,result.stdout+result.stderr);

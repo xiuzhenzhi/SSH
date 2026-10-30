@@ -24,7 +24,7 @@ location ^~ / {
 }
 ```
 
-3. 在 `/etc/sshguard/api.env` 填入实际域名：
+3. 在 `/opt/SSHGuard/Server/api.env` 填入实际域名：
 
 ```ini
 PUBLIC_URL="https://guard.example.com"

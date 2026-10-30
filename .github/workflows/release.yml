@@ -8,6 +8,10 @@ on:
         description: '可选：留空时根据当前分支的 GitHub Release 自动递增补丁版本；例如 0.3.2 或 0.4.0-rc.1'
         required: false
         type: string
+      existing_tag:
+        description: '仅重试尚未发布的既有标签（例如 v0.3.21）；使用当前工作流验证原标签代码，不改写标签。与 version 互斥。'
+        required: false
+        type: string
 permissions:
   contents: read
   actions: read
@@ -17,7 +21,7 @@ concurrency:
 jobs:
   prepare:
     name: Prepare version on selected branch
-    if: github.event_name == 'workflow_dispatch' && github.ref_type == 'branch'
+    if: github.event_name == 'workflow_dispatch' && github.ref_type == 'branch' && !inputs.existing_tag
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -66,20 +70,30 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ needs.prepare.outputs.sha || github.sha }}
+          ref: ${{ inputs.existing_tag && format('refs/tags/{0}', inputs.existing_tag) || needs.prepare.outputs.sha || github.sha }}
       - name: Match tag to VERSION
         id: verify
         env:
-          RELEASE_TAG: ${{ needs.prepare.outputs.tag || github.ref_name }}
+          RELEASE_TAG: ${{ inputs.existing_tag || needs.prepare.outputs.tag || github.ref_name }}
           PREPARED_TAG: ${{ needs.prepare.outputs.tag }}
           REF_TYPE: ${{ github.ref_type }}
           REQUESTED_VERSION: ${{ inputs.version }}
+          EXISTING_TAG: ${{ inputs.existing_tag }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          if test -n "$EXISTING_TAG"; then
+            test -z "$REQUESTED_VERSION"
+            printf '%s' "$EXISTING_TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$'
+            if gh release view "$EXISTING_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo 'Release already exists; published assets and tags are immutable.' >&2
+              exit 1
+            fi
+          fi
           if test "$REF_TYPE" = tag && test -n "$REQUESTED_VERSION"; then
             echo 'For a new version select a branch. For an existing tag leave the version input empty.' >&2
             exit 1
           fi
-          test "$REF_TYPE" = tag || test -n "$PREPARED_TAG"
+          test "$REF_TYPE" = tag || test -n "$PREPARED_TAG" || test -n "$EXISTING_TAG"
           test "$RELEASE_TAG" = "v$(tr -d '\r\n' < VERSION)"
           echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"

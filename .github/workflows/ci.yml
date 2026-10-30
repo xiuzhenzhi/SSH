@@ -358,7 +358,7 @@ jobs:
   native:
     name: Native install and upgrade / ${{ matrix.database }} / ${{ matrix.proxy }}
     needs: [build, scope]
-    if: inputs.selective_release != true || needs.scope.outputs.server == 'true' || needs.scope.outputs.database == 'true' || needs.scope.outputs.agent == 'true' || needs.scope.outputs.deploy == 'true'
+    if: ${{ !cancelled() && needs.build.result == 'success' && (inputs.selective_release != true || needs.scope.outputs.server == 'true' || needs.scope.outputs.database == 'true' || needs.scope.outputs.agent == 'true' || needs.scope.outputs.deploy == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -391,8 +391,8 @@ jobs:
           NODE_EXTRA_CA_CERTS="$PWD/.local/proxy/cert.pem" node scripts/tests/test-reverse-proxy.mjs dist/sshguard-linux-amd64/sshguard-api "$(command -v nginx)" .local/proxy/cert.pem .local/proxy/key.pem
   artifacts:
     name: Verified release assets
-    needs: [build, native]
-    if: ${{ !cancelled() && needs.build.result == 'success' && (needs.native.result == 'success' || needs.native.result == 'skipped') }}
+    needs: [build, native, scope]
+    if: ${{ !cancelled() && needs.build.result == 'success' && (needs.native.result == 'success' || (needs.native.result == 'skipped' && inputs.selective_release == true && needs.scope.outputs.server != 'true' && needs.scope.outputs.database != 'true' && needs.scope.outputs.agent != 'true' && needs.scope.outputs.deploy != 'true')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

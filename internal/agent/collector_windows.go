@@ -19,7 +19,9 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func defaultStateDir() string { return filepath.Join(filepath.Dir(defaultConfigPath()), "state") }
+func defaultStateDir() string {
+	return filepath.Join(filepath.Dir(defaultConfigPath()), "sshguard-agent")
+}
 func fileIdentity(f *os.File) (string, error) {
 	var info windows.ByHandleFileInformation
 	if e := windows.GetFileInformationByHandle(windows.Handle(f.Fd()), &info); e != nil {

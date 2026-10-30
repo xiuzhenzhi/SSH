@@ -5,7 +5,7 @@ umask 077
 RELEASE_VERSION='0.3.16'
 die() { printf '[错误] %s\n' "$*" >&2; exit 1; }
 case "${1:-}" in
-    --help|-h) printf '安装：sudo sh install-agent.sh ORIGIN ONE_TIME_TOKEN [--allow-insecure-http]\n更新：sudo sh install-agent.sh ORIGIN --update [--allow-insecure-http]\n离线卸载：sudo sh /usr/local/lib/sshguard/uninstall-agent.sh\n'; exit 0 ;;
+    --help|-h) printf '安装：sudo sh install-agent.sh ORIGIN ONE_TIME_TOKEN [--allow-insecure-http]\n更新：sudo sh install-agent.sh ORIGIN --update [--allow-insecure-http]\n离线卸载：sudo sh /opt/SSHGuard/Agent/sshguard/uninstall-agent.sh\n'; exit 0 ;;
 esac
 [ "$(id -u)" -eq 0 ] || die '请使用 root 或 sudo 运行安装命令。'
 [ "$#" -ge 2 ] && [ "$#" -le 3 ] || die 'Usage: install-agent.sh ORIGIN ONE_TIME_TOKEN|--update [--allow-insecure-http]'
@@ -45,11 +45,12 @@ if ! command -v curl >/dev/null 2>&1 || [ ! -s /etc/ssl/certs/ca-certificates.cr
 fi
 command -v sha256sum >/dev/null 2>&1
 case "$(uname -m)" in x86_64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; *) die '仅支持 amd64 / arm64 架构。' ;; esac
-for path in /var/lib/sshguard-agent /etc/sshguard /etc/sshguard/agent.json /usr/local/bin/sshguard-agent /etc/systemd/system/sshguard-agent.service /etc/init.d/sshguard-agent; do
+for path in /opt/SSHGuard /opt/SSHGuard/Agent /opt/SSHGuard/Agent/sshguard-agent /opt/SSHGuard/Agent/agent.json /opt/SSHGuard/Agent/sshguard-agent-bin /etc/systemd/system/sshguard-agent.service /etc/init.d/sshguard-agent; do
     [ ! -L "$path" ] || die "Refusing symlink: $path"
 done
-config=/etc/sshguard/agent.json
-exe=/usr/local/bin/sshguard-agent
+if [ -e /usr/local/bin/sshguard-agent ] || [ -e /etc/sshguard/agent.json ]; then die '请先使用旧版卸载脚本卸载 Agent，再重新安装。'; fi
+config=/opt/SSHGuard/Agent/agent.json
+exe=/opt/SSHGuard/Agent/sshguard-agent-bin
 if [ "$mode" = update ]; then
     [ -f "$config" ] && [ -f "$exe" ] || die '尚未安装 Agent，请在控制台复制安装命令。'
 fi
@@ -70,14 +71,14 @@ Wants=network-online.target
 [Service]
 User=sshguard
 Group=sshguard
-ExecStart=/usr/local/bin/sshguard-agent -config /etc/sshguard/agent.json
+ExecStart=/opt/SSHGuard/Agent/sshguard-agent-bin -config /opt/SSHGuard/Agent/agent.json
 Restart=on-failure
 RestartSec=10
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/var/lib/sshguard-agent
+ReadWritePaths=/opt/SSHGuard/Agent/sshguard-agent
 UMask=0077
 [Install]
 WantedBy=multi-user.target
@@ -89,8 +90,8 @@ else
 #!/sbin/openrc-run
 description="SSHGuard Agent"
 supervisor="supervise-daemon"
-command="/usr/local/bin/sshguard-agent"
-command_args="-config /etc/sshguard/agent.json"
+command="/opt/SSHGuard/Agent/sshguard-agent-bin"
+command_args="-config /opt/SSHGuard/Agent/agent.json"
 command_user="sshguard:sshguard"
 respawn_delay=10
 respawn_max=0
@@ -104,19 +105,19 @@ OPENRC
 fi
 }
 configure_updater() {
-    for path in /usr/local/lib/sshguard /usr/local/lib/sshguard/update-agent.sh /usr/local/lib/sshguard/update-loop.sh /etc/init.d/sshguard-agent-update /etc/systemd/system/sshguard-agent-update.service /etc/systemd/system/sshguard-agent-update.timer; do
+    for path in /opt/SSHGuard/Agent/sshguard /opt/SSHGuard/Agent/sshguard/update-agent.sh /opt/SSHGuard/Agent/sshguard/update-loop.sh /etc/init.d/sshguard-agent-update /etc/systemd/system/sshguard-agent-update.service /etc/systemd/system/sshguard-agent-update.timer; do
         [ ! -L "$path" ] || die "Refusing symlink: $path"
     done
-    mkdir -p /usr/local/lib/sshguard
-    chown root:root /usr/local/lib/sshguard
-    chmod 0700 /usr/local/lib/sshguard
-    [ ! -L /usr/local/lib/sshguard/uninstall-agent.sh ] || die 'Refusing symlink uninstaller.'
-    cp "$tmp/uninstall-agent.sh" /usr/local/lib/sshguard/uninstall-agent.sh
-    chmod 0700 /usr/local/lib/sshguard/uninstall-agent.sh
+    mkdir -p /opt/SSHGuard/Agent/sshguard
+    chown root:root /opt/SSHGuard/Agent/sshguard
+    chmod 0700 /opt/SSHGuard/Agent/sshguard
+    [ ! -L /opt/SSHGuard/Agent/sshguard/uninstall-agent.sh ] || die 'Refusing symlink uninstaller.'
+    cp "$tmp/uninstall-agent.sh" /opt/SSHGuard/Agent/sshguard/uninstall-agent.sh
+    chmod 0700 /opt/SSHGuard/Agent/sshguard/uninstall-agent.sh
     # Keep a trusted local installer. Never fetch scripts in a remote task.
     cp "$0" "$tmp/update-agent.sh"
     chmod 0700 "$tmp/update-agent.sh"
-    mv -f "$tmp/update-agent.sh" /usr/local/lib/sshguard/update-agent.sh
+    mv -f "$tmp/update-agent.sh" /opt/SSHGuard/Agent/sshguard/update-agent.sh
     if [ "$init" = systemd ]; then
         cat > /etc/systemd/system/sshguard-agent-update.service <<'UNIT'
 [Unit]
@@ -124,7 +125,7 @@ Description=SSHGuard fixed Agent updater (no remote commands)
 After=network-online.target
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/sshguard-agent -poll-update -config /etc/sshguard/agent.json
+ExecStart=/opt/SSHGuard/Agent/sshguard-agent-bin -poll-update -config /opt/SSHGuard/Agent/agent.json
 TimeoutStartSec=9min
 UMask=0077
 UNIT
@@ -146,24 +147,29 @@ UNIT
 description="SSHGuard fixed Agent updater"
 supervisor="supervise-daemon"
 command="/bin/sh"
-command_args="/usr/local/lib/sshguard/update-loop.sh"
+command_args="/opt/SSHGuard/Agent/sshguard/update-loop.sh"
 respawn_delay=10
 depend() { need net; }
 OPENRC
-        cat > /usr/local/lib/sshguard/update-loop.sh <<'LOOP'
+        cat > /opt/SSHGuard/Agent/sshguard/update-loop.sh <<'LOOP'
 #!/bin/sh
-while sleep 60; do /usr/local/bin/sshguard-agent -poll-update -config /etc/sshguard/agent.json; done
+while sleep 60; do /opt/SSHGuard/Agent/sshguard-agent-bin -poll-update -config /opt/SSHGuard/Agent/agent.json; done
 LOOP
-        chmod 0700 /usr/local/lib/sshguard/update-loop.sh
+        chmod 0700 /opt/SSHGuard/Agent/sshguard/update-loop.sh
         chmod 0755 /etc/init.d/sshguard-agent-update
         rc-update add sshguard-agent-update default
         if ! rc-service sshguard-agent-update status >/dev/null 2>&1; then rc-service sshguard-agent-update start; fi
     fi
 }
 prepare_collection() {
-    mkdir -p /var/lib/sshguard-agent
-    chown sshguard:sshguard /var/lib/sshguard-agent
-    chmod 0700 /var/lib/sshguard-agent
+    mkdir -p /opt/SSHGuard /opt/SSHGuard/Agent
+    chown root:root /opt/SSHGuard
+    chmod 0755 /opt/SSHGuard
+    chown root:sshguard /opt/SSHGuard/Agent
+    chmod 0710 /opt/SSHGuard/Agent
+    mkdir -p /opt/SSHGuard/Agent/sshguard-agent
+    chown sshguard:sshguard /opt/SSHGuard/Agent/sshguard-agent
+    chmod 0700 /opt/SSHGuard/Agent/sshguard-agent
     for group in adm systemd-journal; do
         if grep -q "^$group:" /etc/group; then
             if command -v usermod >/dev/null 2>&1; then usermod -a -G "$group" sshguard
@@ -177,23 +183,23 @@ prepare_collection() {
             echo 'Custom Alpine syslog options detected; configure auth/authpriv logging readable by sshguard manually.' >&2
             return
         fi
-        for path in /etc/syslog.conf /var/log/sshguard /var/log/sshguard/auth.log; do
+        for path in /etc/syslog.conf /opt/SSHGuard/Agent/logs /opt/SSHGuard/Agent/logs/auth.log; do
             [ ! -L "$path" ] || die "Refusing symlink: $path"
         done
-        mkdir -p /var/log/sshguard
-        chown root:sshguard /var/log/sshguard
-        chmod 2750 /var/log/sshguard
-        touch /var/log/sshguard/auth.log
-        chown root:sshguard /var/log/sshguard/auth.log
-        chmod 0640 /var/log/sshguard/auth.log
+        mkdir -p /opt/SSHGuard/Agent/logs
+        chown root:sshguard /opt/SSHGuard/Agent/logs
+        chmod 2750 /opt/SSHGuard/Agent/logs
+        touch /opt/SSHGuard/Agent/logs/auth.log
+        chown root:sshguard /opt/SSHGuard/Agent/logs/auth.log
+        chmod 0640 /opt/SSHGuard/Agent/logs/auth.log
         changed=false
         if [ ! -f /etc/syslog.conf ]; then
             printf '*.* /var/log/messages\n' > "$tmp/syslog.conf"
         else
             cp /etc/syslog.conf "$tmp/syslog.conf"
         fi
-        if ! grep -Fxq 'auth,authpriv.* /var/log/sshguard/auth.log' "$tmp/syslog.conf"; then
-            printf '\nauth,authpriv.* /var/log/sshguard/auth.log\n' >> "$tmp/syslog.conf"
+        if ! grep -Fxq 'auth,authpriv.* /opt/SSHGuard/Agent/logs/auth.log' "$tmp/syslog.conf"; then
+            printf '\nauth,authpriv.* /opt/SSHGuard/Agent/logs/auth.log\n' >> "$tmp/syslog.conf"
         fi
         if ! cmp -s "$tmp/syslog.conf" /etc/syslog.conf; then
             chown root:root "$tmp/syslog.conf"
@@ -228,8 +234,8 @@ cleanup() {
 }
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
-mkdir -p /usr/local/bin
-tmp=$(mktemp -d /usr/local/bin/.sshguard-install.XXXXXX)
+mkdir -p /opt
+tmp=$(mktemp -d /opt/.sshguard-agent-install.XXXXXX)
 printf '[2/4] 下载并校验 Agent…\n'
 curl --proto "$artifact_proto" --proto-redir '=https' --tlsv1.2 --connect-timeout 15 --max-time 60 --max-redirs 5 --max-filesize 1048576 -fLsS "$artifact_base/uninstall-agent.sh" -o "$tmp/uninstall-agent.sh"
 sh -n "$tmp/uninstall-agent.sh"
@@ -275,11 +281,6 @@ if ! id sshguard >/dev/null 2>&1; then
 fi
 prepare_collection
 printf '[3/4] 注册服务器并设置开机自启…\n'
-mkdir -p /etc/sshguard
-# API and Agent may share this parent. Keep their secrets in separately
-# protected files/directories instead of assigning the parent to one service.
-chown root:root /etc/sshguard
-chmod 0711 /etc/sshguard
 printf '%s' "$enrollment" | "$tmp/agent" -enroll -endpoint "$endpoint" -config "$config" -allow-insecure-http="$allow_http"
 unset enrollment
 chown root:sshguard "$config"
@@ -292,4 +293,4 @@ sleep 2
 service_active
 "$exe" -check -endpoint "$endpoint" -config "$config"
 configure_updater
-printf '[4/4] 服务检查通过\n\n[完成] Agent 已启动，请在控制台确认在线。\n状态：%s\n卸载：sudo sh /usr/local/lib/sshguard/uninstall-agent.sh\n' "$([ "$init" = systemd ] && echo 'systemctl status sshguard-agent' || echo 'rc-service sshguard-agent status')"
+printf '[4/4] 服务检查通过\n\n[完成] Agent 已启动，请在控制台确认在线。\n状态：%s\n卸载：sudo sh /opt/SSHGuard/Agent/sshguard/uninstall-agent.sh\n' "$([ "$init" = systemd ] && echo 'systemctl status sshguard-agent' || echo 'rc-service sshguard-agent status')"

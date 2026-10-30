@@ -2,6 +2,8 @@
 
 一键安装见 [快速开始](../guides/QUICKSTART.md)。以下为手工部署，需要已安装 Nginx、curl 和证书。
 
+> 新目录布局尚未发布，不支持从旧目录自动迁移。旧安装请先备份需要保留的数据，使用旧版卸载脚本卸载，再安装包含新布局的版本。v0.3.19 的安装方式请参考 [v0.3.19 文档](https://github.com/xiuzhenzhi/SSHGuard/blob/v0.3.19/docs/deployment/INSTALL-NATIVE.md)。下文手工安装需使用同版本程序与服务配置。
+
 ## 下载发布包
 
 ```sh
@@ -15,7 +17,7 @@ ARM64 将 `amd64` 换成 `arm64`。
 
 ## 更新后的旧版本清理
 
-从 v0.3.19 起，一键脚本会在更新通过健康检查后，自动清理 `/opt/sshguard-releases/` 中可识别的旧程序目录，仅保留 `/opt/sshguard` 当前指向的版本。更新失败时不清理旧版本，保留恢复能力。
+新目录使用真实目录 `/opt/SSHGuard/Server/`，不使用版本目录软链接。同一目录布局内更新时，先校验程序，保留旧程序供失败恢复；新服务通过健康检查后才清理本次更新的临时备份。
 
 清理不涉及 `/var/lib/sshguard-api`、`/etc/sshguard`、外部数据库及手动下载的文件。符号链接、不符合标准结构或含额外文件的目录会保留，避免删除用户自行保存的数据。
 
@@ -44,12 +46,12 @@ GRANT ALL PRIVILEGES ON sshguard.* TO 'sshguard'@'127.0.0.1';
 
 ```sh
 id sshguard-api >/dev/null 2>&1 || sudo useradd --system --user-group --no-create-home --shell /usr/sbin/nologin sshguard-api
-sudo install -d -m 755 /opt/sshguard /etc/sshguard
-sudo install -m 755 sshguard-api /opt/sshguard/sshguard-api
-sudo cp -a web /opt/sshguard/
-sudo chmod -R a+rX /opt/sshguard/web
+sudo install -d -m 755 /opt/SSHGuard/Server /etc/sshguard
+sudo install -m 755 sshguard-api /opt/SSHGuard/Server/sshguard-api
+sudo cp -a web /opt/SSHGuard/Server/
+sudo chmod -R a+rX /opt/SSHGuard/Server/web
 sudo install -m 600 deploy/api.env.example /etc/sshguard/api.env
-sudo install -m 644 deploy/sshguard-api.service /etc/systemd/system/sshguard-api.service
+sudo sed 's|/opt/sshguard|/opt/SSHGuard/Server|g' deploy/sshguard-api.service | sudo tee /etc/systemd/system/sshguard-api.service >/dev/null
 sudo install -m 644 deploy/nginx.conf /etc/nginx/conf.d/sshguard.conf
 sudo install -d -m 700 /etc/sshguard/certs
 ```

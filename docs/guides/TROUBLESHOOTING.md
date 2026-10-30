@@ -1,10 +1,12 @@
 # 故障排查
 
+> 本文新目录布局尚未发布，旧版不自动迁移，请先使用旧版脚本卸载后再安装新版本。v0.3.19 用户请查阅 [对应版本文档](https://github.com/xiuzhenzhi/SSHGuard/tree/v0.3.19/docs)。
+
 ## 常见问题
 
 | 问题 | 处理 |
 |---|---|
-| 旧菜单没有更新选项 | [拉取最新更新脚本](QUICKSTART.md#更新中央平台)，之后使用 `/opt/sshguard/deploy.sh` |
+| 旧菜单没有更新选项 | [拉取最新更新脚本](QUICKSTART.md#更新中央平台)，之后使用 `/opt/SSHGuard/Server/deploy.sh` |
 | GitHub 下载失败或 404 | 检查网络和版本；私有仓库先执行 `gh auth login` |
 | 登录或保存返回 403 | 检查 `PUBLIC_URL` 是否与浏览器的协议、主机、端口一致 |
 | 密码错误 | 使用初始化时创建的账号；修改 `ADMIN_PASSWORD` 不会重置现有密码 |

@@ -63,17 +63,23 @@ Get-Service SSHGuardAgent
 Get-WinEvent -FilterHashtable @{LogName='Application';ProviderName='SSHGuardAgent'} -MaxEvents 20
 ```
 
+## 目录布局
+
+以下新布局尚未发布；Linux 和 Windows 都不提供旧目录迁移。旧版请使用对应旧版卸载脚本卸载，再通过新版本控制台重新安装。卸载会删除本机 Agent 数据，需要保留时先自行备份。
+
+Linux 程序和管理脚本分别位于 `/opt/SSHGuard/Agent/sshguard-agent-bin`、`/opt/SSHGuard/Agent/sshguard/`；Windows 位于 `%ProgramData%\SSHGuard\Agent\sshguard-agent.exe`、`%ProgramData%\SSHGuard\Agent\sshguard\`。主控与 Agent 分别存放，互不清理。
+
 ## 卸载
 
 在控制台复制「卸载命令」，或使用本地脚本：
 
 ```sh
 # Ubuntu / Debian；Alpine 以 root 执行，去掉 sudo
-sudo sh /usr/local/lib/sshguard/uninstall-agent.sh
+sudo sh /opt/SSHGuard/Agent/sshguard/uninstall-agent.sh
 ```
 
 ```powershell
-& "$env:ProgramFiles\SSHGuardAgent\uninstall-agent.ps1"
+& "$env:ProgramData\SSHGuard\Agent\sshguard\uninstall-agent.ps1"
 ```
 
 卸载会永久清除本机 Agent 配置、凭据、待传队列、采集位置、隔离数据和专用日志，并移除更新任务及程序文件；Windows 同时删除 Agent 事件源。系统共享 journal、Windows Application 和 OpenSSH 日志不会整库清空。中央平台数据需在控制台「删除服务器」中清除；只需停用时撤销凭据。
@@ -89,8 +95,8 @@ sudo sh /usr/local/lib/sshguard/uninstall-agent.sh
 - Linux 优先读取 journal，其次读取 SSH 日志文件；可在 `agent.json` 中用 `log_file` 指定日志。
 - Windows 读取 `OpenSSH/Operational`，不包含 RDP 登录。
 - 首次从日志末尾开始采集，重启后继续读取；离线事件暂存本地，队列上限 10,000 条。
-- Linux 配置：`/etc/sshguard/agent.json`；状态：`/var/lib/sshguard-agent/`。
-- Windows 配置：`%ProgramData%\SSHGuard\agent.json`；状态：`%ProgramData%\SSHGuard\state\`。
+- Linux 配置：`/opt/SSHGuard/Agent/agent.json`；状态：`/opt/SSHGuard/Agent/sshguard-agent/`。
+- Windows 配置：`%ProgramData%\SSHGuard\Agent\agent.json`；状态：`%ProgramData%\SSHGuard\Agent\sshguard-agent\`。
 
 ### 资源占用
 

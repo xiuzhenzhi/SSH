@@ -295,7 +295,7 @@ jobs:
           retention-days: 1
   docker:
     name: Docker application builds
-    if: inputs.full_validation == true && github.event_name != 'pull_request' && (inputs.selective_release != true || needs.scope.outputs.server == 'true' || needs.scope.outputs.database == 'true' || needs.scope.outputs.web == 'true' || needs.scope.outputs.deploy == 'true')
+    if: inputs.full_validation == true && inputs.selective_release == true && github.event_name != 'pull_request' && (needs.scope.outputs.server == 'true' || needs.scope.outputs.database == 'true' || needs.scope.outputs.web == 'true' || needs.scope.outputs.deploy == 'true')
     needs: scope
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -340,7 +340,9 @@ jobs:
         run: node scripts/build/reuse-web.mjs
       - env:
           GH_TOKEN: ${{ github.token }}
+          SELECTIVE_RELEASE: ${{ inputs.selective_release == true }}
         run: |
+          if [ "$SELECTIVE_RELEASE" != true ]; then export SSHGUARD_AGENT_VERSION="$(cat AGENT_VERSION)"; fi
           node scripts/build/build-release.mjs amd64 --reuse-web
           node scripts/build/build-release.mjs arm64 --reuse-web --reuse-agents
           node scripts/checks/check-agent-artifacts.mjs
@@ -432,7 +434,7 @@ jobs:
           const full=yes('FULL'), server=yes('SERVER'), agent=yes('AGENT'), db=yes('DATABASE'), web=yes('WEB'), deploy=yes('DEPLOY');
           const required={scope:true,server,agent,database:db,postgres:db,mysql:db,
             automation:yes('AUTOMATION')||deploy,compatibility:server&&agent,web,
-            docker:full&&(!yes('SELECTIVE')||server||db||web||deploy),build:full,
+            docker:full&&yes('SELECTIVE')&&(server||db||web||deploy),build:full,
             native:full&&(!yes('SELECTIVE')||server||db||agent||deploy),artifacts:full};
           let failed=false;
           for(const [name,job] of Object.entries(jobs)){

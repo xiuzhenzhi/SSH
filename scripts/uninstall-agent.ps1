@@ -27,10 +27,10 @@ function Assert-CleanupPath([string]$Path, [string]$Root) {
         }
     }
 }
-$exe = Join-Path $env:ProgramFiles 'SSHGuardAgent\sshguard-agent.exe'
-$config = Join-Path $env:ProgramData 'SSHGuard\agent.json'
-$state = Join-Path $env:ProgramData 'SSHGuard\state'
-Assert-CleanupPath (Split-Path -Parent $exe) $env:ProgramFiles
+$exe = Join-Path $env:ProgramData 'SSHGuard\Agent\sshguard-agent.exe'
+$config = Join-Path $env:ProgramData 'SSHGuard\Agent\agent.json'
+$state = Join-Path $env:ProgramData 'SSHGuard\Agent\sshguard-agent'
+Assert-CleanupPath (Split-Path -Parent $exe) $env:ProgramData
 Assert-CleanupPath $config $env:ProgramData
 Assert-CleanupPath $state $env:ProgramData
 $installLock = $null
@@ -45,7 +45,7 @@ if (Test-Path -LiteralPath $installDir) {
     $installLock = [IO.File]::Open($lockPath, 'OpenOrCreate', 'ReadWrite', 'None')
 }
 try {
-$runner = Join-Path $env:ProgramFiles 'SSHGuardAgent\poll-update.ps1'
+$runner = Join-Path $env:ProgramData 'SSHGuard\Agent\sshguard\poll-update.ps1'
 $task = Get-ScheduledTask -TaskName SSHGuardAgentUpdate -ErrorAction SilentlyContinue
 if ($task) {
     $shell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
@@ -65,7 +65,7 @@ if (Get-Service SSHGuardAgent -ErrorAction SilentlyContinue) {
     if ($LASTEXITCODE -ne 0) { throw 'Service removal failed; executable and config retained.' }
 }
 if (Test-Path -LiteralPath $exe) { Remove-Item -LiteralPath $exe }
-foreach ($path in @($runner,(Join-Path $env:ProgramFiles 'SSHGuardAgent\update-agent.ps1'),(Join-Path $env:ProgramFiles 'SSHGuardAgent\uninstall-agent.ps1'))) {
+foreach ($path in @($runner,(Join-Path $env:ProgramData 'SSHGuard\Agent\sshguard\update-agent.ps1'),(Join-Path $env:ProgramData 'SSHGuard\Agent\sshguard\uninstall-agent.ps1'))) {
     if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path }
 }
 if ([Diagnostics.EventLog]::SourceExists('SSHGuardAgent')) { Remove-EventLog -Source SSHGuardAgent }
@@ -78,7 +78,7 @@ $completed = $true
 } finally { if ($installLock) { $installLock.Dispose() } }
 
 if ($completed) {
-    Assert-CleanupPath $installDir $env:ProgramFiles
+    Assert-CleanupPath $installDir $env:ProgramData
     if (Test-Path -LiteralPath $installDir) { Remove-Item -LiteralPath $installDir -Recurse -Force }
     $configDir = Split-Path -Parent $config
     if ((Test-Path -LiteralPath $configDir) -and -not (Get-ChildItem -LiteralPath $configDir -Force | Select-Object -First 1)) { Remove-Item -LiteralPath $configDir }

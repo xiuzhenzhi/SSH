@@ -6,9 +6,9 @@ Wants=network-online.target
 [Service]
 User=sshguard-api
 Group=sshguard-api
-WorkingDirectory=/opt/sshguard
+WorkingDirectory=/opt/SSHGuard/Server
 EnvironmentFile=/etc/sshguard/api.env
-ExecStart=/opt/sshguard/sshguard-api
+ExecStart=/opt/SSHGuard/Server/sshguard-api
 Restart=on-failure
 RestartSec=10
 NoNewPrivileges=true

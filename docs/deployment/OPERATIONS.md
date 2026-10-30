@@ -1,11 +1,13 @@
 # 运维手册
 
+> 本文新目录布局尚未发布，旧版不自动迁移，请先使用旧版脚本卸载后再安装新版本。v0.3.19 用户请查阅 [对应版本文档](https://github.com/xiuzhenzhi/SSHGuard/tree/v0.3.19/docs)。
+
 ## 状态与日志
 
 ```sh
-sudo sh /opt/sshguard/sshguard.sh --status
-sudo sh /opt/sshguard/sshguard.sh --logs
-sudo sh /opt/sshguard/sshguard.sh --restart
+sudo sh /opt/SSHGuard/Server/sshguard.sh --status
+sudo sh /opt/SSHGuard/Server/sshguard.sh --logs
+sudo sh /opt/SSHGuard/Server/sshguard.sh --restart
 ```
 
 | 控制台状态 | 处理 |
@@ -18,7 +20,7 @@ sudo sh /opt/sshguard/sshguard.sh --restart
 ## 升级中央平台
 
 ```sh
-sh /opt/sshguard/sshguard.sh --update
+sh /opt/SSHGuard/Server/sshguard.sh --update
 ```
 
 旧安装使用 [拉取最新更新脚本](../guides/QUICKSTART.md#更新中央平台)。Compose 按 [Compose 更新](INSTALL-COMPOSE.md#更新) 操作。

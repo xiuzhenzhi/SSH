@@ -36,14 +36,23 @@ function Get-ReleaseAsset([string]$Name,[string]$OutFile,[int]$MaxBytes,[int]$Ti
 $osArchitecture = $env:PROCESSOR_ARCHITEW6432
 if (-not $osArchitecture) { $osArchitecture = $env:PROCESSOR_ARCHITECTURE }
 switch ($osArchitecture) { 'AMD64' { $arch='amd64' } 'ARM64' { $arch='arm64' } default { throw '仅支持 Windows amd64 / arm64。' } }
-$installDir = Join-Path $env:ProgramFiles 'SSHGuardAgent'
-$configDir = Join-Path $env:ProgramData 'SSHGuard'
+$installDir = Join-Path $env:ProgramData 'SSHGuard\Agent'
+$configDir = $installDir
+$scriptsDir = Join-Path $installDir 'sshguard'
 $exe = Join-Path $installDir 'sshguard-agent.exe'
 $config = Join-Path $configDir 'agent.json'
 
+if ((Test-Path -LiteralPath (Join-Path $env:ProgramFiles 'SSHGuardAgent\sshguard-agent.exe')) -or (Test-Path -LiteralPath (Join-Path $env:ProgramData 'SSHGuard\agent.json'))) {
+    throw '检测到旧目录安装，请先使用旧版卸载脚本卸载，再重新安装。此安装程序不迁移旧数据。'
+}
+
 function Assert-NoReparsePoint([string]$Path) {
-    $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
-    if ($item -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw "Refusing reparse point: $Path" }
+    $current = [IO.Path]::GetFullPath($Path)
+    while ($current) {
+        $item = Get-Item -LiteralPath $current -Force -ErrorAction SilentlyContinue
+        if ($item -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw "Refusing reparse point: $current" }
+        $current = Split-Path -Parent $current
+    }
 }
 function Protect-Directory([string]$Path) {
     Assert-NoReparsePoint $Path
@@ -72,7 +81,7 @@ function Protect-File([string]$Path) {
     Set-Acl -LiteralPath $Path -AclObject $acl
 }
 function Initialize-CollectorAccess {
-    $state = Join-Path $configDir 'state'
+    $state = Join-Path $configDir 'sshguard-agent'
     Assert-NoReparsePoint $state
     New-Item -ItemType Directory -Force -Path $state | Out-Null
     $serviceIdentity = (New-Object Security.Principal.NTAccount('NT SERVICE\SSHGuardAgent')).Translate([Security.Principal.SecurityIdentifier])
@@ -113,11 +122,12 @@ function Test-FixedUpdaterTask($Task, [string]$Shell, [string]$Runner) {
     return $Task.Actions.Count -eq 1 -and $Task.Actions[0].Execute -eq $Shell -and $allowedArguments -contains $Task.Actions[0].Arguments
 }
 function Initialize-FixedUpdater {
-    $localInstaller = Join-Path $installDir 'update-agent.ps1'
-    $runner = Join-Path $installDir 'poll-update.ps1'
+    Protect-Directory $scriptsDir
+    $localInstaller = Join-Path $scriptsDir 'update-agent.ps1'
+    $runner = Join-Path $scriptsDir 'poll-update.ps1'
     Assert-NoReparsePoint $localInstaller
     Assert-NoReparsePoint $runner
-    $uninstaller = Join-Path $installDir 'uninstall-agent.ps1'
+    $uninstaller = Join-Path $scriptsDir 'uninstall-agent.ps1'
     Assert-NoReparsePoint $uninstaller
     Copy-Item -LiteralPath (Join-Path $staging 'uninstall-agent.ps1') -Destination $uninstaller -Force
     Protect-File $uninstaller
@@ -131,8 +141,8 @@ Write-Output '[1/4] 检查系统与依赖'
 $dir = Split-Path -Parent $PSCommandPath
 $worker = Join-Path $dir (([Guid]::NewGuid().ToString()) + '.exe')
 try {
-    Copy-Item -LiteralPath (Join-Path $dir 'sshguard-agent.exe') -Destination $worker
-    & $worker -poll-update -config (Join-Path $env:ProgramData 'SSHGuard\agent.json')
+    Copy-Item -LiteralPath (Join-Path (Split-Path -Parent $dir) 'sshguard-agent.exe') -Destination $worker
+    & $worker -poll-update -config (Join-Path $env:ProgramData 'SSHGuard\Agent\agent.json')
     if ($LASTEXITCODE -ne 0) { throw 'Agent 更新失败，请在控制台查看更新状态。' }
 } finally { if (Test-Path -LiteralPath $worker) { Remove-Item -LiteralPath $worker -Force } }
 '@ | Set-Content -LiteralPath $runner -Encoding UTF8

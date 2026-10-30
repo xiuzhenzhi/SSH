@@ -56,13 +56,13 @@ token=$(cat "$tmp/enrollment")
 sh "$bundle/web/downloads/install-agent.sh" "$SSHGUARD_TEST_ORIGIN" "$token" --allow-insecure-http
 unset token
 systemctl is-active --quiet sshguard-agent
-grep -q '"allow_insecure_http":true' /etc/sshguard/agent.json
+grep -q '"allow_insecure_http":true' /opt/SSHGuard/Agent/agent.json
 logger -t sshd 'Accepted publickey for ci-fixture from 192.0.2.10 port 2222 ssh2'
 logger -t sshd 'Failed password for invalid user ci-fixture from 192.0.2.10 port 2223 ssh2'
 node scripts/tests/test-native-api.mjs verify
-before_agent=$(sha256sum /etc/sshguard/agent.json)
+before_agent=$(sha256sum /opt/SSHGuard/Agent/agent.json)
 sh "$bundle/web/downloads/install-agent.sh" "$SSHGUARD_TEST_ORIGIN" --update --allow-insecure-http
-[ "$before_agent" = "$(sha256sum /etc/sshguard/agent.json)" ]
+[ "$before_agent" = "$(sha256sum /opt/SSHGuard/Agent/agent.json)" ]
 systemctl stop sshguard-agent-update.timer
 node scripts/tests/test-native-api.mjs queue-update
 systemctl start sshguard-agent-update.service
@@ -73,8 +73,8 @@ PATH="$tmp/bin:$PATH" sh "$bundle/deploy.sh" --update
 curl -fsS http://127.0.0.1:8080/api/v1/health >/dev/null
 # Exercise the actual interactive download path without publishing a release.
 # GitHub alone is mocked; extraction, deployment, systemd and health checks run.
-test -s /opt/sshguard/update.sh
-test -s /opt/sshguard/quick-start.sh
+test -s /opt/SSHGuard/Server/update.sh
+test -s /opt/SSHGuard/Server/quick-start.sh
 mkdir "$tmp/release"
 tar -czf "$tmp/release/sshguard-linux-amd64.tar.gz" -C "$(dirname "$bundle")" "$(basename "$bundle")"
 (cd "$tmp/release" && sha256sum sshguard-linux-amd64.tar.gz > SHA256SUMS)
@@ -96,28 +96,29 @@ esac
 SH
 chmod 755 "$tmp/bin/gh"
 export SSHGUARD_UPDATE_FIXTURE="$tmp/release"
-old=$(readlink /opt/sshguard)
+old=$(stat -c %i /opt/SSHGuard/Server)
 if printf '1\n' | PATH="$tmp/bin:$PATH" script -q -e -c "sh '$bundle/deploy.sh'" "$tmp/already-installed.log" >/dev/null; then
     echo 'Install option must reject an existing installation' >&2; exit 1
 fi
-[ "$old" = "$(readlink /opt/sshguard)" ]
+[ "$old" = "$(stat -c %i /opt/SSHGuard/Server)" ]
 grep -q '9 更新主控' "$tmp/already-installed.log"
 printf '9\n' | PATH="$tmp/bin:$PATH" script -q -e -c "sh '$bundle/deploy.sh'" "$tmp/update-menu.log" >/dev/null
-[ "$old" != "$(readlink /opt/sshguard)" ]
+[ "$old" != "$(stat -c %i /opt/SSHGuard/Server)" ]
 grep -q '9) 更新主控' "$tmp/update-menu.log"
-old=$(readlink /opt/sshguard)
-printf '\n' | PATH="$tmp/bin:$PATH" script -q -e -c 'sh /opt/sshguard/deploy.sh' "$tmp/default-update.log" >/dev/null
-[ "$old" != "$(readlink /opt/sshguard)" ]
+old=$(stat -c %i /opt/SSHGuard/Server)
+printf '\n' | PATH="$tmp/bin:$PATH" script -q -e -c 'sh /opt/SSHGuard/Server/deploy.sh' "$tmp/default-update.log" >/dev/null
+[ "$old" != "$(stat -c %i /opt/SSHGuard/Server)" ]
 grep -q '默认 9' "$tmp/default-update.log"
 [ "$before" = "$(sha256sum /etc/sshguard/api.env)" ]
 curl -fsS http://127.0.0.1:8080/api/v1/health >/dev/null
 unset SSHGUARD_UPDATE_FIXTURE
 test -s /var/lib/sshguard-api/setup.json
 node scripts/tests/test-native-api.mjs verify
-sh /usr/local/lib/sshguard/uninstall-agent.sh
+sh /opt/SSHGuard/Agent/sshguard/uninstall-agent.sh
 sh "$bundle/uninstall.sh" --yes
 test ! -e /etc/systemd/system/sshguard-api.service
 test ! -e /opt/sshguard
+test ! -e /opt/SSHGuard/Server
 test -s /var/lib/sshguard-api/setup.json
 test -s /var/lib/sshguard-api/sshguard.db
 test -s /etc/sshguard/api.env

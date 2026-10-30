@@ -10,42 +10,28 @@ message() {
     else printf '%s %s\n' "$label" "$*"; fi
 }
 die() { message 31 '[错误]' "$*" >&2; exit 1; }
-prune_releases() (
-    # Only direct, recognizable release directories; never follow directory links.
-    release_root=$1
-    active_release=$2
+installed_program_dir() {
+    if [ -f /opt/SSHGuard/Server/sshguard-api ]; then printf /opt/SSHGuard/Server
+    fi
+}
+remove_release_payload() (
+    payload=$1
+    case "$payload" in /opt/SSHGuard/Server|/opt/.SSHGuard-stage.??????|/opt/.SSHGuard-backup.??????) ;; *) return 1 ;; esac
+    [ -d "$payload" ] && [ ! -L "$payload" ] || return 1
+    [ "$(readlink -f "$payload")" = "$payload" ] || return 1
     command -v mountpoint >/dev/null 2>&1 || return 1
-    [ -d "$release_root" ] && [ ! -L "$release_root" ] || return 1
-    [ "$(readlink -f "$release_root")" = "$release_root" ] || return 1
-    [ -d "$active_release" ] && [ ! -L "$active_release" ] || return 1
-    [ "$(dirname "$active_release")" = "$release_root" ] || return 1
-    for candidate in "$release_root"/*; do
-        [ "$candidate" != "$active_release" ] || continue
-        [ -d "$candidate" ] && [ ! -L "$candidate" ] || continue
-        if mountpoint -q "$candidate"; then continue; fi
-        [ -f "$candidate/VERSION" ] && [ ! -L "$candidate/VERSION" ] || continue
-        release_version=$(cat "$candidate/VERSION") || continue
-        printf '%s' "$release_version" | grep -Eq '^[0-9][A-Za-z0-9.+_-]{0,31}$' || continue
-        suffix=${candidate##*/}
-        case "$suffix" in "$release_version".??????) ;; *) continue ;; esac
-        case "${suffix##*.}" in *[!A-Za-z0-9]*) continue ;; esac
-        [ -f "$candidate/sshguard-api" ] && [ -d "$candidate/web" ] && [ -d "$candidate/deploy" ] || continue
-        # Preserve directories containing user-added configuration, data or backups.
-        unexpected=$(find "$candidate" -mindepth 1 -maxdepth 1 ! -name sshguard-api ! -name web ! -name deploy ! -name VERSION ! -name sshguard.sh ! -name deploy.sh ! -name quick-start.sh ! -name update.sh ! -name uninstall.sh -print) || continue
-        [ -z "$unexpected" ] || continue
-        if rm -rf --one-file-system -- "$candidate"; then
-            printf '  已清理旧版本：%s\n' "${candidate##*/}"
-        else
-            printf '  旧版本清理未完成：%s（当前服务不受影响）\n' "$candidate" >&2
-        fi
-    done
+    if mountpoint -q "$payload"; then return 1; fi
+    unexpected=$(find "$payload" -mindepth 1 -maxdepth 1 ! -name sshguard-api ! -name web ! -name deploy ! -name VERSION ! -name sshguard.sh ! -name deploy.sh ! -name quick-start.sh ! -name update.sh ! -name uninstall.sh -print) || return 1
+    [ -z "$unexpected" ] || return 1
+    rm -rf --one-file-system -- "$payload"
 )
 management_action() {
     printf '\n  SSHGuard · 主控管理\n  ────────────────────────\n' >&2
     default_choice=1
-    if [ -f /opt/sshguard/sshguard-api ]; then
+    installed=$(installed_program_dir)
+    if [ -n "$installed" ]; then
         printf '  状态：已安装\n' >&2; default_choice=9
-        [ ! -f /opt/sshguard/VERSION ] || printf '  版本：%s\n' "$(cat /opt/sshguard/VERSION)" >&2
+        [ ! -f "$installed/VERSION" ] || printf '  版本：%s\n' "$(cat "$installed/VERSION")" >&2
     else printf '  状态：未安装\n' >&2; fi
     printf '\n  1) 安装主控       9) 更新主控\n  2) 查看状态       3) 查看日志\n  4) 重启服务       5) 启动服务\n  6) 停止服务       8) 初始化链接\n  7) 卸载主控（保留数据）\n  0) 退出\n\n选择 [默认 %s]：' "$default_choice" >&2
     IFS= read -r choice
@@ -59,39 +45,21 @@ management_action() {
 uninstall_platform() (
 umask 077
 [ "$(id -u)" -eq 0 ] || die '请使用 sudo sh uninstall.sh。'
-if [ ! -f /etc/systemd/system/sshguard-api.service ] && [ ! -e /opt/sshguard/sshguard-api ] && [ ! -L /opt/sshguard ]; then
-    printf '未检测到原生安装的 SSHGuard 中央平台，无需卸载。\n'
-    exit 0
-fi
-case "${1:-}" in
-    --yes) [ "$#" -eq 1 ] || die '参数无效。' ;;
-    '')
-        printf '卸载 SSHGuard 中央平台：停止并移除服务与当前程序。\n数据库、配置、历史发行包及 Agent 均保留，Nginx/OpenResty 不会被卸载。\n继续？[y/N]: '
-        IFS= read -r answer
-        case "$answer" in y|Y) ;; *) printf '已取消。\n'; exit 0 ;; esac ;;
-    *) die '用法：sudo sh uninstall.sh [--yes]' ;;
-esac
-unit=/etc/systemd/system/sshguard-api.service
-for path in "$unit"; do
+if [ -e /opt/sshguard ] || [ -L /opt/sshguard ]; then die '旧目录安装请使用旧版卸载脚本卸载后再重新安装。'; fi
+for path in /opt/SSHGuard /opt/SSHGuard/Server /etc/systemd/system/sshguard-api.service; do
     [ ! -L "$path" ] || die "拒绝符号链接：$path"
 done
-target=''
-if [ -L /opt/sshguard ]; then
-    target=$(readlink -f /opt/sshguard) || die '无法解析程序路径。'
-    case "$target" in /opt/sshguard-releases/*) ;; *) die '程序链接指向非标准路径，停止自动卸载。' ;; esac
-elif [ -d /opt/sshguard ]; then
-    die '不支持旧的目录式安装；仅支持 v0.3.14 及之后的标准安装。'
-fi
-if [ -n "$target" ]; then
-    [ ! -L "$target/sshguard-api" ] || die '程序文件为符号链接，请人工检查。'
-fi
+unit=/etc/systemd/system/sshguard-api.service
+if [ ! -f "$unit" ] && [ ! -d /opt/SSHGuard/Server ]; then printf '未检测到主控安装。\n'; exit 0; fi
+case "$*" in
+    --yes) [ "$#" -eq 1 ] || die '参数无效。' ;;
+    '') printf '卸载主控程序，保留数据库、配置和 Agent。继续？[y/N]: '; IFS= read -r answer; case "$answer" in y|Y) ;; *) printf '已取消。\n'; exit 0 ;; esac ;;
+    *) die '用法：sudo sh uninstall.sh [--yes]' ;;
+esac
 if [ -f "$unit" ]; then
-    printf '[1/2] 停止并移除中央平台服务…\n'
-    grep -Fxq 'ExecStart=/opt/sshguard/sshguard-api' "$unit" || die '同名服务使用其他程序路径，停止自动卸载。'
-elif command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet sshguard-api; then
-    die '检测到非标准位置的中央服务，请先检查 systemctl cat sshguard-api。'
+    grep -Fxq 'ExecStart=/opt/SSHGuard/Server/sshguard-api' "$unit" || die '同名服务属于其他安装，停止卸载。'
 fi
-mkdir /run/sshguard-deploy.lock 2>/dev/null || die '安装或更新正在进行，请稍后重试。'
+mkdir /run/sshguard-deploy.lock 2>/dev/null || die '安装或更新正在执行。'
 trap 'rmdir /run/sshguard-deploy.lock' EXIT
 if [ -f "$unit" ]; then
     systemctl disable --now sshguard-api
@@ -99,14 +67,11 @@ if [ -f "$unit" ]; then
     systemctl daemon-reload
     systemctl reset-failed sshguard-api 2>/dev/null || true
 fi
-printf '[2/2] 移除中央平台程序…\n'
-if [ -n "$target" ]; then
-    rm -f "$target/sshguard-api"
-    rmdir "$target" 2>/dev/null || true
+if [ -d /opt/SSHGuard/Server ]; then
+    remove_release_payload /opt/SSHGuard/Server || die '程序目录含额外文件或无法清理，已保留，请检查 /opt/SSHGuard/Server。'
 fi
-if [ -L /opt/sshguard ]; then rm /opt/sshguard; fi
-printf '\n中央平台已卸载。\n数据和配置保留在 /var/lib/sshguard-api、/etc/sshguard；外部数据库未改动。\n旧程序目录和历史发行包保留，可自行备份清理。\n已有反代请在面板中手动移除；Agent 和其他网站不受影响。\n'
-
+rmdir /opt/SSHGuard 2>/dev/null || true
+printf '主控已卸载；数据库、/etc/sshguard 配置与 Agent 保留，已有反代保持原样。\n'
 )
 deploy_platform() (
 umask 077
@@ -159,18 +124,18 @@ case "${1:-}" in
         fi
         printf '\nSSHGuard 运行状态\n'
         systemctl show sshguard-api --property=ActiveState,SubState,MainPID --no-pager
-        [ ! -f /opt/sshguard/VERSION ] || printf 'Version=%s\n' "$(cat /opt/sshguard/VERSION)"
+        installed=$(installed_program_dir)
+        [ ! -f "$installed/VERSION" ] || printf 'Version=%s\n' "$(cat "$installed/VERSION")"
         # Display only non-secret fields; never source the environment file.
         sed -n '/^PUBLIC_URL=/p; /^LISTEN_ADDR=/p; /^DB_DRIVER=/p' /etc/sshguard/api.env
         printf '访问地址：%s\n' "$saved_origin"
-        printf '日志：sh /opt/sshguard/sshguard.sh --logs\n'
+        printf '日志：sh %s/sshguard.sh --logs\n' "$installed"
         exit 0 ;;
 esac
 bundle=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
 # Keep the deployed v0.3.14+ management entry updating from the release channel.
 for arg in "$@"; do
-    if [ "$arg" = --update ] && [ -L /opt/sshguard ] &&
-        [ "$bundle" = "$(CDPATH='' cd /opt/sshguard && pwd -P)" ]; then
+    if [ "$arg" = --update ] && [ "$bundle" = "$(installed_program_dir)" ]; then
         download_release "$@"; exit $?
     fi
 done
@@ -208,13 +173,15 @@ if [ -n "$config_file" ]; then
     done < "$config_file"
 fi
 prompt() { printf '%s' "$1" >&2; IFS= read -r answer; }
-for path in /opt/sshguard-releases /etc/sshguard /etc/sshguard/api.env /etc/sshguard/deploy-managed /etc/sshguard/proxy-mode /etc/sshguard/nginx-existing.conf; do
+for path in /opt/SSHGuard /opt/SSHGuard/Server /etc/sshguard /etc/sshguard/api.env /etc/sshguard/deploy-managed /etc/sshguard/proxy-mode /etc/sshguard/nginx-existing.conf; do
     [ ! -L "$path" ] || die "Refusing symlink: $path"
 done
-if [ -e /opt/sshguard ] && [ ! -L /opt/sshguard ]; then die 'Existing /opt/sshguard is a directory. Only standard v0.3.14+ installations are supported.'; fi
+if [ -e /opt/sshguard ] || [ -L /opt/sshguard ]; then die '不支持旧目录原地迁移，请先使用旧版脚本卸载，再重新安装。'; fi
+installed=$(installed_program_dir)
+if [ -e /opt/SSHGuard/Server ] && [ -z "$installed" ]; then die '/opt/SSHGuard/Server 已存在且不是受管理的安装。'; fi
 if [ "$mode" = update ]; then
-    [ -L /opt/sshguard ] && [ -f /etc/sshguard/deploy-managed ] || die 'No wizard-managed installation found.'
-elif [ -L /opt/sshguard ]; then die '主控已安装。请在菜单选择「9 更新主控」，或使用 --update-latest；安装已下载的发行包使用 --update。'; fi
+    [ -n "$installed" ] && [ -f /etc/sshguard/deploy-managed ] || die 'No wizard-managed installation found.'
+elif [ -n "$installed" ]; then die '主控已安装。请在菜单选择「9 更新主控」，或使用 --update-latest；安装已下载的发行包使用 --update。'; fi
 printf '\n============================================================\n'
 printf '  SSHGuard %s · 安装与更新\n' "$version"
 printf '============================================================\n'
@@ -250,7 +217,10 @@ fi
 printf '  本次模式：%s\n' "$proxy_mode"
 mkdir /run/sshguard-deploy.lock 2>/dev/null || die 'Another deployment is active (or /run/sshguard-deploy.lock is stale).'
 switched=false
-old=''
+backup=''
+backed_up=false
+new_active=false
+unit_backup=''
 stage=''
 hidden=false
 nginx_changed=false
@@ -261,15 +231,14 @@ cleanup() {
     trap - EXIT HUP INT TERM
     if "$hidden"; then stty echo 2>/dev/null || true; fi
     if "$switched" && [ "$status" -ne 0 ]; then
-        if [ -n "$old" ]; then
-            ln -s "$old" /opt/sshguard.next
-            mv -Tf /opt/sshguard.next /opt/sshguard
-            systemctl restart sshguard-api || true
-            echo '[错误] 部署失败，已恢复旧程序；数据库迁移保持原样。' >&2
-        else
-            systemctl stop sshguard-api || true
-            if [ "$(readlink /opt/sshguard)" = "$stage" ]; then rm /opt/sshguard; fi
-        fi
+        systemctl stop sshguard-api || true
+        if "$new_active"; then mv -T /opt/SSHGuard/Server "$stage" || { echo '无法移回失败的程序目录，已保留恢复文件。' >&2; exit "$status"; }; fi
+        if "$backed_up"; then mv -T "$backup" /opt/SSHGuard/Server || { echo '无法恢复旧程序目录，已保留恢复文件。' >&2; exit "$status"; }; fi
+        if [ -n "$unit_backup" ]; then cp "$unit_backup" /etc/systemd/system/sshguard-api.service
+        else rm -f /etc/systemd/system/sshguard-api.service; fi
+        systemctl daemon-reload || true
+        if [ "$mode" = update ]; then systemctl restart sshguard-api || true; fi
+        echo '[错误] 部署失败，已恢复旧程序和服务配置；数据库迁移保持原样。' >&2
     fi
     if "$nginx_changed" && [ "$status" -ne 0 ]; then
         if "$nginx_existed"; then cp "$nginx_backup" /etc/nginx/conf.d/sshguard.conf
@@ -277,6 +246,8 @@ cleanup() {
         nginx -t && systemctl reload nginx || true
     fi
     [ -z "$nginx_backup" ] || rm -f "$nginx_backup"
+    [ -z "$unit_backup" ] || rm -f "$unit_backup"
+    if [ -n "$stage" ] && [ -d "$stage" ]; then remove_release_payload "$stage" || true; fi
     rmdir /run/sshguard-deploy.lock
     exit "$status"
 }
@@ -415,9 +386,9 @@ if [ "$mode" = install ] && [ "$proxy_mode" = standalone ] && "$builtin_tls"; th
     install -o root -g sshguard-api -m 0640 "$certificate" /etc/sshguard/tls/fullchain.pem
     install -o root -g sshguard-api -m 0640 "$private_key" /etc/sshguard/tls/privkey.pem
 fi
-mkdir -p /opt/sshguard-releases
-chmod 0755 /opt/sshguard-releases
-stage=$(mktemp -d "/opt/sshguard-releases/$version.XXXXXX")
+mkdir -p /opt/SSHGuard
+chmod 0755 /opt/SSHGuard
+stage=$(mktemp -d /opt/.SSHGuard-stage.XXXXXX)
 # A bundle may be extracted inside an existing panel website. Copy only release
 # payloads, never unrelated site files, deploy.conf or certificate private keys.
 for item in sshguard-api web deploy VERSION; do cp -R "$bundle/$item" "$stage/$item"; done
@@ -475,14 +446,23 @@ if [ "$proxy_mode" = external ]; then
     chmod 0600 /etc/sshguard/nginx-existing.conf
     printf '  已生成 /etc/sshguard/nginx-existing.conf（兼容 OpenResty）；现有 Web 服务与证书保持原样。\n'
 fi
-cp "$bundle/deploy/sshguard-api.service" /etc/systemd/system/sshguard-api.service
+if [ -f /etc/systemd/system/sshguard-api.service ]; then
+    unit_backup=$(mktemp /etc/sshguard/.service-backup.XXXXXX)
+    cp /etc/systemd/system/sshguard-api.service "$unit_backup"
+fi
+switched=true
+systemctl stop sshguard-api 2>/dev/null || { [ "$mode" = install ] || die '无法停止现有服务。'; }
+if [ -d /opt/SSHGuard/Server ]; then
+    backup=$(mktemp -d /opt/.SSHGuard-backup.XXXXXX)
+    rmdir "$backup"
+    mv -T /opt/SSHGuard/Server "$backup"
+    backed_up=true
+fi
+mv -T "$stage" /opt/SSHGuard/Server
+new_active=true
+cp /opt/SSHGuard/Server/deploy/sshguard-api.service /etc/systemd/system/sshguard-api.service
 chmod 0644 /etc/systemd/system/sshguard-api.service
 systemctl daemon-reload
-[ ! -e /opt/sshguard.next ] && [ ! -L /opt/sshguard.next ] || die 'Unexpected /opt/sshguard.next; inspect it first.'
-if [ -L /opt/sshguard ]; then old=$(readlink /opt/sshguard); fi
-ln -s "$stage" /opt/sshguard.next
-mv -Tf /opt/sshguard.next /opt/sshguard
-switched=true
 printf '\n[5/5] 启动服务并检查健康状态\n'
 systemctl enable sshguard-api
 systemctl restart sshguard-api
@@ -503,8 +483,8 @@ switched=false
 if [ "$public_origin" = "http://SERVER_IP:$app_port" ]; then
     public_origin=$(direct_origin "$app_port")
 fi
-if [ "$mode" = update ] && [ "$(readlink -f /opt/sshguard)" = "$stage" ]; then
-    prune_releases /opt/sshguard-releases "$stage" || printf '  跳过旧版本清理：无法确认版本目录。\n' >&2
+if "$backed_up"; then
+    remove_release_payload "$backup" || printf '  旧目录含额外文件或无法清理，已保留：%s\n' "$backup" >&2
 fi
 if [ "$mode" = update ]; then printf '\n更新完成 · SSHGuard %s\n访问地址：%s\n' "$version" "$public_origin"
 else printf '\n安装完成 · SSHGuard %s\n访问地址：%s\n' "$version" "$public_origin"; fi
@@ -518,7 +498,7 @@ then
         printf '初始化链接：%s/#setup=%s\n' "$public_origin" "$setup_token" > /dev/tty
         unset setup_token
     else
-        printf '请在终端执行 sudo sh /opt/sshguard/sshguard.sh --setup-link 查看初始化链接。\n'
+        printf '请在终端执行 sudo sh /opt/SSHGuard/Server/sshguard.sh --setup-link 查看初始化链接。\n'
     fi
 elif grep -Fq 'WEB_SETUP="true"' /etc/sshguard/api.env; then
     printf '请使用网页初始化时创建的管理员账号登录。\n'
@@ -533,7 +513,7 @@ fi
 if [ "$proxy_mode" = standalone ] && ! "$builtin_tls" && [ "${public_origin#http://}" != "$public_origin" ]; then
     printf '\n请在云安全组 / 防火墙中放行 TCP %s；若使用 NAT，请使用对应公网 IP 与映射端口。\n直连 HTTP 的登录、Agent 上报与下载未加密；可按需配置 HTTPS。\n' "$app_port"
 fi
-printf '\n一键更新：sh /opt/sshguard/sshguard.sh --update\n管理命令：sudo sh /opt/sshguard/sshguard.sh\n安装与可选配置：https://github.com/xiuzhenzhi/SSHGuard/blob/main/docs/guides/QUICKSTART.md\n'
+printf '\n一键更新：sh /opt/SSHGuard/Server/sshguard.sh --update\n管理命令：sudo sh /opt/SSHGuard/Server/sshguard.sh\n安装与可选配置：https://github.com/xiuzhenzhi/SSHGuard/blob/main/docs/guides/QUICKSTART.md\n'
 
 )
 download_release() (
@@ -548,7 +528,7 @@ if [ "$#" -eq 0 ] && [ -t 0 ]; then
     set -- "$action"
 fi
 if [ "${1:-}" = --update-latest ]; then shift; set -- --update "$@"; fi
-if [ "$#" -eq 0 ] && [ -f /opt/sshguard/deploy.sh ]; then set -- --update; fi
+if [ "$#" -eq 0 ] && [ -n "$(installed_program_dir)" ]; then set -- --update; fi
 case "${1:-}" in
     --uninstall) shift; if [ "$(id -u)" -ne 0 ]; then exec sudo sh "$0" --uninstall "$@"; fi; uninstall_platform "$@"; exit $? ;;
     --status|--logs|--restart|--start|--stop|--setup-link)

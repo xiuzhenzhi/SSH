@@ -8,7 +8,7 @@ import (
 	"syscall"
 )
 
-func defaultConfigPath() string { return "/etc/sshguard/agent.json" }
+func defaultConfigPath() string { return "/opt/SSHGuard/Agent/agent.json" }
 func configureService(action, path string) error {
 	return fmt.Errorf("use install-agent.sh for systemd or OpenRC service installation")
 }

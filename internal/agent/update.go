@@ -66,13 +66,13 @@ func updateCommand(cfg Config, task updateTask) (string, []string, error) {
 		return "", nil, fmt.Errorf("invalid fixed update request")
 	}
 	if runtime.GOOS == "windows" {
-		args := []string{"-NoProfile", "-NonInteractive", "-File", filepath.Join(os.Getenv("ProgramFiles"), "SSHGuardAgent", "update-agent.ps1"), "-Endpoint", cfg.Endpoint, "-Update"}
+		args := []string{"-NoProfile", "-NonInteractive", "-File", filepath.Join(os.Getenv("ProgramData"), "SSHGuard", "Agent", "sshguard", "update-agent.ps1"), "-Endpoint", cfg.Endpoint, "-Update"}
 		if cfg.AllowInsecureHTTP {
 			args = append(args, "-AllowInsecureHttp")
 		}
 		return filepath.Join(os.Getenv("SystemRoot"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe"), args, nil
 	}
-	args := []string{"/usr/local/lib/sshguard/update-agent.sh", cfg.Endpoint, "--update"}
+	args := []string{"/opt/SSHGuard/Agent/sshguard/update-agent.sh", cfg.Endpoint, "--update"}
 	if cfg.AllowInsecureHTTP {
 		args = append(args, "--allow-insecure-http")
 	}

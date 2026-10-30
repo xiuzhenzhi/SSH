@@ -1,5 +1,7 @@
 # 安装与更新
 
+> 本文新目录布局尚未发布，旧版不自动迁移，请先使用旧版脚本卸载后再安装新版本。v0.3.19 用户请查阅 [对应版本文档](https://github.com/xiuzhenzhi/SSHGuard/tree/v0.3.19/docs)。
+
 主控支持 Ubuntu / Debian + systemd，amd64 / arm64。
 
 ## 安装主控
@@ -22,13 +24,13 @@ sh sshguard.sh --port 8081
 找回初始化链接：
 
 ```sh
-sudo sh /opt/sshguard/sshguard.sh --setup-link
+sudo sh /opt/SSHGuard/Server/sshguard.sh --setup-link
 ```
 
 ## 更新中央平台
 
 ```sh
-sh /opt/sshguard/sshguard.sh --update
+sh /opt/SSHGuard/Server/sshguard.sh --update
 ```
 
 也可打开管理菜单选择「9 更新主控」。更新前备份数据库和配置，备份方法见 [运维手册](../deployment/OPERATIONS.md)。
@@ -50,7 +52,7 @@ curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubu
 ### 指定版本
 
 ```sh
-SSHGUARD_VERSION=v0.3.19 sh /opt/sshguard/sshguard.sh --update
+SSHGUARD_VERSION=v0.3.19 sh /opt/SSHGuard/Server/sshguard.sh --update
 ```
 
 ### 离线更新
@@ -66,7 +68,7 @@ ARM64 将目录名中的 `amd64` 换成 `arm64`。
 ## 管理主控
 
 ```sh
-sudo sh /opt/sshguard/sshguard.sh
+sudo sh /opt/SSHGuard/Server/sshguard.sh
 ```
 
 | 选项 | 操作 |
@@ -83,10 +85,10 @@ sudo sh /opt/sshguard/sshguard.sh
 常用命令：
 
 ```sh
-sudo sh /opt/sshguard/sshguard.sh --status
-sudo sh /opt/sshguard/sshguard.sh --logs
-sudo sh /opt/sshguard/sshguard.sh --restart
-sudo sh /opt/sshguard/sshguard.sh --uninstall
+sudo sh /opt/SSHGuard/Server/sshguard.sh --status
+sudo sh /opt/SSHGuard/Server/sshguard.sh --logs
+sudo sh /opt/SSHGuard/Server/sshguard.sh --restart
+sudo sh /opt/SSHGuard/Server/sshguard.sh --uninstall
 ```
 
 ## 可选部署

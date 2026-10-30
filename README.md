@@ -28,7 +28,9 @@ sh sshguard.sh
 sh sshguard.sh --update
 ```
 
-已安装的主控也可运行 `sh /opt/sshguard/sshguard.sh --update`。管理菜单「1」安装，「9」更新。
+新目录布局尚未发布，旧目录安装不支持自动迁移，需使用旧版脚本卸载后重新安装。v0.3.19 用户请参考 [对应版本文档](https://github.com/xiuzhenzhi/SSHGuard/blob/v0.3.19/README.md)。
+
+新布局下已安装的主控也可运行 `sh /opt/SSHGuard/Server/sshguard.sh --update`。管理菜单「1」安装，「9」更新。
 
 从 v0.3.14 / v0.3.15 升级时，先拉取适配新仓库地址的更新脚本：
 

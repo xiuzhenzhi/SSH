@@ -123,7 +123,7 @@ async function retryReady() {
               <label for="setup-confirmation">确认密码</label><input id="setup-confirmation" v-model="confirmation" :type="showPassword ? 'text' : 'password'" autocomplete="new-password" placeholder="再次输入密码" required />
             </fieldset>
             <div class="identity-status" :class="{missing:!hasLinkToken}"><span aria-hidden="true">{{hasLinkToken ? '✓' : '!'}}</span><span>{{hasLinkToken ? '已从安装链接读取初始化口令' : '需要安装终端提供的初始化口令'}}</span><button class="text-button" type="button" :aria-expanded="tokenExpanded" :disabled="busy" @click="tokenExpanded=!tokenExpanded">{{tokenExpanded ? '收起' : hasLinkToken ? '修改' : '填写'}}</button></div>
-            <div v-if="tokenExpanded" class="token-field"><label for="setup-token">初始化口令</label><input id="setup-token" v-model="token" :disabled="busy" type="password" autocomplete="off" :required="!hasLinkToken" /><small class="field-hint">在主控终端执行 <code>sudo sh /opt/sshguard/deploy.sh --setup-link</code>，使用显示的链接重新打开此页。</small></div>
+            <div v-if="tokenExpanded" class="token-field"><label for="setup-token">初始化口令</label><input id="setup-token" v-model="token" :disabled="busy" type="password" autocomplete="off" :required="!hasLinkToken" /><small class="field-hint">在主控终端执行 <code>sudo sh /opt/SSHGuard/Server/sshguard.sh --setup-link</code>，使用显示的链接重新打开此页。</small></div>
             <details :open="advanced" class="advanced-settings" @toggle="advanced=($event.target as HTMLDetailsElement).open">
               <summary><span>存储设置 <small>可选</small></span><span class="database-summary">{{databaseName}}</span></summary>
               <fieldset :disabled="busy" class="database-fields"><legend class="sr-only">数据库设置</legend>

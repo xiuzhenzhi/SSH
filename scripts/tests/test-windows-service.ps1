@@ -11,8 +11,8 @@ $temp = Join-Path $root ('.local\windows-service-' + [Guid]::NewGuid().ToString(
 New-Item -ItemType Directory -Path $temp | Out-Null
 $download = Join-Path $temp 'sshguard-agent-windows-amd64.exe'
 $checksum = "$download.sha256"
-$exe = Join-Path $env:ProgramFiles 'SSHGuardAgent\sshguard-agent.exe'
-$config = Join-Path $env:ProgramData 'SSHGuard\agent.json'
+$exe = Join-Path $env:ProgramData 'SSHGuard\Agent\sshguard-agent.exe'
+$config = Join-Path $env:ProgramData 'SSHGuard\Agent\agent.json'
 $cert = $null
 $server = $null
 function Write-Checksum { [IO.File]::WriteAllText($checksum, ((Get-FileHash $download -Algorithm SHA256).Hash.ToLower() + '  sshguard-agent-windows-amd64.exe')) }
@@ -55,14 +55,14 @@ try {
         Start-Sleep -Seconds 1
     }
     if(-not $collected){throw 'LocalService did not collect and upload the fixture event over HTTPS fallback'}
-    if(-not (Test-Path (Join-Path (Split-Path $config) 'state\state.db'))){throw 'Durable state missing'}
+    if(-not (Test-Path (Join-Path (Split-Path $config) 'sshguard-agent\state.db'))){throw 'Durable state missing'}
     $configHash = (Get-FileHash $config -Algorithm SHA256).Hash
     Stop-Service SSHGuardAgent
     (Get-Service SSHGuardAgent).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30))
     $stream=[IO.File]::Open($exe,'Append','Write'); $stream.WriteByte(10); $stream.Dispose()
     Start-Service SSHGuardAgent
     Invoke-WebRequest -UseBasicParsing https://localhost:9443/queue-update | Out-Null
-    & (Join-Path $env:ProgramFiles 'SSHGuardAgent\poll-update.ps1')
+    & (Join-Path $env:ProgramData 'SSHGuard\Agent\sshguard\poll-update.ps1')
     if ((Invoke-RestMethod https://localhost:9443/update-result).status -ne 'success') { throw 'Platform-triggered update failed' }
     & "$PSScriptRoot/../install-agent.ps1" -Endpoint https://localhost:9443 -Update
     & "$PSScriptRoot/../install-agent.ps1" -Endpoint https://localhost:9443 -Update
@@ -85,9 +85,9 @@ try {
     if ((Get-FileHash $config -Algorithm SHA256).Hash -ne $configHash) { throw 'Rollback changed credentials' }
     if ((Get-FileHash $exe -Algorithm SHA256).Hash -ne (Get-FileHash (Join-Path $temp 'good.exe') -Algorithm SHA256).Hash) { throw 'Rollback binary mismatch' }
     Write-Output 'Windows real LocalService install, update, idempotence, checksum rejection and rollback passed.'
-    & (Join-Path $env:ProgramFiles 'SSHGuardAgent\uninstall-agent.ps1')
+    & (Join-Path $env:ProgramData 'SSHGuard\Agent\sshguard\uninstall-agent.ps1')
     if (Get-Service SSHGuardAgent -ErrorAction SilentlyContinue) { throw 'Offline uninstall left service installed' }
-    foreach ($removed in @($config,(Join-Path (Split-Path $config) 'state'),(Split-Path $exe))) { if (Test-Path -LiteralPath $removed) { throw "Uninstall left Agent data: $removed" } }
+    foreach ($removed in @($config,(Join-Path (Split-Path $config) 'sshguard-agent'),(Split-Path $exe))) { if (Test-Path -LiteralPath $removed) { throw "Uninstall left Agent data: $removed" } }
 } finally {
     if (Get-Service SSHGuardAgent -ErrorAction SilentlyContinue) { & "$PSScriptRoot/../uninstall-agent.ps1" }
     if ($server -and -not $server.HasExited) { Stop-Process -Id $server.Id }

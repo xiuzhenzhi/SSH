@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-func defaultStateDir() string { return "/var/lib/sshguard-agent" }
+func defaultStateDir() string { return "/opt/SSHGuard/Agent/sshguard-agent" }
 func fileIdentity(f *os.File) (string, error) {
 	info, e := f.Stat()
 	if e != nil {
@@ -46,7 +46,7 @@ func collectPlatform(ctx context.Context, s *spool, explicit string) (time.Time,
 		return collectJournal(ctx, s)
 	}
 	var unreadable string
-	for _, path := range []string{"/var/log/sshguard/auth.log", "/var/log/auth.log", "/var/log/secure", "/var/log/messages"} {
+	for _, path := range []string{"/opt/SSHGuard/Agent/logs/auth.log", "/var/log/auth.log", "/var/log/secure", "/var/log/messages"} {
 		info, err := os.Stat(path)
 		if err != nil || !info.Mode().IsRegular() {
 			continue

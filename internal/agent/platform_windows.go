@@ -98,7 +98,7 @@ func defaultConfigPath() string {
 	if base == "" {
 		base = `C:\ProgramData`
 	}
-	return filepath.Join(base, "SSHGuard", "agent.json")
+	return filepath.Join(base, "SSHGuard", "Agent", "agent.json")
 }
 
 type serviceHandler struct{ run func(context.Context) }

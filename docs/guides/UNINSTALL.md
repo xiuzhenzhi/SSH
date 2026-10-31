@@ -62,5 +62,3 @@ Remove-Item -LiteralPath "$env:ProgramData\SSHGuard\Agent" -Recurse -Force
 ```
 
 主控及系统共享日志保留。完成后在控制台撤销凭据；如需清除平台历史数据，使用 [删除服务器](AGENTS.md#删除服务器)。
-
-参考：[Komari Agent 卸载指南](https://komari-document.pages.dev/faq/uninstall)。

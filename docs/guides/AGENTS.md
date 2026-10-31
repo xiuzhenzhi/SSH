@@ -55,7 +55,7 @@ systemctl status sshguard-agent
 journalctl -u sshguard-agent -n 50 --no-pager
 # Alpine
 rc-service sshguard-agent status
-tail -n 50 /var/log/sshguard/agent.log
+grep sshguard-agent /var/log/messages | tail -n 50
 ```
 
 ```powershell
@@ -65,30 +65,17 @@ Get-WinEvent -FilterHashtable @{LogName='Application';ProviderName='SSHGuardAgen
 
 ## 目录布局
 
-v0.3.20 起使用以下新布局；Linux 和 Windows 都不提供旧目录迁移。旧版请使用对应旧版卸载脚本卸载，再通过新版本控制台重新安装。卸载会删除本机 Agent 数据，需要保留时先自行备份。
-
 Linux 程序和管理脚本分别位于 `/opt/SSHGuard/Agent/sshguard-agent-bin`、`/opt/SSHGuard/Agent/sshguard/`；Windows 位于 `%ProgramData%\SSHGuard\Agent\sshguard-agent.exe`、`%ProgramData%\SSHGuard\Agent\sshguard\`。主控与 Agent 分别存放，互不清理。
 
 ## 卸载
 
-在控制台复制「卸载命令」，或使用本地脚本：
-
-```sh
-# Ubuntu / Debian；Alpine 以 root 执行，去掉 sudo
-sudo sh /opt/SSHGuard/Agent/sshguard/uninstall-agent.sh
-```
-
-```powershell
-& "$env:ProgramData\SSHGuard\Agent\sshguard\uninstall-agent.ps1"
-```
-
-卸载会永久清除本机 Agent 配置、凭据、待传队列、采集位置、隔离数据和专用日志，并移除更新任务及程序文件；Windows 同时删除 Agent 事件源。系统共享 journal、Windows Application 和 OpenSSH 日志不会整库清空。中央平台数据需在控制台「删除服务器」中清除；只需停用时撤销凭据。
+按 [卸载 Agent](UNINSTALL.md) 中对应系统的命令，移除服务、更新任务及本机 Agent 数据。
 
 ## 删除服务器
 
 管理员在「服务器管理」对应行的「更多维护操作（⋯）」中选择「删除服务器」，核对提示后点击「确认删除」。在线、待接入和已撤销的服务器均可删除。
 
-删除会永久清除该服务器的 SSH 事件、告警及通知投递记录，并使安装和 Agent 凭证失效；操作审计保留。目标机器上的 Agent 需另行卸载，可在删除前复制「卸载命令」。若需保留历史数据，只使用「撤销凭证」。
+删除会永久清除该服务器的 SSH 事件、告警及通知投递记录，并使安装和 Agent 凭证失效；操作审计保留。目标机器上的 Agent 需 [另行卸载](UNINSTALL.md)。若需保留历史数据，只使用「撤销凭证」。
 
 ## 采集与状态文件
 

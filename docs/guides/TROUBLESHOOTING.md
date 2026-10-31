@@ -1,12 +1,9 @@
 # 故障排查
 
-> 从 v0.3.21 起主控程序、配置和数据统一存放，旧版不自动迁移，请先使用旧版脚本卸载后再安装新版本。v0.3.20 及以前版本用户请查阅 [对应版本文档](https://github.com/xiuzhenzhi/SSHGuard/tree/v0.3.20/docs)。
-
 ## 常见问题
 
 | 问题 | 处理 |
 |---|---|
-| 旧菜单没有更新选项 | [拉取最新更新脚本](QUICKSTART.md#更新中央平台)，之后使用 `/opt/SSHGuard/Server/deploy.sh` |
 | GitHub 下载失败或 404 | 检查网络和版本；私有仓库先执行 `gh auth login` |
 | 登录或保存返回 403 | 检查 `PUBLIC_URL` 是否与浏览器的协议、主机、端口一致 |
 | 密码错误 | 使用初始化时创建的账号；修改 `ADMIN_PASSWORD` 不会重置现有密码 |
@@ -25,6 +22,7 @@
 | Alpine 服务安装失败 | 确认 OpenRC 已运行，安装 `curl` 和 `ca-certificates` |
 | Windows 服务安装失败 | 使用管理员 PowerShell，检查同名服务路径 |
 | Windows 脚本被策略阻止 | 使用组织允许的签名或分发方式 |
+| Agent 卸载脚本缺失或执行失败 | 按系统执行 [手动卸载命令](UNINSTALL.md) |
 | 页面没有 SSH 事件 | 检查采集状态和队列，测试一次真实 SSH 登录 |
 | 出现重复事件计数 | 属于重传去重统计，不需要重新注册 |
 
@@ -38,7 +36,7 @@ docker compose logs --tail=100 api web
 # Ubuntu / Debian Agent
 journalctl -u sshguard-agent -n 100 --no-pager
 # Alpine Agent
-tail -n 100 /var/log/sshguard/agent.log
+grep sshguard-agent /var/log/messages | tail -n 100
 ```
 
 ```powershell

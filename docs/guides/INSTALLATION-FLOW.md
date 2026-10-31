@@ -15,6 +15,6 @@
 | 8080 被占用 | 安装时加 `--port 8081` |
 | 初始化链接丢失 | 菜单「8」 |
 | 更新主控 | 菜单「9」 |
-| 旧安装没有更新选项 | [拉取最新更新脚本](QUICKSTART.md#更新中央平台) |
 | 卸载主控 | 菜单「7」，保留数据 |
+| 卸载 Agent | [按系统手动卸载](UNINSTALL.md) |
 | 配置 HTTPS | [反代与 HTTPS](../deployment/REVERSE-PROXY.md) |

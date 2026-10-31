@@ -40,6 +40,7 @@ export default defineConfig({
         { text: '一键安装与更新', link: '/docs/guides/QUICKSTART' },
         { text: '安装与接入流程', link: '/docs/guides/INSTALLATION-FLOW' },
         { text: 'Agent 安装与管理', link: '/docs/guides/AGENTS' },
+        { text: '卸载 Agent', link: '/docs/guides/UNINSTALL' },
         { text: '常见问题', link: '/docs/guides/TROUBLESHOOTING' },
       ] },
       { text: '部署与运维', collapsed: false, items: [

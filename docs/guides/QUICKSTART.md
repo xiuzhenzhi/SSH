@@ -1,7 +1,5 @@
 # 安装与更新
 
-> 从 v0.3.21 起主控程序、配置和数据统一存放，旧版不自动迁移，请先使用旧版脚本卸载后再安装新版本。v0.3.20 及以前版本用户请查阅 [对应版本文档](https://github.com/xiuzhenzhi/SSHGuard/tree/v0.3.20/docs)。
-
 主控支持 Ubuntu / Debian + systemd，amd64 / arm64。
 
 ## 安装主控
@@ -37,7 +35,7 @@ sh /opt/SSHGuard/Server/sshguard.sh --update
 
 ### 拉取最新更新脚本
 
-已使用当前目录布局时，可重新下载更新脚本并执行更新：
+重新下载管理脚本并执行更新：
 
 ```sh
 curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLsS https://raw.githubusercontent.com/xiuzhenzhi/SSHGuard/main/sshguard.sh -o sshguard-update.sh && sh sshguard-update.sh --update

@@ -1,5 +1,7 @@
 # SSHGuard 文档
 
+适用于 v0.3.21 及以上版本。
+
 ## 安装与管理
 
 | 文档 | 内容 |
@@ -9,6 +11,7 @@
 | [原生部署](deployment/INSTALL-NATIVE.md) | 二进制与 systemd |
 | [Compose 部署](deployment/INSTALL-COMPOSE.md) | Docker 安装与更新 |
 | [Agent 管理](guides/AGENTS.md) | 接入、更新、卸载 |
+| [卸载 Agent](guides/UNINSTALL.md) | Windows、systemd、OpenRC 手动卸载 |
 | [反代与 HTTPS](deployment/REVERSE-PROXY.md) | 宝塔、Nginx、OpenResty |
 | [运维手册](deployment/OPERATIONS.md) | 日志、备份、恢复 |
 | [故障排查](guides/TROUBLESHOOTING.md) | 常见问题与处理方法 |
